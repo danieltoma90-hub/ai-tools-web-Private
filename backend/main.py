@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
-from routers import minuta, mockup, documents
+from routers import minuta, mockup, scenarii, documents
 
 load_dotenv()
 
@@ -18,6 +18,7 @@ app.add_middleware(
 
 app.include_router(minuta.router, prefix="/api")
 app.include_router(mockup.router, prefix="/api")
+app.include_router(scenarii.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 
 
