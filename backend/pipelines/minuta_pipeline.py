@@ -2,6 +2,7 @@ import json
 import re
 import sys
 import tempfile
+from html import escape
 from pathlib import Path
 
 from anthropic import Anthropic
@@ -75,7 +76,7 @@ def _build_preview_html(data: dict) -> str:
     pasi = data.get("pasi_urmatori", [])
 
     rows = "".join(
-        f"<tr><td>{k}</td><td>{v}</td></tr>"
+        f"<tr><td>{escape(k)}</td><td>{escape(str(v))}</td></tr>"
         for k, v in [
             ("Data", meta.get("data", "")),
             ("Client", meta.get("nume_client", "")),
@@ -84,18 +85,19 @@ def _build_preview_html(data: dict) -> str:
         ]
     )
     sectiuni_html = "".join(
-        f"<h3>{s.get('titlu','')}</h3>"
+        f"<h3>{escape(s.get('titlu',''))}</h3>"
         for s in sectiuni
     )
     pasi_html = "".join(
-        f"<li>{p.get('responsabil','')}: {p.get('actiune','')}</li>"
+        f"<li>{escape(p.get('responsabil',''))}: {escape(p.get('actiune',''))}</li>"
         for p in pasi
     )
+    subiect = escape(meta.get("subiect", ""))
 
     return f"""
     <html><body style="font-family:Calibri,sans-serif;padding:24px;max-width:800px">
     <h2 style="color:#1F3864">MINUTA INTALNIRII</h2>
-    <h3 style="color:#2E5496">{meta.get('subiect','')}</h3>
+    <h3 style="color:#2E5496">{subiect}</h3>
     <table border="1" cellpadding="6" style="border-collapse:collapse;width:100%">{rows}</table>
     {sectiuni_html}
     {'<h3>Pași următori</h3><ol>' + pasi_html + '</ol>' if pasi else ''}

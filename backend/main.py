@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
+from routers import minuta, documents
 
 load_dotenv()
 
@@ -14,6 +15,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(minuta.router, prefix="/api")
+app.include_router(documents.router, prefix="/api")
+
 
 @app.get("/health")
 def health():

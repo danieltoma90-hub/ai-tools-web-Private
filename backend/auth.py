@@ -3,7 +3,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from supabase import create_client
 import os
 
-_security = HTTPBearer()
+_security = HTTPBearer(auto_error=False)
+
 
 def get_supabase():
     return create_client(
@@ -11,7 +12,12 @@ def get_supabase():
         os.environ["SUPABASE_SERVICE_KEY"]
     )
 
-async def verify_token(credentials: HTTPAuthorizationCredentials = Security(_security)):
+
+async def verify_token(
+    credentials: HTTPAuthorizationCredentials | None = Security(_security),
+):
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Token lipsă")
     token = credentials.credentials
     try:
         sb = get_supabase()
