@@ -1,13 +1,31 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { jwtVerify, createRemoteJWKSet } from "jose";
 
-export function middleware(request: NextRequest) {
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const JWKS = createRemoteJWKSet(
+  new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
+);
+
+async function verifySupabaseJwt(token: string): Promise<boolean> {
+  try {
+    await jwtVerify(token, JWKS, {
+      issuer: `${SUPABASE_URL}/auth/v1`,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function middleware(request: NextRequest) {
   const isPublic = request.nextUrl.pathname.startsWith("/login");
-  const session = request.cookies.get("auth-session");
+  const token = request.cookies.get("auth-token")?.value;
+  const authenticated = token ? await verifySupabaseJwt(token) : false;
 
-  if (!session && !isPublic) {
+  if (!authenticated && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
-  if (session && request.nextUrl.pathname === "/login") {
+  if (authenticated && request.nextUrl.pathname === "/login") {
     return NextResponse.redirect(new URL("/minuta", request.url));
   }
   return NextResponse.next();
