@@ -1,0 +1,167 @@
+{
+  "meta": {
+    "cod_formular": "F.05 – Minuta Intalnirii",
+    "cod_proiect": "Carmistin",
+    "data": "18.09.2025",
+    "numar_contract": "",
+    "nume_client": "Carmistin Group",
+    "subiect": "Clarificari Specificatie MRP – Planificare Achizitii : Parametrii MRP, Indicatori, Alte spete",
+    "initiator": "Alexandru Nastase",
+    "participanti": {
+      "Carmistin": [
+        "Andreea Dragan",
+        "Andreea Olteanu",
+        "Cristina Hancu"
+      ],
+      "TotalSoft": [
+        "Alexandru Nastase"
+      ]
+    },
+    "distribuit": "Consultanti TotalSoft, Echipa Carmistin Group",
+    "locatia": "Microsoft Teams",
+    "durata": "15:00 – 16:00"
+  },
+  "titlu_minuta": "Minuta Discutie Clarificari Mod Configurare Parametri MRP – Indicatori – Alte Spete",
+  "context_si_scop": [
+    {
+      "type": "bullets",
+      "items": [
+        "Scopul: Clarificarea modului de configurare/utilizare a parametrilor si indicatorilor MRP – Planificare Aprovizionare"
+      ]
+    }
+  ],
+  "sectiuni": [
+    {
+      "titlu": "Clarificare Parametrii MRP",
+      "blocuri": [
+        {
+          "type": "subheading",
+          "text": "Ecran Configurare articole productie"
+        },
+        {
+          "type": "subheading",
+          "text": "Grid Principal"
+        },
+        {
+          "type": "table_2col",
+          "header": [
+            "Parametru",
+            "Explicatie agreata"
+          ],
+          "rows": [
+            [
+              "Stoc Minim",
+              "Limita sub care nu trebuie sa coboare cantitatea din stoc curenta sau pe analiza forecast din MRP. Depinde de orizontul de timp pe care ne uitam."
+            ],
+            [
+              "Stocul Maxim",
+              "Se refera la capacitatea maxima de stocare a articolului."
+            ],
+            [
+              "Stoc de Siguranta",
+              "Valoarea cantitativa a stocului care asigura consumul pe un nr de zile. **In sedinta s-a stabilit ca valoarea din parametru sa se refere la cantitate.**"
+            ],
+            [
+              "Consum Mediu zilnic",
+              "Va fi indicator definit in MRP cu calculul specific Carmistin pentru consumul mediu. **Carmistin trimite formula pentru indicator.**"
+            ],
+            [
+              "Lot Economic",
+              "Se va utiliza campul din grid detalii „Lot Economic Furnizor\" care se refera la cantitatea optima (comanda minima) de aprovizionat in contextul fiecarui furnizor setat in gridul de detalii."
+            ]
+          ]
+        },
+        {
+          "type": "subheading",
+          "text": "Grid detalii (in contextul selectiei de sus)"
+        },
+        {
+          "type": "table_2col",
+          "header": [
+            "Parametru",
+            "Explicatie agreata"
+          ],
+          "rows": [
+            [
+              "Multiplicator Furnizor",
+              "Unitatea de ambalare cu care se relationeaza cu furnizorul selectat (BAX, ROLA, CUTIE). Ne raportam la UM de baza."
+            ],
+            [
+              "Timp de aprovizionare",
+              "Nr total de zile necesare de la trimiterea comenzii pana la receptia materiei prime. **Timpul de aprovizionare se refera la zile calendaristice.**"
+            ],
+            [
+              "Scoring",
+              "Reprezinta prioritatea furnizorilor. Scopul este afisarea furnizorului cu prioritatea cea mai mica in fereastra de MRP, in pasul de generare comanda furnizor."
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "titlu": "Clarificari suplimentare Indicatori MRP – Alte Spete",
+      "blocuri": [
+        {
+          "type": "subheading",
+          "text": "Mod de lucru in Ecranul MRP cu furnizori multipli in functie de pret/incarcare optima transport"
+        },
+        {
+          "type": "paragraph",
+          "text": "In modul actual de lucru, cantitatile de materii prime sunt calculate si distribuite catre mai multi furnizori astfel incat sa existe un raport optim intre cantitatea necesara, cantitatea minima de achizitionat, pretul si incarcarea eficienta a transportului."
+        },
+        {
+          "type": "subheading",
+          "text": "Alte info"
+        },
+        {
+          "type": "bullets",
+          "items": [
+            "Exista cazul cand furnizorul principal nu poate asigura cantitatea totala necesara rezultata.",
+            "Comanda catre furnizor se trimite in UM de baza.",
+            "Unul din criteriile optimizarii transportului este acoperirea stocului de siguranta pentru acelasi nr de zile la articolele achizitionate in respectivul transport."
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "**Din partea echipei Carmistin avem nevoie de modul de lucru concret pe aceasta speta. Trebuie sa cunoastem toti parametrii care sunt luati in considerare si 2-3 TestCase-uri cu rezultate diferite in functie de acesti parametri variabili.**"
+        },
+        {
+          "type": "subheading",
+          "text": "Indicatori MRP"
+        },
+        {
+          "type": "table_2col",
+          "header": [
+            "Indicator",
+            "Explicatie agreata"
+          ],
+          "rows": [
+            [
+              "Consum mediu zilnic",
+              "Calculul automat al consumului mediu la nivel de zi, din documentele raportate de productie. Indicatorul va fi afisat in PASUL 1 MRP – Generare Necesar de Aprovizionare."
+            ],
+            [
+              "UM Ambalare Furnizor",
+              "Nr de bucati aflate intr-o UM Ambalare a furnizorului (minima) in UM de baza (Charisma)."
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "pasi_urmatori": [
+    {
+      "responsabil": "Carmistin",
+      "actiune": "Confirma explicatiile agreate pentru indicatori — adauga observatii daca sunt necesare."
+    },
+    {
+      "responsabil": "Carmistin",
+      "actiune": "Pregateste si revine cu scenariile de lucru pentru speta de la punctul 4 (PASUL 2 MRP – Generarea Comenzilor de Aprovizionare)."
+    },
+    {
+      "responsabil": "Carmistin",
+      "actiune": "Confirma structura indicatorilor din PASUL 1 MRP – Generare Necesare Materii Prime."
+    }
+  ],
+  "include_signature": false
+}
