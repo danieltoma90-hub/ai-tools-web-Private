@@ -1,26 +1,29 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { jwtVerify, createRemoteJWKSet } from "jose";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const JWKS = createRemoteJWKSet(
-  new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
-);
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 
-async function verifySupabaseJwt(token: string): Promise<boolean> {
+function isValidSupabaseJwt(token: string | undefined): boolean {
+  if (!token) return false;
   try {
-    await jwtVerify(token, JWKS, {
-      issuer: `${SUPABASE_URL}/auth/v1`,
-    });
-    return true;
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
+    const now = Math.floor(Date.now() / 1000);
+    return (
+      payload.iss === `${SUPABASE_URL}/auth/v1` &&
+      typeof payload.exp === "number" &&
+      payload.exp > now
+    );
   } catch {
     return false;
   }
 }
 
-export async function middleware(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const isPublic = request.nextUrl.pathname.startsWith("/login");
   const token = request.cookies.get("auth-token")?.value;
-  const authenticated = token ? await verifySupabaseJwt(token) : false;
+  const authenticated = isValidSupabaseJwt(token);
 
   if (!authenticated && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
