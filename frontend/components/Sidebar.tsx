@@ -49,6 +49,18 @@ export default function Sidebar() {
         <span className="text-[10px] font-semibold">Repository</span>
       </Link>
 
+      <Link
+        href="/invite"
+        className={`w-16 flex flex-col items-center gap-1 py-2 px-1 rounded-lg text-center transition-colors ${
+          pathname === "/invite"
+            ? "bg-blue-600 text-white"
+            : "text-slate-500 hover:bg-slate-200"
+        }`}
+      >
+        <span className="text-xl">👤</span>
+        <span className="text-[10px] font-semibold">Invita</span>
+      </Link>
+
       <button
         onClick={logout}
         className="w-16 flex flex-col items-center gap-1 py-2 px-1 rounded-lg text-center text-slate-400 hover:bg-slate-200 transition-colors mt-1"

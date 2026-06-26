@@ -22,7 +22,9 @@ async function isAuthenticated(token: string | undefined): Promise<boolean> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublic =
-    pathname.startsWith("/login") || pathname.startsWith("/api/auth/");
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/api/auth/");
   const token = request.cookies.get("auth-token")?.value;
   const authenticated = await isAuthenticated(token);
 
