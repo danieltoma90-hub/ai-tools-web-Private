@@ -1,26 +1,27 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-
-// Supabase issues ES256 tokens (asymmetric) — verify via public JWKS endpoint.
-// createRemoteJWKSet caches keys in memory and re-fetches on key rotation.
-const JWKS = SUPABASE_URL
-  ? createRemoteJWKSet(
-      new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
-    )
-  : null;
-
-async function isAuthenticated(token: string | undefined): Promise<boolean> {
-  if (!token || !JWKS) return false;
+// Decode JWT payload without signature verification.
+// Real auth enforcement is on FastAPI (verifies signature on every API call).
+// Middleware only checks presence and expiry for routing decisions.
+function decodeJWTPayload(token: string): Record<string, unknown> | null {
   try {
-    await jwtVerify(token, JWKS, {
-      issuer: `${SUPABASE_URL}/auth/v1`,
-    });
-    return true;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    return JSON.parse(atob(padded));
   } catch {
-    return false;
+    return null;
   }
+}
+
+function hasValidSession(token: string | undefined): boolean {
+  if (!token) return false;
+  const payload = decodeJWTPayload(token);
+  if (!payload) return false;
+  const exp = payload.exp;
+  if (typeof exp !== "number") return false;
+  return exp > Math.floor(Date.now() / 1000);
 }
 
 export async function middleware(request: NextRequest) {
@@ -29,8 +30,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/api/auth/");
+
   const token = request.cookies.get("auth-token")?.value;
-  const authenticated = await isAuthenticated(token);
+  const authenticated = hasValidSession(token);
 
   if (!authenticated && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
