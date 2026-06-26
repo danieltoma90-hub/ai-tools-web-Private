@@ -1,34 +1,35 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { jwtVerify } from "jose";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const jwtSecretRaw = process.env.SUPABASE_JWT_SECRET;
+const JWT_SECRET = jwtSecretRaw
+  ? new TextEncoder().encode(jwtSecretRaw)
+  : null;
 
-function isValidSupabaseJwt(token: string | undefined): boolean {
-  if (!token) return false;
+async function isAuthenticated(token: string | undefined): Promise<boolean> {
+  if (!token || !JWT_SECRET) return false;
   try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return false;
-    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
-    const now = Math.floor(Date.now() / 1000);
-    return (
-      payload.iss === `${SUPABASE_URL}/auth/v1` &&
-      typeof payload.exp === "number" &&
-      payload.exp > now
-    );
+    await jwtVerify(token, JWT_SECRET, {
+      issuer: `${SUPABASE_URL}/auth/v1`,
+    });
+    return true;
   } catch {
     return false;
   }
 }
 
-export function middleware(request: NextRequest) {
-  const isPublic = request.nextUrl.pathname.startsWith("/login");
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const isPublic =
+    pathname.startsWith("/login") || pathname.startsWith("/api/auth/");
   const token = request.cookies.get("auth-token")?.value;
-  const authenticated = isValidSupabaseJwt(token);
+  const authenticated = await isAuthenticated(token);
 
   if (!authenticated && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
-  if (authenticated && request.nextUrl.pathname === "/login") {
+  if (authenticated && pathname === "/login") {
     return NextResponse.redirect(new URL("/minuta", request.url));
   }
   return NextResponse.next();
