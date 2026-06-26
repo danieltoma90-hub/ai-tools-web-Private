@@ -27,19 +27,24 @@ async function proxy(
   const body =
     request.method !== "GET" ? await request.arrayBuffer() : undefined;
 
-  const res = await fetch(backendUrl, {
-    method: request.method,
-    headers: outHeaders,
-    body,
-  });
+  try {
+    const res = await fetch(backendUrl, {
+      method: request.method,
+      headers: outHeaders,
+      body,
+    });
 
-  const resBody = await res.arrayBuffer();
-  return new NextResponse(resBody, {
-    status: res.status,
-    headers: {
-      "Content-Type": res.headers.get("Content-Type") ?? "application/json",
-    },
-  });
+    const resBody = await res.arrayBuffer();
+    return new NextResponse(resBody, {
+      status: res.status,
+      headers: {
+        "Content-Type": res.headers.get("Content-Type") ?? "application/json",
+      },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Backend unreachable";
+    return NextResponse.json({ detail: msg }, { status: 502 });
+  }
 }
 
 export const GET = proxy;
