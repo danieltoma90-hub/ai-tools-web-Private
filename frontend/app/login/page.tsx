@@ -1,27 +1,28 @@
-"use client";
-import { useState } from "react";
-import { login } from "@/lib/auth";
-import { useRouter } from "next/navigation";
+import { redirect } from "next/navigation";
+import { loginAction } from "@/app/actions/auth";
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
+  const errorMsg = error ? decodeURIComponent(error) : null;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
+  async function handleLogin(formData: FormData) {
+    "use server";
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+    let authError: string | undefined;
     try {
-      await login(email, password);
-      router.push("/minuta");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Eroare la autentificare");
-    } finally {
-      setLoading(false);
+      await loginAction(email, password);
+    } catch (e) {
+      authError = e instanceof Error ? e.message : "Eroare la autentificare";
     }
+    if (authError) {
+      redirect(`/login?error=${encodeURIComponent(authError)}`);
+    }
+    redirect("/minuta");
   }
 
   return (
@@ -31,15 +32,15 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold text-[#1e3a5f]">AI Tools</h1>
           <p className="text-sm text-gray-500 mt-1">TotalSoft</p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form action={handleLogin} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Email
             </label>
             <input
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              name="email"
+              autoComplete="email"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
@@ -50,19 +51,20 @@ export default function LoginPage() {
             </label>
             <input
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              name="password"
+              autoComplete="current-password"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {errorMsg && (
+            <p className="text-sm text-red-600">{errorMsg}</p>
+          )}
           <button
             type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+            className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-700"
           >
-            {loading ? "Se conectează..." : "Intră în cont"}
+            Intră în cont
           </button>
         </form>
       </div>
