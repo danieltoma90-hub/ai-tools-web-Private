@@ -1,47 +1,41 @@
-import { supabase } from "./supabase";
+import { loginAction } from "@/app/actions/auth";
+
+const SESSION_KEY = "auth-token";
 
 export async function getToken(): Promise<string | null> {
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token ?? null;
+  if (typeof window === "undefined") return null;
+
+  // Fast path: token already cached in this tab's sessionStorage
+  const cached = sessionStorage.getItem(SESSION_KEY);
+  if (cached) return cached;
+
+  // Fallback: read from HttpOnly cookie via server route (handles new tabs / page refresh)
+  try {
+    const res = await fetch("/api/auth/get-token");
+    if (res.ok) {
+      const { token } = (await res.json()) as { token: string | null };
+      if (token) {
+        sessionStorage.setItem(SESSION_KEY, token);
+        return token;
+      }
+    }
+  } catch {
+    // network error — return null, caller handles it
+  }
+
+  return null;
 }
 
 export async function login(email: string, password: string) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  // Use raw fetch with explicit ASCII-only headers to avoid supabase-js X-Client-Info injection
-  const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": supabaseAnonKey,
-      "Authorization": `Bearer ${supabaseAnonKey}`,
-    },
-    body: JSON.stringify({ email, password }),
-  });
-
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error_description || json.message || "Autentificare eșuată");
-  }
-
-  const { access_token, refresh_token, expires_at } = json as {
-    access_token: string;
-    refresh_token: string;
-    expires_at: number;
-  };
-
-  await supabase.auth.setSession({ access_token, refresh_token });
-
-  await fetch("/api/auth/set-session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ access_token, expires_at }),
-  });
+  // loginAction runs on the server — no browser fetch to Supabase at all
+  const { access_token } = await loginAction(email, password);
+  sessionStorage.setItem(SESSION_KEY, access_token);
 }
 
 export async function logout() {
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem(SESSION_KEY);
+  }
   await fetch("/api/auth/clear-session", { method: "POST" });
-  await supabase.auth.signOut();
   window.location.href = "/login";
 }
