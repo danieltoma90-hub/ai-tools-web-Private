@@ -1,12 +1,22 @@
 "use server";
+import { cookies } from "next/headers";
+
+const ALLOWED_DOMAIN = "@totalsoft.ro";
 
 export async function inviteUserAction(email: string): Promise<void> {
+  // Defense-in-depth: verify caller is authenticated even if invoked directly
+  const cookieStore = await cookies();
+  const token = cookieStore.get("auth-token")?.value;
+  if (!token) throw new Error("unauthorized");
+
+  // Restrict invitations to organization domain
+  if (!email.toLowerCase().endsWith(ALLOWED_DOMAIN)) {
+    throw new Error(`Doar adresele ${ALLOWED_DOMAIN} pot fi invitate`);
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY not configured");
-  }
+  if (!serviceRoleKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY not configured");
 
   const redirectTo = process.env.NEXT_PUBLIC_APP_URL
     ? `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`

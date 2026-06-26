@@ -3,6 +3,7 @@ import { inviteUserAction } from "@/app/actions/invite";
 
 const ERRORS: Record<string, string> = {
   exists: "Un utilizator cu acest email există deja.",
+  domain: "Doar adresele @totalsoft.ro pot fi invitate.",
   server_error: "Eroare de server. Încearcă din nou.",
 };
 
@@ -23,10 +24,11 @@ export default async function InvitePage({
       await inviteUserAction(email);
     } catch (e) {
       const msg = e instanceof Error ? e.message.toLowerCase() : "";
-      errorCode =
-        msg.includes("already") || msg.includes("exists")
-          ? "exists"
-          : "server_error";
+      errorCode = msg.includes("already") || msg.includes("exists")
+        ? "exists"
+        : msg.includes("totalsoft")
+        ? "domain"
+        : "server_error";
     }
     if (errorCode) {
       redirect(`/invite?error=${errorCode}`);
