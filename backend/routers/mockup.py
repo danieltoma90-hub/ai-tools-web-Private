@@ -40,6 +40,10 @@ async def generate_mockup(
             "html": html,
             "html_compact": html_compact,
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         input_path.unlink(missing_ok=True)
         if "docx_path" in locals():

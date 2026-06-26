@@ -4,7 +4,16 @@ async function postFile(path: string, file: File) {
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`${PROXY}/${path}`, { method: "POST", body: form });
-  if (!res.ok) throw new Error((await res.json()).detail ?? "Eroare server");
+  if (!res.ok) {
+    let detail = "Eroare server";
+    try {
+      const data = await res.json();
+      detail = data.detail ?? detail;
+    } catch {
+      detail = (await res.text().catch(() => "")) || detail;
+    }
+    throw new Error(detail);
+  }
   return res.json();
 }
 

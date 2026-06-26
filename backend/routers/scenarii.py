@@ -35,6 +35,10 @@ async def generate_scenarii(
             xlsx_b64 = base64.b64encode(f.read()).decode()
 
         return {"filename": filename, "xlsx_b64": xlsx_b64}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         input_path.unlink(missing_ok=True)
         if "xlsx_path" in locals():
