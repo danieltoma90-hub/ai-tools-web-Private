@@ -1,26 +1,34 @@
 import { redirect } from "next/navigation";
 import { loginAction } from "@/app/actions/auth";
 
+const ERROR_MESSAGES: Record<string, string> = {
+  invalid_credentials: "Email sau parolă incorectă.",
+  server_error: "Eroare de server. Încearcă din nou.",
+};
+
 export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const errorMsg = error ? decodeURIComponent(error) : null;
+  const errorMsg =
+    error && Object.hasOwn(ERROR_MESSAGES, error)
+      ? ERROR_MESSAGES[error]
+      : null;
 
   async function handleLogin(formData: FormData) {
     "use server";
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
-    let authError: string | undefined;
+    let errorCode: string | undefined;
     try {
       await loginAction(email, password);
-    } catch (e) {
-      authError = e instanceof Error ? e.message : "Eroare la autentificare";
+    } catch {
+      errorCode = "invalid_credentials";
     }
-    if (authError) {
-      redirect(`/login?error=${encodeURIComponent(authError)}`);
+    if (errorCode) {
+      redirect(`/login?error=${errorCode}`);
     }
     redirect("/minuta");
   }
@@ -57,9 +65,7 @@ export default async function LoginPage({
               required
             />
           </div>
-          {errorMsg && (
-            <p className="text-sm text-red-600">{errorMsg}</p>
-          )}
+          {errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}
           <button
             type="submit"
             className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-700"
