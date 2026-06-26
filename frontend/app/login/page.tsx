@@ -1,6 +1,3 @@
-import { redirect } from "next/navigation";
-import { loginAction } from "@/app/actions/auth";
-
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_credentials: "Email sau parolă incorectă.",
   server_error: "Eroare de server. Încearcă din nou.",
@@ -17,22 +14,6 @@ export default async function LoginPage({
       ? ERROR_MESSAGES[error]
       : null;
 
-  async function handleLogin(formData: FormData) {
-    "use server";
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    let errorCode: string | undefined;
-    try {
-      await loginAction(email, password);
-    } catch {
-      errorCode = "invalid_credentials";
-    }
-    if (errorCode) {
-      redirect(`/login?error=${errorCode}`);
-    }
-    redirect("/minuta");
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-sm">
@@ -40,7 +21,7 @@ export default async function LoginPage({
           <h1 className="text-2xl font-bold text-[#1e3a5f]">AI Tools</h1>
           <p className="text-sm text-gray-500 mt-1">TotalSoft</p>
         </div>
-        <form action={handleLogin} className="space-y-4">
+        <form method="POST" action="/api/auth/login" className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Email

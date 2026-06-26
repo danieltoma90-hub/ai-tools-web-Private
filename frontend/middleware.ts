@@ -1,16 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { jwtVerify } from "jose";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const jwtSecretRaw = process.env.SUPABASE_JWT_SECRET;
-const JWT_SECRET = jwtSecretRaw
-  ? new TextEncoder().encode(jwtSecretRaw)
+
+// Supabase issues ES256 tokens (asymmetric) — verify via public JWKS endpoint.
+// createRemoteJWKSet caches keys in memory and re-fetches on key rotation.
+const JWKS = SUPABASE_URL
+  ? createRemoteJWKSet(
+      new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
+    )
   : null;
 
 async function isAuthenticated(token: string | undefined): Promise<boolean> {
-  if (!token || !JWT_SECRET) return false;
+  if (!token || !JWKS) return false;
   try {
-    await jwtVerify(token, JWT_SECRET, {
+    await jwtVerify(token, JWKS, {
       issuer: `${SUPABASE_URL}/auth/v1`,
     });
     return true;
