@@ -17,28 +17,31 @@ async def generate_mockup(
     file: UploadFile = File(...),
     user=Depends(verify_token),
 ):
-    if Path(file.filename).suffix.lower() != ".xlsx":
-        raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .xlsx")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in {".xlsx", ".docx"}:
+        raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .xlsx sau .docx")
 
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         tmp.write(await file.read())
         input_path = Path(tmp.name)
 
     try:
-        docx_path, html, html_compact = run_mockup_pipeline(input_path)
+        docx_path, html = run_mockup_pipeline(input_path)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{Path(file.filename).stem}_{timestamp}.docx"
-        upload_file(docx_path, tool="mockup", filename=filename)
-
-        with open(docx_path, "rb") as f:
-            docx_b64 = base64.b64encode(f.read()).decode()
+        if docx_path is not None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{Path(file.filename).stem}_{timestamp}.docx"
+            upload_file(docx_path, tool="mockup", filename=filename)
+            with open(docx_path, "rb") as f:
+                docx_b64 = base64.b64encode(f.read()).decode()
+        else:
+            filename = ""
+            docx_b64 = ""
 
         return {
             "filename": filename,
             "docx_b64": docx_b64,
             "html": html,
-            "html_compact": html_compact,
         }
     except HTTPException:
         raise
@@ -46,5 +49,5 @@ async def generate_mockup(
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         input_path.unlink(missing_ok=True)
-        if "docx_path" in locals():
+        if "docx_path" in locals() and docx_path is not None:
             docx_path.unlink(missing_ok=True)

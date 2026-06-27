@@ -31,7 +31,6 @@ export async function postMockup(file: File) {
     filename: string;
     docx_b64: string;
     html: string;
-    html_compact: string;
   }>;
 }
 

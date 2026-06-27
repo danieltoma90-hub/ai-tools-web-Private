@@ -52,12 +52,12 @@ export default function MockupPage() {
         <ToolCard
           icon="🎨"
           title="Mockup Ecran"
-          description="Excel Charisma (.xlsx) → Word + HTML mockup"
+          description="Fișier Excel (.xlsx) sau Word (.docx) → HTML mockup"
         />
 
         {state === "idle" && (
           <div className="flex flex-col gap-4">
-            <UploadZone accept=".xlsx" label=".xlsx" onFile={setFile} />
+            <UploadZone accept=".xlsx,.docx" label=".xlsx / .docx" onFile={setFile} />
             <button
               onClick={handleGenerate}
               disabled={!file}
