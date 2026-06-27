@@ -1,9 +1,11 @@
+import io
 from pathlib import Path
 from docx import Document
-from docx.shared import RGBColor
+from docx.shared import Inches, RGBColor
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from parser import ScreenSpec
+from image_writer import write_mockup_image
 
 
 _WHITE = RGBColor(0xFF, 0xFF, 0xFF)
@@ -40,6 +42,11 @@ def write_word(spec: ScreenSpec, descriptions: dict, output_path: Path):
     doc = Document()
 
     doc.add_heading(spec.screen_title, level=1)
+
+    # Mockup image
+    img_bytes = write_mockup_image(spec)
+    doc.add_picture(io.BytesIO(img_bytes), width=Inches(6.3))
+    doc.add_paragraph()
 
     doc.add_heading("Descriere Generală", 2)
     doc.add_paragraph(descriptions.get("descriere_generala", ""))

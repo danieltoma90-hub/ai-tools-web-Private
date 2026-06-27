@@ -28,15 +28,12 @@ async def generate_mockup(
     try:
         docx_path, html = run_mockup_pipeline(input_path)
 
-        if docx_path is not None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{Path(file.filename).stem}_{timestamp}.docx"
-            upload_file(docx_path, tool="mockup", filename=filename)
-            with open(docx_path, "rb") as f:
-                docx_b64 = base64.b64encode(f.read()).decode()
-        else:
-            filename = ""
-            docx_b64 = ""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{Path(file.filename).stem}_{timestamp}.docx"
+        upload_file(docx_path, tool="mockup", filename=filename)
+
+        with open(docx_path, "rb") as f:
+            docx_b64 = base64.b64encode(f.read()).decode()
 
         return {
             "filename": filename,
@@ -49,5 +46,5 @@ async def generate_mockup(
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         input_path.unlink(missing_ok=True)
-        if "docx_path" in locals() and docx_path is not None:
+        if "docx_path" in locals():
             docx_path.unlink(missing_ok=True)
