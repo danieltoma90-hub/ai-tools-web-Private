@@ -30,7 +30,8 @@ async def _run_job(
     try:
         docx_path, preview_html = await run_minuta_pipeline(input_path, api_key)
         filename = f"Minuta_{stem}_{timestamp}.docx"
-        storage_path = upload_file(docx_path, tool="minuta", filename=filename)
+        user_email = _jobs[job_id].get("user_email", "anonymous")
+        storage_path = upload_file(docx_path, tool="minuta", filename=filename, user_email=user_email)
         with open(docx_path, "rb") as f:
             docx_b64 = base64.b64encode(f.read()).decode()
         _jobs[job_id] = {
@@ -73,7 +74,8 @@ async def generate_minuta(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     stem = Path(file.filename).stem
 
-    _jobs[job_id] = {"status": "processing"}
+    user_email = user.get("email", "anonymous")
+    _jobs[job_id] = {"status": "processing", "user_email": user_email}
     background_tasks.add_task(_run_job, job_id, input_path, api_key, stem, timestamp)
 
     return {"job_id": job_id}

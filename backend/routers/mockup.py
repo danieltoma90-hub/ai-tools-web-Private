@@ -30,7 +30,8 @@ async def generate_mockup(
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{Path(file.filename).stem}_{timestamp}.docx"
-        upload_file(docx_path, tool="mockup", filename=filename)
+        user_email = user.get("email", "anonymous")
+        upload_file(docx_path, tool="mockup", filename=filename, user_email=user_email)
 
         with open(docx_path, "rb") as f:
             docx_b64 = base64.b64encode(f.read()).decode()

@@ -99,39 +99,95 @@ async def _extract_action_items(client: AsyncAnthropic, transcript: str) -> list
     return _parse_json_from_response(raw)
 
 
+def _block_to_html(block: dict) -> str:
+    btype = block.get("type", "")
+    if btype == "paragraph":
+        return f"<p>{escape(block.get('text', ''))}</p>"
+    if btype == "subheading":
+        return f"<h4 style='color:#2E5496;margin:14px 0 4px'>{escape(block.get('text', ''))}</h4>"
+    if btype == "bullets":
+        items = "".join(f"<li>{escape(str(i))}</li>" for i in block.get("items", []))
+        return f"<ul>{items}</ul>"
+    if btype in ("table_2col", "table"):
+        header = block.get("header", [])
+        th = "".join(
+            f"<th style='background:#1F3864;color:white;padding:6px 10px;text-align:left;border:1px solid #1F3864'>{escape(h)}</th>"
+            for h in header
+        )
+        tr_rows = ""
+        for i, row in enumerate(block.get("rows", [])):
+            bg = "#f2f6fb" if i % 2 == 0 else "white"
+            cells = "".join(
+                f"<td style='padding:6px 10px;border:1px solid #dde3ed;background:{bg}'>{escape(str(c))}</td>"
+                for c in row
+            )
+            tr_rows += f"<tr>{cells}</tr>"
+        return f"<table style='border-collapse:collapse;width:100%;margin:8px 0'><tr>{th}</tr>{tr_rows}</table>"
+    return ""
+
+
 def _build_preview_html(data: dict) -> str:
     meta = data.get("meta", {})
     sectiuni = data.get("sectiuni", [])
     pasi = data.get("pasi_urmatori", [])
+    context = data.get("context_si_scop") or []
 
-    rows = "".join(
-        f"<tr><td>{escape(k)}</td><td>{escape(str(v))}</td></tr>"
-        for k, v in [
-            ("Data", meta.get("data", "")),
-            ("Client", meta.get("nume_client", "")),
-            ("Subiect", meta.get("subiect", "")),
-            ("Durată", meta.get("durata", "")),
+    meta_rows = "".join(
+        f"<tr><td style='font-weight:600;padding:6px 10px;background:#f2f6fb;width:130px;border:1px solid #dde3ed'>{escape(lbl)}</td>"
+        f"<td style='padding:6px 10px;border:1px solid #dde3ed'>{escape(str(meta.get(key, '') or ''))}</td></tr>"
+        for lbl, key in [
+            ("Data", "data"), ("Client", "nume_client"), ("Subiect", "subiect"),
+            ("Inițiator", "initiator"), ("Locație", "locatia"), ("Durată", "durata"),
         ]
+        if meta.get(key)
     )
-    sectiuni_html = "".join(
-        f"<h3>{escape(s.get('titlu',''))}</h3>"
-        for s in sectiuni
-    )
-    pasi_html = "".join(
-        f"<li>{escape(p.get('responsabil',''))}: {escape(p.get('actiune',''))}</li>"
-        for p in pasi
-    )
-    subiect = escape(meta.get("subiect", ""))
 
-    return f"""
-    <html><body style="font-family:Calibri,sans-serif;padding:24px;max-width:800px">
-    <h2 style="color:#1F3864">MINUTA INTALNIRII</h2>
-    <h3 style="color:#2E5496">{subiect}</h3>
-    <table border="1" cellpadding="6" style="border-collapse:collapse;width:100%">{rows}</table>
-    {sectiuni_html}
-    {'<h3>Pași următori</h3><ol>' + pasi_html + '</ol>' if pasi else ''}
-    </body></html>
-    """
+    body = ""
+    sec_idx = 1
+    if context:
+        body += f"<h3>{sec_idx}. Context și Scop</h3>"
+        for blk in context:
+            body += _block_to_html(blk)
+        sec_idx += 1
+
+    for sec in sectiuni:
+        body += f"<h3>{sec_idx}. {escape(sec.get('titlu', ''))}</h3>"
+        for blk in sec.get("blocuri", []):
+            body += _block_to_html(blk)
+        sec_idx += 1
+
+    if pasi:
+        body += f"<h3>{sec_idx}. Pași următori</h3><ol>"
+        for p in pasi:
+            resp = escape(p.get("responsabil", ""))
+            act = escape(p.get("actiune", ""))
+            term = escape(p.get("termen", ""))
+            body += f"<li><strong>{resp}</strong>: {act}"
+            if term:
+                body += f" <em style='color:#555'>({term})</em>"
+            body += "</li>"
+        body += "</ol>"
+
+    subiect = escape(meta.get("subiect", ""))
+    client = escape(meta.get("nume_client", ""))
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  body{{font-family:Calibri,sans-serif;padding:24px;max-width:860px;margin:0 auto;color:#222}}
+  h2{{color:#1F3864;margin-bottom:2px}}
+  h3{{color:#1F3864;border-bottom:2px solid #1F3864;padding-bottom:4px;margin-top:22px}}
+  h4{{color:#2E5496;margin:14px 0 4px}}
+  table{{border-collapse:collapse;width:100%;margin:8px 0}}
+  ul,ol{{padding-left:22px}} li{{margin:3px 0}}
+</style>
+</head><body>
+<h2>MINUTA INTALNIRII</h2>
+<p style="color:#2E5496;font-size:1.1em;font-weight:600;margin:2px 0">{subiect}</p>
+<p style="color:#555;margin:0 0 12px">{client}</p>
+<table>{meta_rows}</table>
+{body}
+</body></html>"""
 
 
 async def run_minuta_pipeline(
@@ -154,6 +210,9 @@ async def run_minuta_pipeline(
 
     # Claude returnează {"meta": {...}, "_observatii": [...]} — extragem doar interiorul
     meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
+    # Codul de proiect = descrierea meeting-ului (nu un cod generat)
+    if isinstance(meta, dict):
+        meta["cod_proiect"] = meta.get("subiect", "")
     # Claude returnează {"pasi_urmatori": [...]} — extragem lista
     action_items = action_raw.get("pasi_urmatori", action_raw) if isinstance(action_raw, dict) else action_raw
 

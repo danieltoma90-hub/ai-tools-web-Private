@@ -17,10 +17,10 @@ def test_upload_file_returns_public_path(mock_supabase, tmp_path):
 
     mock_supabase.storage.from_.return_value.upload.return_value = MagicMock()
 
-    result = upload_file(docx, tool="minuta", filename="Minuta_Test.docx")
+    result = upload_file(docx, tool="minuta", filename="Minuta_Test.docx", user_email="user@test.com")
 
     mock_supabase.storage.from_.assert_called_with("documents")
-    assert result == "minuta/Minuta_Test.docx"
+    assert result == "minuta/user@test.com/Minuta_Test.docx"
 
 
 def test_list_files_returns_sorted_list(mock_supabase):

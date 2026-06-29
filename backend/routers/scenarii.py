@@ -29,7 +29,8 @@ async def generate_scenarii(
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"Scenarii_{Path(file.filename).stem}_{timestamp}.xlsx"
-        upload_file(xlsx_path, tool="scenarii", filename=filename)
+        user_email = user.get("email", "anonymous")
+        upload_file(xlsx_path, tool="scenarii", filename=filename, user_email=user_email)
 
         with open(xlsx_path, "rb") as f:
             xlsx_b64 = base64.b64encode(f.read()).decode()
