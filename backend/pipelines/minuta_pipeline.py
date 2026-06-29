@@ -9,6 +9,12 @@ from pathlib import Path
 from anthropic import AsyncAnthropic
 from docx import Document
 
+try:
+    from json_repair import repair_json
+    _JSON_REPAIR_AVAILABLE = True
+except ImportError:
+    _JSON_REPAIR_AVAILABLE = False
+
 SKILL_DIR = Path(__file__).parent.parent / "skills" / "minuta"
 PROMPTS_DIR = SKILL_DIR / "prompts"
 TEMPLATE_PATH = SKILL_DIR / "template" / "F05_minuta_template.docx"
@@ -49,18 +55,33 @@ async def _call_claude(client: AsyncAnthropic, prompt_file: str, transcript: str
 
 
 def _parse_json_from_response(text: str) -> dict | list:
-    """Extrage primul bloc JSON din răspunsul Claude."""
+    """Extrage primul bloc JSON din răspunsul Claude, cu repair ca fallback."""
+    # 1. Încearcă să extragă din bloc ```json ... ```
     match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
-    if match:
-        return json.loads(match.group(1))
-    # Încearcă JSON direct; dacă eșuează, caută primul { sau [ în text
+    candidate = match.group(1) if match else text
+
+    # 2. Încearcă parsare directă
     try:
-        return json.loads(text)
+        return json.loads(candidate)
     except json.JSONDecodeError:
-        m = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", text)
-        if m:
+        pass
+
+    # 3. Extrage cel mai mare bloc { } sau [ ] din text
+    m = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", candidate)
+    if m:
+        try:
             return json.loads(m.group(1))
-        raise
+        except json.JSONDecodeError:
+            pass
+
+    # 4. Folosește json-repair pentru JSON malformat (ghilimele neescapate, virgule lipsă etc.)
+    target = m.group(1) if m else candidate
+    if _JSON_REPAIR_AVAILABLE:
+        repaired = repair_json(target)
+        if repaired and repaired.strip() not in ("", "null", "{}"):
+            return json.loads(repaired)
+
+    raise ValueError(f"Nu s-a putut parsa JSON din răspunsul Claude (primii 200 chars): {text[:200]}")
 
 
 async def _extract_metadata(client: AsyncAnthropic, transcript: str) -> dict:
