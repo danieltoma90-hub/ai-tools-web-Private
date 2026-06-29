@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import sys
@@ -5,7 +6,7 @@ import tempfile
 from html import escape
 from pathlib import Path
 
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 from docx import Document
 
 SKILL_DIR = Path(__file__).parent.parent / "skills" / "minuta"
@@ -34,9 +35,9 @@ def extract_docx_text(docx_path: Path) -> str:
     return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
 
 
-def _call_claude(client: Anthropic, prompt_file: str, transcript: str) -> str:
+async def _call_claude(client: AsyncAnthropic, prompt_file: str, transcript: str) -> str:
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
-    response = client.messages.create(
+    response = await client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
         messages=[{
@@ -55,18 +56,18 @@ def _parse_json_from_response(text: str) -> dict | list:
     return json.loads(text)
 
 
-def extract_metadata(client: Anthropic, transcript: str) -> dict:
-    raw = _call_claude(client, "extract_meeting_metadata.md", transcript)
+async def _extract_metadata(client: AsyncAnthropic, transcript: str) -> dict:
+    raw = await _call_claude(client, "extract_meeting_metadata.md", transcript)
     return _parse_json_from_response(raw)
 
 
-def extract_sections(client: Anthropic, transcript: str) -> dict:
-    raw = _call_claude(client, "extract_sections.md", transcript)
+async def _extract_sections(client: AsyncAnthropic, transcript: str) -> dict:
+    raw = await _call_claude(client, "extract_sections.md", transcript)
     return _parse_json_from_response(raw)
 
 
-def extract_action_items(client: Anthropic, transcript: str) -> list:
-    raw = _call_claude(client, "extract_action_items.md", transcript)
+async def _extract_action_items(client: AsyncAnthropic, transcript: str) -> list:
+    raw = await _call_claude(client, "extract_action_items.md", transcript)
     return _parse_json_from_response(raw)
 
 
@@ -114,10 +115,14 @@ async def run_minuta_pipeline(
     else:
         text = extract_docx_text(transcript_path)
 
-    client = Anthropic(api_key=api_key)
-    meta = extract_metadata(client, text)
-    sections = extract_sections(client, text)
-    action_items = extract_action_items(client, text)
+    client = AsyncAnthropic(api_key=api_key)
+
+    # Cele 3 extrageri rulează în paralel — reduce timpul de la ~90s la ~30s
+    meta, sections, action_items = await asyncio.gather(
+        _extract_metadata(client, text),
+        _extract_sections(client, text),
+        _extract_action_items(client, text),
+    )
 
     data = {
         "meta": meta,
