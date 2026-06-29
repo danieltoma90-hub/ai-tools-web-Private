@@ -1,11 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import ToolCard from "@/components/ToolCard";
 import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import ResultPanel from "@/components/ResultPanel";
 import HistoryPanel from "@/components/HistoryPanel";
-import { postMinuta } from "@/lib/api";
+import { postMinuta, pollMinutaJob } from "@/lib/api";
 
 type State = "idle" | "processing" | "done" | "error";
 
@@ -19,27 +19,50 @@ export default function MinutaPage() {
     previewHtml: string;
   } | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
+  const cancelledRef = useRef(false);
 
   async function handleGenerate() {
     if (!file) return;
     setState("processing");
     setError("");
+    cancelledRef.current = false;
+
     try {
-      const res = await postMinuta(file);
-      setResult({
-        filename: res.filename,
-        docxB64: res.docx_b64,
-        previewHtml: res.preview_html,
-      });
-      setState("done");
-      setHistoryKey((k) => k + 1);
+      const { job_id } = await postMinuta(file);
+
+      // Polling la fiecare 2 secunde până la finalizare
+      while (true) {
+        await new Promise((r) => setTimeout(r, 2000));
+        if (cancelledRef.current) return;
+
+        const job = await pollMinutaJob(job_id);
+        if (cancelledRef.current) return;
+
+        if (job.status === "done") {
+          setResult({
+            filename: job.filename!,
+            docxB64: job.docx_b64!,
+            previewHtml: job.preview_html!,
+          });
+          setState("done");
+          setHistoryKey((k) => k + 1);
+          return;
+        }
+
+        if (job.status === "error") {
+          throw new Error(job.error || "Eroare în procesarea minutei");
+        }
+        // status === "processing" → continuăm polling
+      }
     } catch (err: unknown) {
+      if (cancelledRef.current) return;
       setError(err instanceof Error ? err.message : "Eroare necunoscută");
       setState("error");
     }
   }
 
   function reset() {
+    cancelledRef.current = true;
     setFile(null);
     setResult(null);
     setState("idle");

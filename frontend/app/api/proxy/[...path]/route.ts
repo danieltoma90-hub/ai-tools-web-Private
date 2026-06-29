@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND = process.env.NEXT_PUBLIC_API_URL;
-const BACKEND_TIMEOUT_MS = 270_000; // 270s — sub limita maxDuration de 300s
-
-export const maxDuration = 300; // Vercel Pro: permite funcții până la 300s
+// 25s timeout: sub orice limită Vercel (Hobby=10s e depășit de job+poll)
+// Acum fiecare request e scurt (job start <1s, poll <100ms)
+const BACKEND_TIMEOUT_MS = 25_000;
 
 async function proxy(
   request: NextRequest,
@@ -53,7 +53,7 @@ async function proxy(
     clearTimeout(timeoutId);
     if (e instanceof Error && e.name === "AbortError") {
       return NextResponse.json(
-        { detail: "Serverul nu a răspuns în timp util (270s). Încercați din nou." },
+        { detail: "Serverul nu a răspuns în timp util. Verificați conexiunea și reîncercați." },
         { status: 504 }
       );
     }

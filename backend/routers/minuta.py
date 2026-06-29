@@ -1,10 +1,13 @@
+import asyncio
 import base64
 import os
 import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 
 from auth import verify_token
 from pipelines.minuta_pipeline import run_minuta_pipeline
@@ -13,12 +16,47 @@ from storage import upload_file
 router = APIRouter()
 ALLOWED_EXTENSIONS = {".vtt", ".docx"}
 
+# In-memory job store — cleared on each Render restart/redeploy
+_jobs: dict[str, dict[str, Any]] = {}
+
+
+async def _run_job(
+    job_id: str,
+    input_path: Path,
+    api_key: str,
+    stem: str,
+    timestamp: str,
+) -> None:
+    try:
+        docx_path, preview_html = await run_minuta_pipeline(input_path, api_key)
+        filename = f"Minuta_{stem}_{timestamp}.docx"
+        storage_path = upload_file(docx_path, tool="minuta", filename=filename)
+        with open(docx_path, "rb") as f:
+            docx_b64 = base64.b64encode(f.read()).decode()
+        _jobs[job_id] = {
+            "status": "done",
+            "filename": filename,
+            "docx_b64": docx_b64,
+            "preview_html": preview_html,
+            "storage_path": storage_path,
+        }
+        docx_path.unlink(missing_ok=True)
+    except Exception as e:
+        _jobs[job_id] = {
+            "status": "error",
+            "error": str(e) or type(e).__name__,
+        }
+    finally:
+        input_path.unlink(missing_ok=True)
+
 
 @router.post("/minuta")
 async def generate_minuta(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     user=Depends(verify_token),
 ):
+    """Pornește procesarea minutei în fundal și returnează un job_id imediat."""
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .vtt sau .docx")
@@ -31,29 +69,20 @@ async def generate_minuta(
         tmp.write(await file.read())
         input_path = Path(tmp.name)
 
-    try:
-        docx_path, preview_html = await run_minuta_pipeline(input_path, api_key)
+    job_id = str(uuid.uuid4())
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stem = Path(file.filename).stem
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        stem = Path(file.filename).stem
-        filename = f"Minuta_{stem}_{timestamp}.docx"
+    _jobs[job_id] = {"status": "processing"}
+    background_tasks.add_task(_run_job, job_id, input_path, api_key, stem, timestamp)
 
-        storage_path = upload_file(docx_path, tool="minuta", filename=filename)
+    return {"job_id": job_id}
 
-        with open(docx_path, "rb") as f:
-            docx_b64 = base64.b64encode(f.read()).decode()
 
-        return {
-            "filename": filename,
-            "docx_b64": docx_b64,
-            "preview_html": preview_html,
-            "storage_path": storage_path,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e) or type(e).__name__)
-    finally:
-        input_path.unlink(missing_ok=True)
-        if "docx_path" in locals():
-            docx_path.unlink(missing_ok=True)
+@router.get("/minuta/job/{job_id}")
+async def get_minuta_job(job_id: str, user=Depends(verify_token)):
+    """Returnează statusul unui job de generare minută."""
+    job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job negăsit sau expirat")
+    return job

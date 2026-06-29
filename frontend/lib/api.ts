@@ -1,23 +1,18 @@
 const PROXY = "/api/proxy";
 
-async function postFile(path: string, file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(`${PROXY}/${path}`, { method: "POST", body: form });
+async function apiFetch(url: string, init?: RequestInit) {
+  const res = await fetch(url, init);
   if (!res.ok) {
     let detail = "Eroare server";
     try {
-      // Citim text() o singură dată — json() consumă body-ul și face text() să eșueze
       const text = await res.text();
       try {
         const data = JSON.parse(text);
-        // FastAPI: { detail: "..." } | Vercel timeout: { error: { message: "..." } }
         detail =
-          (typeof data.detail === "string" ? data.detail : null) ??
-          data.error?.message ??
-          data.message ??
-          text ||
-          detail;
+          ((typeof data.detail === "string" ? data.detail : null) ??
+            data.error?.message ??
+            data.message ??
+            text) || detail;
       } catch {
         detail = text || detail;
       }
@@ -29,12 +24,31 @@ async function postFile(path: string, file: File) {
   return res.json();
 }
 
-export async function postMinuta(file: File) {
-  return postFile("minuta", file) as Promise<{
-    filename: string;
-    docx_b64: string;
-    preview_html: string;
-    storage_path: string;
+async function postFile(path: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch(`${PROXY}/${path}`, { method: "POST", body: form });
+}
+
+export async function postMinuta(file: File): Promise<{ job_id: string }> {
+  return postFile("minuta", file) as Promise<{ job_id: string }>;
+}
+
+export async function pollMinutaJob(jobId: string): Promise<{
+  status: "processing" | "done" | "error";
+  filename?: string;
+  docx_b64?: string;
+  preview_html?: string;
+  storage_path?: string;
+  error?: string;
+}> {
+  return apiFetch(`${PROXY}/minuta/job/${jobId}`) as Promise<{
+    status: "processing" | "done" | "error";
+    filename?: string;
+    docx_b64?: string;
+    preview_html?: string;
+    storage_path?: string;
+    error?: string;
   }>;
 }
 
@@ -55,9 +69,7 @@ export async function postScenarii(file: File) {
 
 export async function getDocuments(tool?: string) {
   const url = tool ? `${PROXY}/documents?tool=${tool}` : `${PROXY}/documents`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Eroare la încărcarea documentelor");
-  return res.json() as Promise<
+  return apiFetch(url) as Promise<
     { name: string; created_at: string; size: number; download_url: string }[]
   >;
 }
