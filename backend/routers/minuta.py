@@ -52,7 +52,7 @@ async def generate_minuta(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e) or type(e).__name__)
     finally:
         input_path.unlink(missing_ok=True)
         if "docx_path" in locals():

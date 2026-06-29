@@ -51,9 +51,9 @@ async def test_run_minuta_pipeline_calls_claude_and_returns_docx(tmp_path):
     mock_sections = {"context_si_scop": None, "sectiuni": []}
     mock_actions = []
 
-    with patch("pipelines.minuta_pipeline.extract_metadata", return_value=mock_meta), \
-         patch("pipelines.minuta_pipeline.extract_sections", return_value=mock_sections), \
-         patch("pipelines.minuta_pipeline.extract_action_items", return_value=mock_actions):
+    with patch("pipelines.minuta_pipeline._extract_metadata", return_value=mock_meta), \
+         patch("pipelines.minuta_pipeline._extract_sections", return_value=mock_sections), \
+         patch("pipelines.minuta_pipeline._extract_action_items", return_value=mock_actions):
         docx_path, preview_html = await run_minuta_pipeline(vtt, api_key="fake-key")
 
     assert docx_path.exists()

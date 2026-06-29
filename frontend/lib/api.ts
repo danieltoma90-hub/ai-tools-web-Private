@@ -7,10 +7,22 @@ async function postFile(path: string, file: File) {
   if (!res.ok) {
     let detail = "Eroare server";
     try {
-      const data = await res.json();
-      detail = data.detail ?? detail;
+      // Citim text() o singură dată — json() consumă body-ul și face text() să eșueze
+      const text = await res.text();
+      try {
+        const data = JSON.parse(text);
+        // FastAPI: { detail: "..." } | Vercel timeout: { error: { message: "..." } }
+        detail =
+          (typeof data.detail === "string" ? data.detail : null) ??
+          data.error?.message ??
+          data.message ??
+          text ||
+          detail;
+      } catch {
+        detail = text || detail;
+      }
     } catch {
-      detail = (await res.text().catch(() => "")) || detail;
+      // body necitibil — rămâne fallback-ul
     }
     throw new Error(detail);
   }
