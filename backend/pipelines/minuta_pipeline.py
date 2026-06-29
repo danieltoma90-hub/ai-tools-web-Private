@@ -50,10 +50,17 @@ async def _call_claude(client: AsyncAnthropic, prompt_file: str, transcript: str
 
 def _parse_json_from_response(text: str) -> dict | list:
     """Extrage primul bloc JSON din răspunsul Claude."""
-    match = re.search(r"```json\s*([\s\S]+?)\s*```", text)
+    match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
     if match:
         return json.loads(match.group(1))
-    return json.loads(text)
+    # Încearcă JSON direct; dacă eșuează, caută primul { sau [ în text
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        m = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", text)
+        if m:
+            return json.loads(m.group(1))
+        raise
 
 
 async def _extract_metadata(client: AsyncAnthropic, transcript: str) -> dict:
@@ -118,17 +125,22 @@ async def run_minuta_pipeline(
     client = AsyncAnthropic(api_key=api_key)
 
     # Cele 3 extrageri rulează în paralel — reduce timpul de la ~90s la ~30s
-    meta, sections, action_items = await asyncio.gather(
+    meta_raw, sections, action_raw = await asyncio.gather(
         _extract_metadata(client, text),
         _extract_sections(client, text),
         _extract_action_items(client, text),
     )
 
+    # Claude returnează {"meta": {...}, "_observatii": [...]} — extragem doar interiorul
+    meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
+    # Claude returnează {"pasi_urmatori": [...]} — extragem lista
+    action_items = action_raw.get("pasi_urmatori", action_raw) if isinstance(action_raw, dict) else action_raw
+
     data = {
         "meta": meta,
         "context_si_scop": sections.get("context_si_scop"),
         "sectiuni": sections.get("sectiuni", []),
-        "pasi_urmatori": action_items,
+        "pasi_urmatori": action_items if isinstance(action_items, list) else [],
         "include_signature": False,
     }
 
