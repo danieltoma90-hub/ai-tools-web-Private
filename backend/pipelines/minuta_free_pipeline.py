@@ -1,7 +1,7 @@
-"""Minuta Free Pipeline — identic cu minuta_pipeline.py dar foloseste Google Gemini Flash (gratuit).
+"""Minuta Free Pipeline — identic cu minuta_pipeline.py dar foloseste OpenRouter (gratuit).
 
-Gemini Flash free tier: 4M tokens/min, 1M tokens/zi, context 1M tokens.
-Suporta transcript-uri oricat de lungi fara limitare de rata.
+OpenRouter free tier: modele LLM gratuite (Llama 3.3 70B), fara TPM limit, 200 req/zi.
+Nu necesita card bancar — cont gratuit la openrouter.ai.
 """
 import asyncio
 import json
@@ -11,7 +11,7 @@ import tempfile
 from html import escape
 from pathlib import Path
 
-from google import genai
+import httpx
 from docx import Document
 
 try:
@@ -27,7 +27,9 @@ TEMPLATE_PATH = SKILL_DIR / "template" / "F05_minuta_template.docx"
 sys.path.insert(0, str(SKILL_DIR / "scripts"))
 from build_minuta import build_minuta
 
-GEMINI_MODEL = "gemini-2.0-flash"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+OPENROUTER_SITE = "https://ai-tools-web-three.vercel.app"
 
 
 # ── Parsare transcript ─────────────────────────────────────────────────────────
@@ -50,17 +52,29 @@ def extract_docx_text(docx_path: Path) -> str:
 
 # ── Apel LLM ─────────────────────────────────────────────────────────────────
 
-async def _call_gemini(client: genai.Client, prompt_file: str, transcript: str) -> str:
+async def _call_openrouter(client: httpx.AsyncClient, prompt_file: str, transcript: str, api_key: str) -> str:
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
-    response = await client.aio.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=f"{prompt}\n\n---TRANSCRIPT---\n{transcript}",
-        config=genai.types.GenerateContentConfig(
-            max_output_tokens=4096,
-            temperature=0.1,
-        ),
+    response = await client.post(
+        OPENROUTER_URL,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": OPENROUTER_SITE,
+            "X-Title": "AI Tools - Minuta Free",
+        },
+        json={
+            "model": OPENROUTER_MODEL,
+            "messages": [{"role": "user", "content": f"{prompt}\n\n---TRANSCRIPT---\n{transcript}"}],
+            "max_tokens": 4096,
+            "temperature": 0.1,
+        },
+        timeout=120.0,
     )
-    return response.text
+    if response.status_code != 200:
+        detail = response.text[:500]
+        raise RuntimeError(f"OpenRouter error {response.status_code}: {detail}")
+    data = response.json()
+    return data["choices"][0]["message"]["content"]
 
 
 # ── Parsare JSON ─────────────────────────────────────────────────────────────
@@ -92,18 +106,18 @@ def _parse_json(text: str) -> dict | list:
 
 # ── Extragere date ─────────────────────────────────────────────────────────────
 
-async def _extract_metadata(client: genai.Client, transcript: str) -> dict:
-    raw = await _call_gemini(client, "extract_meeting_metadata.md", transcript)
+async def _extract_metadata(client: httpx.AsyncClient, transcript: str, api_key: str) -> dict:
+    raw = await _call_openrouter(client, "extract_meeting_metadata.md", transcript, api_key)
     return _parse_json(raw)
 
 
-async def _extract_sections(client: genai.Client, transcript: str) -> dict:
-    raw = await _call_gemini(client, "extract_sections.md", transcript)
+async def _extract_sections(client: httpx.AsyncClient, transcript: str, api_key: str) -> dict:
+    raw = await _call_openrouter(client, "extract_sections.md", transcript, api_key)
     return _parse_json(raw)
 
 
-async def _extract_action_items(client: genai.Client, transcript: str) -> list:
-    raw = await _call_gemini(client, "extract_action_items.md", transcript)
+async def _extract_action_items(client: httpx.AsyncClient, transcript: str, api_key: str) -> list:
+    raw = await _call_openrouter(client, "extract_action_items.md", transcript, api_key)
     return _parse_json(raw)
 
 
@@ -179,7 +193,7 @@ def _build_preview_html(data: dict) -> str:
         body += "</ol>"
 
     subiect = escape(meta.get("subiect", ""))
-    client = escape(meta.get("nume_client", ""))
+    client_name = escape(meta.get("nume_client", ""))
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
@@ -194,7 +208,7 @@ def _build_preview_html(data: dict) -> str:
 </head><body>
 <h2>MINUTA INTALNIRII</h2>
 <p style="color:#2E5496;font-size:1.1em;font-weight:600;margin:2px 0">{subiect}</p>
-<p style="color:#555;margin:0 0 12px">{client}</p>
+<p style="color:#555;margin:0 0 12px">{client_name}</p>
 <table>{meta_rows}</table>
 {body}
 </body></html>"""
@@ -205,19 +219,18 @@ def _build_preview_html(data: dict) -> str:
 async def run_minuta_free_pipeline(
     transcript_path: Path, api_key: str
 ) -> tuple[Path, str]:
-    """Pipeline complet cu Gemini Flash (gratuit): transcript (.vtt/.docx) → (docx_path, preview_html)."""
+    """Pipeline complet cu OpenRouter (gratuit): transcript (.vtt/.docx) → (docx_path, preview_html)."""
     if transcript_path.suffix.lower() == ".vtt":
         text = extract_vtt_text(transcript_path)
     else:
         text = extract_docx_text(transcript_path)
 
-    client = genai.Client(api_key=api_key)
-
-    meta_raw, sections, action_raw = await asyncio.gather(
-        _extract_metadata(client, text),
-        _extract_sections(client, text),
-        _extract_action_items(client, text),
-    )
+    async with httpx.AsyncClient() as client:
+        meta_raw, sections, action_raw = await asyncio.gather(
+            _extract_metadata(client, text, api_key),
+            _extract_sections(client, text, api_key),
+            _extract_action_items(client, text, api_key),
+        )
 
     meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
     if isinstance(meta, dict):

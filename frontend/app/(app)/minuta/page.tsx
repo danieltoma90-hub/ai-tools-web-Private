@@ -68,15 +68,30 @@ export default function MinutaPage() {
     cancelledRef.current = false;
 
     try {
-      const res = await postMinutaFree(file);
-      if (cancelledRef.current) return;
-      setResult({
-        filename: res.filename,
-        docxB64: res.docx_b64,
-        previewHtml: res.preview_html,
-      });
-      setState("done");
-      setHistoryKey((k) => k + 1);
+      const { job_id } = await postMinutaFree(file);
+
+      while (true) {
+        await new Promise((r) => setTimeout(r, 2000));
+        if (cancelledRef.current) return;
+
+        const job = await pollMinutaJob(job_id);
+        if (cancelledRef.current) return;
+
+        if (job.status === "done") {
+          setResult({
+            filename: job.filename!,
+            docxB64: job.docx_b64!,
+            previewHtml: job.preview_html!,
+          });
+          setState("done");
+          setHistoryKey((k) => k + 1);
+          return;
+        }
+
+        if (job.status === "error") {
+          throw new Error(job.error || "Eroare în procesarea minutei Free");
+        }
+      }
     } catch (err: unknown) {
       if (cancelledRef.current) return;
       setError(err instanceof Error ? err.message : "Eroare necunoscută");
@@ -127,13 +142,13 @@ export default function MinutaPage() {
                     : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                ⚡ Free (Gemini)
+                ⚡ Free (Llama)
               </button>
             </div>
 
             {mode === "free" && (
               <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                Versiunea Free folosește Google Gemini Flash — aceeași calitate, fără costuri suplimentare. Generare în ~15-25 secunde.
+                Versiunea Free folosește Llama 3.3 70B via OpenRouter — aceeași calitate, fără costuri. Generare în ~30-60 secunde.
               </p>
             )}
 
@@ -160,7 +175,7 @@ export default function MinutaPage() {
           <ProcessingSpinner
             label={
               mode === "free"
-                ? "Generare cu Gemini... (~15-25s)"
+                ? "Generare cu Llama 3.3 70B... (~30-60s)"
                 : undefined
             }
           />

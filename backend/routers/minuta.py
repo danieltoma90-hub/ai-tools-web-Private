@@ -91,48 +91,62 @@ async def get_minuta_job(job_id: str, user=Depends(verify_token)):
     return job
 
 
-@router.post("/minuta-free")
-async def generate_minuta_free(
-    file: UploadFile = File(...),
-    user=Depends(verify_token),
-):
-    """Generează minuta cu Groq (gratuit) — răspuns imediat, fără polling."""
-    ext = Path(file.filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .vtt sau .docx")
-
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY lipsă pe server")
-
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        tmp.write(await file.read())
-        input_path = Path(tmp.name)
-
-    docx_path = None
+async def _run_free_job(
+    job_id: str,
+    input_path: Path,
+    api_key: str,
+    stem: str,
+    timestamp: str,
+) -> None:
     try:
         docx_path, preview_html = await run_minuta_free_pipeline(input_path, api_key)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        stem = Path(file.filename).stem
         filename = f"Minuta_{stem}_{timestamp}.docx"
-        user_email = user.get("email", "anonymous")
+        user_email = _jobs[job_id].get("user_email", "anonymous")
         storage_path = upload_file(docx_path, tool="minuta", filename=filename, user_email=user_email)
-
         with open(docx_path, "rb") as f:
             docx_b64 = base64.b64encode(f.read()).decode()
-
-        return {
+        _jobs[job_id] = {
+            "status": "done",
             "filename": filename,
             "docx_b64": docx_b64,
             "preview_html": preview_html,
             "storage_path": storage_path,
         }
-    except HTTPException:
-        raise
+        docx_path.unlink(missing_ok=True)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        _jobs[job_id] = {
+            "status": "error",
+            "error": str(e) or type(e).__name__,
+        }
     finally:
         input_path.unlink(missing_ok=True)
-        if docx_path:
-            docx_path.unlink(missing_ok=True)
+
+
+@router.post("/minuta-free")
+async def generate_minuta_free(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    user=Depends(verify_token),
+):
+    """Pornește generarea minutei free (OpenRouter/Llama) în fundal și returnează job_id."""
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .vtt sau .docx")
+
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY lipsă pe server")
+
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(await file.read())
+        input_path = Path(tmp.name)
+
+    job_id = str(uuid.uuid4())
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stem = Path(file.filename).stem
+    user_email = user.get("email", "anonymous")
+
+    _jobs[job_id] = {"status": "processing", "user_email": user_email}
+    background_tasks.add_task(_run_free_job, job_id, input_path, api_key, stem, timestamp)
+
+    return {"job_id": job_id}
