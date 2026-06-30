@@ -28,7 +28,12 @@ sys.path.insert(0, str(SKILL_DIR / "scripts"))
 from build_minuta import build_minuta
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+# Modele free în ordinea preferinței — OpenRouter încearcă primul disponibil
+OPENROUTER_MODELS = [
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "meta-llama/llama-3.1-70b-instruct:free",
+    "meta-llama/llama-3.1-8b-instruct:free",
+]
 OPENROUTER_SITE = "https://ai-tools-web-three.vercel.app"
 
 
@@ -54,25 +59,36 @@ def extract_docx_text(docx_path: Path) -> str:
 
 async def _call_openrouter(client: httpx.AsyncClient, prompt_file: str, transcript: str, api_key: str) -> str:
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
-    response = await client.post(
-        OPENROUTER_URL,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": OPENROUTER_SITE,
-            "X-Title": "AI Tools - Minuta Free",
-        },
-        json={
-            "model": OPENROUTER_MODEL,
-            "messages": [{"role": "user", "content": f"{prompt}\n\n---TRANSCRIPT---\n{transcript}"}],
-            "max_tokens": 4096,
-            "temperature": 0.1,
-        },
-        timeout=120.0,
-    )
-    if response.status_code != 200:
-        detail = response.text[:500]
-        raise RuntimeError(f"OpenRouter error {response.status_code}: {detail}")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": OPENROUTER_SITE,
+        "X-Title": "AI Tools - Minuta Free",
+    }
+    payload = {
+        "models": OPENROUTER_MODELS,  # fallback automat între modele
+        "route": "fallback",
+        "messages": [{"role": "user", "content": f"{prompt}\n\n---TRANSCRIPT---\n{transcript}"}],
+        "max_tokens": 4096,
+        "temperature": 0.1,
+    }
+
+    last_error: Exception | None = None
+    for attempt in range(4):  # max 4 încercări
+        response = await client.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120.0)
+        if response.status_code == 200:
+            break
+        data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+        retry_after = (
+            data.get("error", {}).get("metadata", {}).get("retry_after_seconds", 0) or 0
+        )
+        wait = max(float(retry_after) + 1, 6.0)  # minim 6 secunde între reîncercări
+        last_error = RuntimeError(f"OpenRouter error {response.status_code}: {response.text[:300]}")
+        if response.status_code != 429 or attempt == 3:
+            raise last_error
+        await asyncio.sleep(wait)
+    else:
+        raise last_error  # type: ignore[misc]
     data = response.json()
     return data["choices"][0]["message"]["content"]
 
