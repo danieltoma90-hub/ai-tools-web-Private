@@ -77,7 +77,21 @@ export default function MinutaPage() {
     cancelledRef.current = false;
 
     try {
-      const { job_id } = await postMinutaFree(file);
+      let job_id: string;
+      try {
+        ({ job_id } = await postMinutaFree(file));
+      } catch (initErr) {
+        // Render free tier se adoarme dupa inactivitate — retry automat dupa 5s
+        const msg = initErr instanceof Error ? initErr.message : "";
+        if (msg.includes("timp util") || msg.includes("unreachable") || msg.includes("502") || msg.includes("504")) {
+          setFreeLabel("Server pornit, se retransmite automat...");
+          await new Promise((r) => setTimeout(r, 5000));
+          if (cancelledRef.current) return;
+          ({ job_id } = await postMinutaFree(file));
+        } else {
+          throw initErr;
+        }
+      }
 
       while (true) {
         await new Promise((r) => setTimeout(r, 2000));

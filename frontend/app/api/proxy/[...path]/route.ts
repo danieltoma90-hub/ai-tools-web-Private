@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND = process.env.NEXT_PUBLIC_API_URL;
-// 25s timeout: sub orice limită Vercel (Hobby=10s e depășit de job+poll)
-// Acum fiecare request e scurt (job start <1s, poll <100ms)
-const BACKEND_TIMEOUT_MS = 25_000;
+// 58s: lasă Render să se trezească din sleep (30-60s cold start), sub maxDuration Vercel (60s)
+const BACKEND_TIMEOUT_MS = 58_000;
 
 async function proxy(
   request: NextRequest,
