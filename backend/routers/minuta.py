@@ -79,7 +79,7 @@ async def generate_minuta(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     stem = Path(file.filename).stem
 
-    user_email = user.get("email", "anonymous")
+    user_email = getattr(user, "email", None) or "anonymous"
     _jobs[job_id] = {"status": "processing", "user_email": user_email}
     background_tasks.add_task(_run_job, job_id, input_path, api_key, stem, timestamp)
 
@@ -151,7 +151,7 @@ async def generate_minuta_free(
         job_id = str(uuid.uuid4())
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         stem = Path(filename_raw).stem
-        user_email = user.get("email", "anonymous") if isinstance(user, dict) else "anonymous"
+        user_email = getattr(user, "email", None) or "anonymous" if isinstance(user, dict) else "anonymous"
 
         _jobs[job_id] = {"status": "processing", "user_email": user_email}
         background_tasks.add_task(_run_free_job, job_id, input_path, api_key, stem, timestamp)
