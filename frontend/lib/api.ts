@@ -52,6 +52,20 @@ export async function pollMinutaJob(jobId: string): Promise<{
   }>;
 }
 
+export async function postMinutaFree(file: File): Promise<{
+  filename: string;
+  docx_b64: string;
+  preview_html: string;
+  storage_path: string;
+}> {
+  return postFile("minuta-free", file) as Promise<{
+    filename: string;
+    docx_b64: string;
+    preview_html: string;
+    storage_path: string;
+  }>;
+}
+
 export async function postMockup(file: File) {
   return postFile("mockup", file) as Promise<{
     filename: string;
@@ -70,6 +84,21 @@ export async function postScenarii(file: File) {
 export async function getDocuments(tool?: string) {
   const url = tool ? `${PROXY}/documents?tool=${tool}` : `${PROXY}/documents`;
   return apiFetch(url) as Promise<
-    { name: string; created_at: string; size: number; download_url: string }[]
+    {
+      name: string;
+      tool: string;
+      owner: string;
+      storage_path: string;
+      created_at: string;
+      size: number;
+      download_url: string;
+    }[]
   >;
+}
+
+export async function deleteDocument(storagePath: string) {
+  return apiFetch(
+    `${PROXY}/documents?storage_path=${encodeURIComponent(storagePath)}`,
+    { method: "DELETE" }
+  );
 }
