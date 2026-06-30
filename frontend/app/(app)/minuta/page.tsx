@@ -12,8 +12,8 @@ type Mode = "ai" | "free";
 
 const FREE_STEP_LABELS: Record<string, string> = {
   metadata: "Extrag metadatele... (1/3)",
-  sections: "Extrag secțiunile... (2/3)",
-  actions:  "Extrag pașii următori... (3/3)",
+  sections: "Extrag secțiunile... (2/3) — aștept limita Groq",
+  actions:  "Extrag pașii următori... (3/3) — aștept limita Groq",
   building: "Se generează documentul...",
 };
 
@@ -160,7 +160,7 @@ export default function MinutaPage() {
 
             {mode === "free" && (
               <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                Versiunea Free folosește Llama 3.3 70B via OpenRouter — aceeași calitate, fără costuri. Generare în ~45-60 secunde.
+                Versiunea Free folosește Llama 3.3 70B via Groq — aceeași calitate, fără costuri. Generare în ~30s (întâlniri scurte) sau ~2-3 minute (întâlniri lungi).
               </p>
             )}
 

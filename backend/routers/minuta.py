@@ -135,16 +135,16 @@ async def generate_minuta_free(
     file: UploadFile = File(...),
     user=Depends(verify_token),
 ):
-    """Pornește generarea minutei free (OpenRouter/Llama) în fundal și returnează job_id."""
+    """Pornește generarea minutei free (Groq/Llama) în fundal și returnează job_id."""
     try:
         filename_raw = file.filename or ""
         ext = Path(filename_raw).suffix.lower() if filename_raw else ""
         if ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(status_code=422, detail=f"Fișierul trebuie să fie .vtt sau .docx (primit: '{filename_raw}')")
 
-        api_key = os.environ.get("OPENROUTER_API_KEY")
+        api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
-            raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY lipsă pe server")
+            raise HTTPException(status_code=500, detail="GROQ_API_KEY lipsă pe server")
 
         content = await file.read()
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
@@ -154,7 +154,7 @@ async def generate_minuta_free(
         job_id = str(uuid.uuid4())
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         stem = Path(filename_raw).stem
-        user_email = getattr(user, "email", None) or "anonymous" if isinstance(user, dict) else "anonymous"
+        user_email = getattr(user, "email", None) or "anonymous"
 
         _jobs[job_id] = {"status": "processing", "user_email": user_email}
         background_tasks.add_task(_run_free_job, job_id, input_path, api_key, stem, timestamp)

@@ -1,7 +1,8 @@
-"""Minuta Free Pipeline — identic cu minuta_pipeline.py dar foloseste OpenRouter (gratuit).
+"""Minuta Free Pipeline — foloseste Groq (Llama 3.3 70B) cu apeluri secventiale.
 
-OpenRouter free tier: modele LLM gratuite (Llama 3.3 70B), fara TPM limit, 200 req/zi.
-Nu necesita card bancar — cont gratuit la openrouter.ai.
+Groq free tier: 12,000 TPM, 30 RPM.
+Apeluri secventiale cu 62s pauza intre ele pentru a respecta fereastra de 1 minut.
+Trunchiere inteligenta a transcriptului: start (metadata), distribuit (sectiuni), final (actiuni).
 """
 import asyncio
 import json
@@ -11,7 +12,7 @@ import tempfile
 from html import escape
 from pathlib import Path
 
-import httpx
+from groq import AsyncGroq
 from docx import Document
 
 try:
@@ -27,14 +28,15 @@ TEMPLATE_PATH = SKILL_DIR / "template" / "F05_minuta_template.docx"
 sys.path.insert(0, str(SKILL_DIR / "scripts"))
 from build_minuta import build_minuta
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Modele free în ordinea preferinței — OpenRouter încearcă primul disponibil
-OPENROUTER_MODELS = [
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "meta-llama/llama-3.1-70b-instruct:free",
-    "meta-llama/llama-3.1-8b-instruct:free",
-]
-OPENROUTER_SITE = "https://ai-tools-web-three.vercel.app"
+GROQ_MODEL = "llama-3.3-70b-versatile"
+
+# Caractere maxime per apel ca sa nu depasim 12,000 TPM
+# 35,000 chars ≈ 8,750 tokens + ~500 prompt + ~1,500 raspuns = ~10,750 < 12,000
+MAX_CHARS_PER_CALL = 35_000
+
+# Transcrierile scurte (< 30,000 chars ≈ 7,500 tokens per call) pot fi procesate
+# fara trunchiere si cu o pauza mai mica intre apeluri
+SHORT_THRESHOLD = 30_000
 
 
 # ── Parsare transcript ─────────────────────────────────────────────────────────
@@ -55,42 +57,39 @@ def extract_docx_text(docx_path: Path) -> str:
     return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
 
 
+# ── Trunchiere inteligenta ────────────────────────────────────────────────────
+
+def _truncate_metadata(text: str) -> str:
+    """Metadata: de la inceputul intrevederii (participanti, agenda)."""
+    return text[:MAX_CHARS_PER_CALL]
+
+
+def _truncate_sections(text: str) -> str:
+    """Sectiuni: 4 fragmente distribuite uniform pe tot transcriptul."""
+    if len(text) <= MAX_CHARS_PER_CALL:
+        return text
+    chunk = MAX_CHARS_PER_CALL // 4
+    step = len(text) // 4
+    parts = [text[i * step: i * step + chunk] for i in range(4)]
+    return "\n\n[...]\n\n".join(parts)
+
+
+def _truncate_actions(text: str) -> str:
+    """Action items: de la finalul intrevederii (decizii, responsabilitati)."""
+    return text[-MAX_CHARS_PER_CALL:] if len(text) > MAX_CHARS_PER_CALL else text
+
+
 # ── Apel LLM ─────────────────────────────────────────────────────────────────
 
-async def _call_openrouter(client: httpx.AsyncClient, prompt_file: str, transcript: str, api_key: str) -> str:
+async def _call_groq(client: AsyncGroq, prompt_file: str, transcript: str) -> str:
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": OPENROUTER_SITE,
-        "X-Title": "AI Tools - Minuta Free",
-    }
-    payload = {
-        "models": OPENROUTER_MODELS,  # fallback automat între modele
-        "route": "fallback",
-        "messages": [{"role": "user", "content": f"{prompt}\n\n---TRANSCRIPT---\n{transcript}"}],
-        "max_tokens": 4096,
-        "temperature": 0.1,
-    }
-
-    last_error: Exception | None = None
-    for attempt in range(4):  # max 4 încercări
-        response = await client.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120.0)
-        if response.status_code == 200:
-            break
-        data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
-        retry_after = (
-            data.get("error", {}).get("metadata", {}).get("retry_after_seconds", 0) or 0
-        )
-        wait = max(float(retry_after) + 1, 6.0)  # minim 6 secunde între reîncercări
-        last_error = RuntimeError(f"OpenRouter error {response.status_code}: {response.text[:300]}")
-        if response.status_code != 429 or attempt == 3:
-            raise last_error
-        await asyncio.sleep(wait)
-    else:
-        raise last_error  # type: ignore[misc]
-    data = response.json()
-    return data["choices"][0]["message"]["content"]
+    response = await client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "user", "content": f"{prompt}\n\n---TRANSCRIPT---\n{transcript}"}],
+        max_tokens=4096,
+        temperature=0.1,
+    )
+    return response.choices[0].message.content
 
 
 # ── Parsare JSON ─────────────────────────────────────────────────────────────
@@ -118,23 +117,6 @@ def _parse_json(text: str) -> dict | list:
             return json.loads(repaired)
 
     raise ValueError(f"Nu s-a putut parsa JSON (primii 200 chars): {text[:200]}")
-
-
-# ── Extragere date ─────────────────────────────────────────────────────────────
-
-async def _extract_metadata(client: httpx.AsyncClient, transcript: str, api_key: str) -> dict:
-    raw = await _call_openrouter(client, "extract_meeting_metadata.md", transcript, api_key)
-    return _parse_json(raw)
-
-
-async def _extract_sections(client: httpx.AsyncClient, transcript: str, api_key: str) -> dict:
-    raw = await _call_openrouter(client, "extract_sections.md", transcript, api_key)
-    return _parse_json(raw)
-
-
-async def _extract_action_items(client: httpx.AsyncClient, transcript: str, api_key: str) -> list:
-    raw = await _call_openrouter(client, "extract_action_items.md", transcript, api_key)
-    return _parse_json(raw)
 
 
 # ── Preview HTML ──────────────────────────────────────────────────────────────
@@ -237,29 +219,40 @@ async def run_minuta_free_pipeline(
     api_key: str,
     on_step=None,  # callable async(step: str) pentru progres UI
 ) -> tuple[Path, str]:
-    """Pipeline complet cu OpenRouter (gratuit): transcript (.vtt/.docx) → (docx_path, preview_html).
+    """Pipeline cu Groq (gratuit): transcript (.vtt/.docx) → (docx_path, preview_html).
 
-    Apeluri SECVENȚIALE cu 10s pauză între ele pentru a respecta limita de 8 RPM a OpenRouter free tier.
+    Apeluri secventiale cu 62s intre ele pentru a respecta TPM limit Groq (12,000/min).
+    Trunchiere inteligenta: metadata din start, sectiuni distribuite, actiuni din final.
     """
     if transcript_path.suffix.lower() == ".vtt":
         text = extract_vtt_text(transcript_path)
     else:
         text = extract_docx_text(transcript_path)
 
-    async with httpx.AsyncClient() as client:
-        if on_step:
-            await on_step("metadata")
-        meta_raw = await _extract_metadata(client, text, api_key)
+    long = len(text) > SHORT_THRESHOLD
+    delay = 62 if long else 8  # scurt: 8s; lung: 62s (reset TPM window)
 
-        await asyncio.sleep(10)  # ~8 RPM limit → 1 request la 7.5s
-        if on_step:
-            await on_step("sections")
-        sections = await _extract_sections(client, text, api_key)
+    client = AsyncGroq(api_key=api_key)
 
-        await asyncio.sleep(10)
-        if on_step:
-            await on_step("actions")
-        action_raw = await _extract_action_items(client, text, api_key)
+    if on_step:
+        await on_step("metadata")
+    meta_raw = await _call_groq(client, "extract_meeting_metadata.md", _truncate_metadata(text))
+    meta_raw = _parse_json(meta_raw)
+
+    await asyncio.sleep(delay)
+    if on_step:
+        await on_step("sections")
+    sections_raw = await _call_groq(client, "extract_sections.md", _truncate_sections(text))
+    sections = _parse_json(sections_raw)
+
+    await asyncio.sleep(delay)
+    if on_step:
+        await on_step("actions")
+    action_raw = await _call_groq(client, "extract_action_items.md", _truncate_actions(text))
+    action_raw = _parse_json(action_raw)
+
+    if on_step:
+        await on_step("building")
 
     meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
     if isinstance(meta, dict):
