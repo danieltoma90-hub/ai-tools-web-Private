@@ -1,11 +1,15 @@
 import asyncio
 import base64
+import logging
 import os
 import tempfile
+import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 
@@ -129,24 +133,32 @@ async def generate_minuta_free(
     user=Depends(verify_token),
 ):
     """Pornește generarea minutei free (OpenRouter/Llama) în fundal și returnează job_id."""
-    ext = Path(file.filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .vtt sau .docx")
+    try:
+        filename_raw = file.filename or ""
+        ext = Path(filename_raw).suffix.lower() if filename_raw else ""
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=422, detail=f"Fișierul trebuie să fie .vtt sau .docx (primit: '{filename_raw}')")
 
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY lipsă pe server")
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY lipsă pe server")
 
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        tmp.write(await file.read())
-        input_path = Path(tmp.name)
+        content = await file.read()
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(content)
+            input_path = Path(tmp.name)
 
-    job_id = str(uuid.uuid4())
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    stem = Path(file.filename).stem
-    user_email = user.get("email", "anonymous")
+        job_id = str(uuid.uuid4())
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        stem = Path(filename_raw).stem
+        user_email = user.get("email", "anonymous") if isinstance(user, dict) else "anonymous"
 
-    _jobs[job_id] = {"status": "processing", "user_email": user_email}
-    background_tasks.add_task(_run_free_job, job_id, input_path, api_key, stem, timestamp)
+        _jobs[job_id] = {"status": "processing", "user_email": user_email}
+        background_tasks.add_task(_run_free_job, job_id, input_path, api_key, stem, timestamp)
+        return {"job_id": job_id}
 
-    return {"job_id": job_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("generate_minuta_free UNEXPECTED: %s\n%s", e, traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Eroare neașteptată [{type(e).__name__}]: {e}")
