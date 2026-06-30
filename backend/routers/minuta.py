@@ -102,8 +102,11 @@ async def _run_free_job(
     stem: str,
     timestamp: str,
 ) -> None:
+    async def _on_step(step: str) -> None:
+        _jobs[job_id]["step"] = step
+
     try:
-        docx_path, preview_html = await run_minuta_free_pipeline(input_path, api_key)
+        docx_path, preview_html = await run_minuta_free_pipeline(input_path, api_key, on_step=_on_step)
         filename = f"Minuta_{stem}_{timestamp}.docx"
         user_email = _jobs[job_id].get("user_email", "anonymous")
         storage_path = upload_file(docx_path, tool="minuta", filename=filename, user_email=user_email)

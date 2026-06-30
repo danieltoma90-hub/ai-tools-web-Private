@@ -36,6 +36,7 @@ export async function postMinuta(file: File): Promise<{ job_id: string }> {
 
 export async function pollMinutaJob(jobId: string): Promise<{
   status: "processing" | "done" | "error";
+  step?: "metadata" | "sections" | "actions" | "building";
   filename?: string;
   docx_b64?: string;
   preview_html?: string;
@@ -44,6 +45,7 @@ export async function pollMinutaJob(jobId: string): Promise<{
 }> {
   return apiFetch(`${PROXY}/minuta/job/${jobId}`) as Promise<{
     status: "processing" | "done" | "error";
+    step?: "metadata" | "sections" | "actions" | "building";
     filename?: string;
     docx_b64?: string;
     preview_html?: string;

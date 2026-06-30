@@ -233,20 +233,33 @@ def _build_preview_html(data: dict) -> str:
 # ── Pipeline principal ─────────────────────────────────────────────────────────
 
 async def run_minuta_free_pipeline(
-    transcript_path: Path, api_key: str
+    transcript_path: Path,
+    api_key: str,
+    on_step=None,  # callable async(step: str) pentru progres UI
 ) -> tuple[Path, str]:
-    """Pipeline complet cu OpenRouter (gratuit): transcript (.vtt/.docx) → (docx_path, preview_html)."""
+    """Pipeline complet cu OpenRouter (gratuit): transcript (.vtt/.docx) → (docx_path, preview_html).
+
+    Apeluri SECVENȚIALE cu 10s pauză între ele pentru a respecta limita de 8 RPM a OpenRouter free tier.
+    """
     if transcript_path.suffix.lower() == ".vtt":
         text = extract_vtt_text(transcript_path)
     else:
         text = extract_docx_text(transcript_path)
 
     async with httpx.AsyncClient() as client:
-        meta_raw, sections, action_raw = await asyncio.gather(
-            _extract_metadata(client, text, api_key),
-            _extract_sections(client, text, api_key),
-            _extract_action_items(client, text, api_key),
-        )
+        if on_step:
+            await on_step("metadata")
+        meta_raw = await _extract_metadata(client, text, api_key)
+
+        await asyncio.sleep(10)  # ~8 RPM limit → 1 request la 7.5s
+        if on_step:
+            await on_step("sections")
+        sections = await _extract_sections(client, text, api_key)
+
+        await asyncio.sleep(10)
+        if on_step:
+            await on_step("actions")
+        action_raw = await _extract_action_items(client, text, api_key)
 
     meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
     if isinstance(meta, dict):

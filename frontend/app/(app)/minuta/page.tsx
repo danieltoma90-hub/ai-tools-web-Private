@@ -10,11 +10,19 @@ import { postMinuta, pollMinutaJob, postMinutaFree } from "@/lib/api";
 type State = "idle" | "processing" | "done" | "error";
 type Mode = "ai" | "free";
 
+const FREE_STEP_LABELS: Record<string, string> = {
+  metadata: "Extrag metadatele... (1/3)",
+  sections: "Extrag secțiunile... (2/3)",
+  actions:  "Extrag pașii următori... (3/3)",
+  building: "Se generează documentul...",
+};
+
 export default function MinutaPage() {
   const [file, setFile] = useState<File | null>(null);
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState("");
   const [mode, setMode] = useState<Mode>("ai");
+  const [freeLabel, setFreeLabel] = useState("Se inițializează...");
   const [result, setResult] = useState<{
     filename: string;
     docxB64: string;
@@ -64,6 +72,7 @@ export default function MinutaPage() {
   async function handleGenerateFree() {
     if (!file) return;
     setState("processing");
+    setFreeLabel("Se inițializează...");
     setError("");
     cancelledRef.current = false;
 
@@ -76,6 +85,10 @@ export default function MinutaPage() {
 
         const job = await pollMinutaJob(job_id);
         if (cancelledRef.current) return;
+
+        if (job.step && FREE_STEP_LABELS[job.step]) {
+          setFreeLabel(FREE_STEP_LABELS[job.step]);
+        }
 
         if (job.status === "done") {
           setResult({
@@ -122,7 +135,6 @@ export default function MinutaPage() {
 
         {state === "idle" && (
           <div className="flex flex-col gap-4">
-            {/* Toggle AI / Free */}
             <div className="flex rounded-lg border border-slate-200 overflow-hidden w-fit">
               <button
                 onClick={() => setMode("ai")}
@@ -148,7 +160,7 @@ export default function MinutaPage() {
 
             {mode === "free" && (
               <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                Versiunea Free folosește Llama 3.3 70B via OpenRouter — aceeași calitate, fără costuri. Generare în ~30-60 secunde.
+                Versiunea Free folosește Llama 3.3 70B via OpenRouter — aceeași calitate, fără costuri. Generare în ~45-60 secunde.
               </p>
             )}
 
@@ -173,11 +185,7 @@ export default function MinutaPage() {
 
         {state === "processing" && (
           <ProcessingSpinner
-            label={
-              mode === "free"
-                ? "Generare cu Llama 3.3 70B... (~30-60s)"
-                : undefined
-            }
+            label={mode === "free" ? freeLabel : undefined}
           />
         )}
 
