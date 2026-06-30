@@ -1,4 +1,8 @@
-"""Minuta Free Pipeline — identic cu minuta_pipeline.py dar foloseste Groq (gratuit)."""
+"""Minuta Free Pipeline — identic cu minuta_pipeline.py dar foloseste Google Gemini Flash (gratuit).
+
+Gemini Flash free tier: 4M tokens/min, 1M tokens/zi, context 1M tokens.
+Suporta transcript-uri oricat de lungi fara limitare de rata.
+"""
 import asyncio
 import json
 import re
@@ -7,7 +11,7 @@ import tempfile
 from html import escape
 from pathlib import Path
 
-from groq import AsyncGroq
+from google import genai
 from docx import Document
 
 try:
@@ -23,7 +27,7 @@ TEMPLATE_PATH = SKILL_DIR / "template" / "F05_minuta_template.docx"
 sys.path.insert(0, str(SKILL_DIR / "scripts"))
 from build_minuta import build_minuta
 
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GEMINI_MODEL = "gemini-2.0-flash"
 
 
 # ── Parsare transcript ─────────────────────────────────────────────────────────
@@ -46,18 +50,17 @@ def extract_docx_text(docx_path: Path) -> str:
 
 # ── Apel LLM ─────────────────────────────────────────────────────────────────
 
-async def _call_groq(client: AsyncGroq, prompt_file: str, transcript: str) -> str:
+async def _call_gemini(client: genai.Client, prompt_file: str, transcript: str) -> str:
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
-    response = await client.chat.completions.create(
-        model=GROQ_MODEL,
-        max_tokens=4096,
-        temperature=0.1,
-        messages=[{
-            "role": "user",
-            "content": f"{prompt}\n\n---TRANSCRIPT---\n{transcript}"
-        }]
+    response = await client.aio.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=f"{prompt}\n\n---TRANSCRIPT---\n{transcript}",
+        config=genai.types.GenerateContentConfig(
+            max_output_tokens=4096,
+            temperature=0.1,
+        ),
     )
-    return response.choices[0].message.content
+    return response.text
 
 
 # ── Parsare JSON ─────────────────────────────────────────────────────────────
@@ -89,18 +92,18 @@ def _parse_json(text: str) -> dict | list:
 
 # ── Extragere date ─────────────────────────────────────────────────────────────
 
-async def _extract_metadata(client: AsyncGroq, transcript: str) -> dict:
-    raw = await _call_groq(client, "extract_meeting_metadata.md", transcript)
+async def _extract_metadata(client: genai.Client, transcript: str) -> dict:
+    raw = await _call_gemini(client, "extract_meeting_metadata.md", transcript)
     return _parse_json(raw)
 
 
-async def _extract_sections(client: AsyncGroq, transcript: str) -> dict:
-    raw = await _call_groq(client, "extract_sections.md", transcript)
+async def _extract_sections(client: genai.Client, transcript: str) -> dict:
+    raw = await _call_gemini(client, "extract_sections.md", transcript)
     return _parse_json(raw)
 
 
-async def _extract_action_items(client: AsyncGroq, transcript: str) -> list:
-    raw = await _call_groq(client, "extract_action_items.md", transcript)
+async def _extract_action_items(client: genai.Client, transcript: str) -> list:
+    raw = await _call_gemini(client, "extract_action_items.md", transcript)
     return _parse_json(raw)
 
 
@@ -202,13 +205,13 @@ def _build_preview_html(data: dict) -> str:
 async def run_minuta_free_pipeline(
     transcript_path: Path, api_key: str
 ) -> tuple[Path, str]:
-    """Pipeline complet cu Groq (gratuit): transcript (.vtt/.docx) → (docx_path, preview_html)."""
+    """Pipeline complet cu Gemini Flash (gratuit): transcript (.vtt/.docx) → (docx_path, preview_html)."""
     if transcript_path.suffix.lower() == ".vtt":
         text = extract_vtt_text(transcript_path)
     else:
         text = extract_docx_text(transcript_path)
 
-    client = AsyncGroq(api_key=api_key)
+    client = genai.Client(api_key=api_key)
 
     meta_raw, sections, action_raw = await asyncio.gather(
         _extract_metadata(client, text),

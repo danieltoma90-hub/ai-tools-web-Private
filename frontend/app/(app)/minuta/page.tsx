@@ -127,13 +127,13 @@ export default function MinutaPage() {
                     : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                ⚡ Free (Groq)
+                ⚡ Free (Gemini)
               </button>
             </div>
 
             {mode === "free" && (
               <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                Versiunea Free folosește Groq (Llama 3.3 70B) — aceeași calitate, fără costuri suplimentare. Generare în ~10-20 secunde.
+                Versiunea Free folosește Google Gemini Flash — aceeași calitate, fără costuri suplimentare. Generare în ~15-25 secunde.
               </p>
             )}
 
@@ -160,7 +160,7 @@ export default function MinutaPage() {
           <ProcessingSpinner
             label={
               mode === "free"
-                ? "Generare cu Groq... (~10-20s)"
+                ? "Generare cu Gemini... (~15-25s)"
                 : undefined
             }
           />

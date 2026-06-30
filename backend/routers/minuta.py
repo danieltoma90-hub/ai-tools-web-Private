@@ -101,9 +101,9 @@ async def generate_minuta_free(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .vtt sau .docx")
 
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY lipsă pe server")
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY lipsă pe server")
 
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         tmp.write(await file.read())
