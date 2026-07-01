@@ -30,13 +30,13 @@ from build_minuta import build_minuta
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
-# Caractere maxime per apel ca sa nu depasim 12,000 TPM
-# 35,000 chars ≈ 8,750 tokens + ~500 prompt + ~1,500 raspuns = ~10,750 < 12,000
-MAX_CHARS_PER_CALL = 35_000
+# Romana tokenizeaza la ~2.2 chars/token (nu 4 ca engleza).
+# Budget per apel: 12,000 TPM - 1,200 prompt - 2,048 raspuns = 8,752 tokens transcript
+# 8,752 tokens × 2.2 chars × 0.65 buffer = ~12,500 → rotunjit la 12,000 chars (sigur)
+MAX_CHARS_PER_CALL = 12_000
 
-# Transcrierile scurte (< 30,000 chars ≈ 7,500 tokens per call) pot fi procesate
-# fara trunchiere si cu o pauza mai mica intre apeluri
-SHORT_THRESHOLD = 30_000
+# Intotdeauna 62s intre apeluri: chiar si 3 cereri mici consecutive depasesc 12k TPM/min
+CALL_DELAY_S = 62
 
 
 # ── Parsare transcript ─────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ async def _call_groq(client: AsyncGroq, prompt_file: str, transcript: str) -> st
     response = await client.chat.completions.create(
         model=GROQ_MODEL,
         messages=[{"role": "user", "content": f"{prompt}\n\n---TRANSCRIPT---\n{transcript}"}],
-        max_tokens=4096,
+        max_tokens=2048,  # suficient pentru output minuta; reduce presiunea pe TPM
         temperature=0.1,
     )
     return response.choices[0].message.content
@@ -229,9 +229,6 @@ async def run_minuta_free_pipeline(
     else:
         text = extract_docx_text(transcript_path)
 
-    long = len(text) > SHORT_THRESHOLD
-    delay = 62 if long else 8  # scurt: 8s; lung: 62s (reset TPM window)
-
     client = AsyncGroq(api_key=api_key)
 
     if on_step:
@@ -239,13 +236,13 @@ async def run_minuta_free_pipeline(
     meta_raw = await _call_groq(client, "extract_meeting_metadata.md", _truncate_metadata(text))
     meta_raw = _parse_json(meta_raw)
 
-    await asyncio.sleep(delay)
+    await asyncio.sleep(CALL_DELAY_S)
     if on_step:
         await on_step("sections")
     sections_raw = await _call_groq(client, "extract_sections.md", _truncate_sections(text))
     sections = _parse_json(sections_raw)
 
-    await asyncio.sleep(delay)
+    await asyncio.sleep(CALL_DELAY_S)
     if on_step:
         await on_step("actions")
     action_raw = await _call_groq(client, "extract_action_items.md", _truncate_actions(text))

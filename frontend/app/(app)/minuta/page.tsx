@@ -174,7 +174,7 @@ export default function MinutaPage() {
 
             {mode === "free" && (
               <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                Versiunea Free folosește Llama 3.3 70B via Groq — aceeași calitate, fără costuri. Generare în ~30s (întâlniri scurte) sau ~2-3 minute (întâlniri lungi).
+                Versiunea Free folosește Llama 3.3 70B via Groq — fără costuri. Generare în ~3-4 minute (limita API gratuită Groq impune pauze între etape).
               </p>
             )}
 
