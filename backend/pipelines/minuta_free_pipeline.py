@@ -1,18 +1,23 @@
-"""Minuta Free Pipeline — foloseste Groq (Llama 3.3 70B) cu apeluri secventiale.
+"""Minuta Free Pipeline — Groq gratuit, acoperire completa prin map-reduce.
 
-Groq free tier: 12,000 TPM, 30 RPM.
-Apeluri secventiale cu 62s pauza intre ele pentru a respecta fereastra de 1 minut.
-Trunchiere inteligenta a transcriptului: start (metadata), distribuit (sectiuni), final (actiuni).
+Faza MAP: transcriptul e impartit in bucati care incap in limita TPM; fiecare
+bucata → 1 apel care extrage notite compacte (subiecte, decizii, actiuni).
+Faza REDUCE: 1 apel de sinteza combina toate notitele in minuta finala.
+Apeluri la 62s distanta (limita TPM e per minut → 1 apel/minut).
+
+Model default: openai/gpt-oss-120b (8k TPM, 200k tokens/zi — cel mai apropiat
+de Claude dintre modelele gratuite Groq). Override prin env GROQ_MODEL.
 """
 import asyncio
 import json
+import os
 import re
 import sys
 import tempfile
 from html import escape
 from pathlib import Path
 
-from groq import AsyncGroq
+from groq import AsyncGroq, RateLimitError
 from docx import Document
 
 try:
@@ -28,15 +33,26 @@ TEMPLATE_PATH = SKILL_DIR / "template" / "F05_minuta_template.docx"
 sys.path.insert(0, str(SKILL_DIR / "scripts"))
 from build_minuta import build_minuta
 
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
-# Romana tokenizeaza la ~2.2 chars/token (nu 4 ca engleza).
-# Budget per apel: 12,000 TPM - 1,200 prompt - 2,048 raspuns = 8,752 tokens transcript
-# 8,752 tokens × 2.2 chars × 0.65 buffer = ~12,500 → rotunjit la 12,000 chars (sigur)
-MAX_CHARS_PER_CALL = 12_000
+# TPM (tokens/minut) per model pe planul gratuit Groq
+MODEL_TPM = {
+    "openai/gpt-oss-120b": 8_000,
+    "llama-3.3-70b-versatile": 12_000,
+}
 
-# Intotdeauna 62s intre apeluri: chiar si 3 cereri mici consecutive depasesc 12k TPM/min
-CALL_DELAY_S = 62
+MAX_OUTPUT_TOKENS = 2_000
+PROMPT_RESERVE_TOKENS = 1_000   # promptul .md + framing
+ROMANIAN_CHARS_PER_TOKEN = 2.2  # romana tokenizeaza mult mai des decat engleza
+SAFETY = 0.8
+
+CALL_DELAY_S = 62  # limita TPM e pe fereastra de 1 minut
+
+
+def _chunk_size_chars() -> int:
+    tpm = MODEL_TPM.get(GROQ_MODEL, 8_000)
+    budget_tokens = tpm - PROMPT_RESERVE_TOKENS - MAX_OUTPUT_TOKENS
+    return int(budget_tokens * ROMANIAN_CHARS_PER_TOKEN * SAFETY)
 
 
 # ── Parsare transcript ─────────────────────────────────────────────────────────
@@ -57,39 +73,46 @@ def extract_docx_text(docx_path: Path) -> str:
     return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
 
 
-# ── Trunchiere inteligenta ────────────────────────────────────────────────────
-
-def _truncate_metadata(text: str) -> str:
-    """Metadata: de la inceputul intrevederii (participanti, agenda)."""
-    return text[:MAX_CHARS_PER_CALL]
-
-
-def _truncate_sections(text: str) -> str:
-    """Sectiuni: 4 fragmente distribuite uniform pe tot transcriptul."""
-    if len(text) <= MAX_CHARS_PER_CALL:
-        return text
-    chunk = MAX_CHARS_PER_CALL // 4
-    step = len(text) // 4
-    parts = [text[i * step: i * step + chunk] for i in range(4)]
-    return "\n\n[...]\n\n".join(parts)
-
-
-def _truncate_actions(text: str) -> str:
-    """Action items: de la finalul intrevederii (decizii, responsabilitati)."""
-    return text[-MAX_CHARS_PER_CALL:] if len(text) > MAX_CHARS_PER_CALL else text
+def _split_chunks(text: str, chunk_chars: int) -> list[str]:
+    """Imparte pe granite de linie, bucati de ~chunk_chars."""
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for line in text.splitlines():
+        if current_len + len(line) > chunk_chars and current:
+            chunks.append("\n".join(current))
+            current, current_len = [], 0
+        current.append(line)
+        current_len += len(line) + 1
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
 
 
-# ── Apel LLM ─────────────────────────────────────────────────────────────────
+# ── Apel LLM cu retry ─────────────────────────────────────────────────────────
 
-async def _call_groq(client: AsyncGroq, prompt_file: str, transcript: str) -> str:
+async def _call_groq(client: AsyncGroq, prompt_file: str, content: str) -> str:
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
-    response = await client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[{"role": "user", "content": f"{prompt}\n\n---TRANSCRIPT---\n{transcript}"}],
-        max_tokens=2048,  # suficient pentru output minuta; reduce presiunea pe TPM
-        temperature=0.1,
-    )
-    return response.choices[0].message.content
+    kwargs = {}
+    if GROQ_MODEL.startswith("openai/"):
+        kwargs["reasoning_effort"] = "low"  # gpt-oss: reasoning tokens conteaza la TPM
+
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            response = await client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[{"role": "user", "content": f"{prompt}\n\n{content}"}],
+                max_tokens=MAX_OUTPUT_TOKENS,
+                temperature=0.1,
+                **kwargs,
+            )
+            return response.choices[0].message.content
+        except RateLimitError as e:
+            last_error = e
+            if attempt < 2:
+                await asyncio.sleep(65)  # asteapta resetul ferestrei de 1 minut
+    raise last_error
 
 
 # ── Parsare JSON ─────────────────────────────────────────────────────────────
@@ -117,6 +140,20 @@ def _parse_json(text: str) -> dict | list:
             return json.loads(repaired)
 
     raise ValueError(f"Nu s-a putut parsa JSON (primii 200 chars): {text[:200]}")
+
+
+# ── Compresie notite (daca sinteza nu incape in TPM) ──────────────────────────
+
+def _compress_notes(notes: list[dict], max_chars: int) -> list[dict]:
+    """Reduce progresiv punctele per subiect pana ce notitele incap in budget."""
+    for max_puncte in (3, 2, 1):
+        total = sum(len(json.dumps(n, ensure_ascii=False)) for n in notes)
+        if total <= max_chars:
+            return notes
+        for n in notes:
+            for s in n.get("subiecte", []):
+                s["puncte"] = s.get("puncte", [])[:max_puncte]
+    return notes
 
 
 # ── Preview HTML ──────────────────────────────────────────────────────────────
@@ -219,34 +256,61 @@ async def run_minuta_free_pipeline(
     api_key: str,
     on_step=None,  # callable async(step: str) pentru progres UI
 ) -> tuple[Path, str]:
-    """Pipeline cu Groq (gratuit): transcript (.vtt/.docx) → (docx_path, preview_html).
+    """Map-reduce cu Groq: transcript (.vtt/.docx) → (docx_path, preview_html).
 
-    Apeluri secventiale cu 62s intre ele pentru a respecta TPM limit Groq (12,000/min).
-    Trunchiere inteligenta: metadata din start, sectiuni distribuite, actiuni din final.
+    Acoperire completa a transcriptului. ~1 apel/minut → un meeting de 1h
+    (10-12 bucati) dureaza ~12 minute.
     """
     if transcript_path.suffix.lower() == ".vtt":
         text = extract_vtt_text(transcript_path)
     else:
         text = extract_docx_text(transcript_path)
 
+    chunk_chars = _chunk_size_chars()
+    chunks = _split_chunks(text, chunk_chars)
+    total = len(chunks)
+
     client = AsyncGroq(api_key=api_key)
 
+    # 1) Metadata — doar inceputul sedintei (participanti, subiect, agenda)
     if on_step:
         await on_step("metadata")
-    meta_raw = await _call_groq(client, "extract_meeting_metadata.md", _truncate_metadata(text))
+    meta_raw = await _call_groq(
+        client, "extract_meeting_metadata.md",
+        f"---TRANSCRIPT (inceput)---\n{text[:int(chunk_chars * 0.7)]}",
+    )
     meta_raw = _parse_json(meta_raw)
 
-    await asyncio.sleep(CALL_DELAY_S)
-    if on_step:
-        await on_step("sections")
-    sections_raw = await _call_groq(client, "extract_sections.md", _truncate_sections(text))
-    sections = _parse_json(sections_raw)
+    # 2) MAP — notite compacte din fiecare bucata
+    notes: list[dict] = []
+    for i, chunk in enumerate(chunks, start=1):
+        await asyncio.sleep(CALL_DELAY_S)
+        if on_step:
+            await on_step(f"chunk:{i}/{total}")
+        raw = await _call_groq(
+            client, "map_chunk_notes.md",
+            f"---FRAGMENT {i}/{total}---\n{chunk}",
+        )
+        try:
+            notes.append(_parse_json(raw))
+        except ValueError:
+            # o bucata esuata nu strica intregul job — continuam fara ea
+            continue
 
+    if not notes:
+        raise RuntimeError("Nicio bucata din transcript nu a putut fi procesata")
+
+    # 3) REDUCE — sinteza finala din toate notitele
     await asyncio.sleep(CALL_DELAY_S)
     if on_step:
-        await on_step("actions")
-    action_raw = await _call_groq(client, "extract_action_items.md", _truncate_actions(text))
-    action_raw = _parse_json(action_raw)
+        await on_step("synthesis")
+    notes = _compress_notes(notes, max_chars=int(chunk_chars * 0.9))
+    notes_text = "\n\n".join(
+        f"---FRAGMENT {i}/{total}---\n{json.dumps(n, ensure_ascii=False)}"
+        for i, n in enumerate(notes, start=1)
+    )
+    final_raw = await _call_groq(client, "reduce_synthesis.md", notes_text)
+    final = _parse_json(final_raw)
 
     if on_step:
         await on_step("building")
@@ -254,12 +318,12 @@ async def run_minuta_free_pipeline(
     meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
     if isinstance(meta, dict):
         meta["cod_proiect"] = meta.get("subiect", "")
-    action_items = action_raw.get("pasi_urmatori", action_raw) if isinstance(action_raw, dict) else action_raw
+    action_items = final.get("pasi_urmatori", [])
 
     data = {
         "meta": meta,
-        "context_si_scop": sections.get("context_si_scop"),
-        "sectiuni": sections.get("sectiuni", []),
+        "context_si_scop": final.get("context_si_scop"),
+        "sectiuni": final.get("sectiuni", []),
         "pasi_urmatori": action_items if isinstance(action_items, list) else [],
         "include_signature": False,
     }

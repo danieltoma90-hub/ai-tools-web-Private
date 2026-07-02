@@ -10,12 +10,14 @@ import { postMinuta, pollMinutaJob, postMinutaFree } from "@/lib/api";
 type State = "idle" | "processing" | "done" | "error";
 type Mode = "ai" | "free";
 
-const FREE_STEP_LABELS: Record<string, string> = {
-  metadata: "Extrag metadatele... (1/3)",
-  sections: "Extrag secțiunile... (2/3) — aștept limita Groq",
-  actions:  "Extrag pașii următori... (3/3) — aștept limita Groq",
-  building: "Se generează documentul...",
-};
+function freeStepLabel(step: string): string {
+  if (step === "metadata") return "Extrag metadatele întâlnirii...";
+  const chunk = step.match(/^chunk:(\d+)\/(\d+)$/);
+  if (chunk) return `Procesez partea ${chunk[1]} din ${chunk[2]} a transcriptului...`;
+  if (step === "synthesis") return "Combin totul în minuta finală...";
+  if (step === "building") return "Se generează documentul Word...";
+  return "Se procesează...";
+}
 
 export default function MinutaPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -100,8 +102,8 @@ export default function MinutaPage() {
         const job = await pollMinutaJob(job_id);
         if (cancelledRef.current) return;
 
-        if (job.step && FREE_STEP_LABELS[job.step]) {
-          setFreeLabel(FREE_STEP_LABELS[job.step]);
+        if (job.step) {
+          setFreeLabel(freeStepLabel(job.step));
         }
 
         if (job.status === "done") {
@@ -174,7 +176,7 @@ export default function MinutaPage() {
 
             {mode === "free" && (
               <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                Versiunea Free folosește Llama 3.3 70B via Groq — fără costuri. Generare în ~3-4 minute (limita API gratuită Groq impune pauze între etape).
+                Versiunea Free procesează întregul transcript, bucată cu bucată, pe API-ul gratuit Groq. O întâlnire de 1 oră durează ~10-15 minute (limitele gratuite permit 1 apel/minut) — progresul e afișat pe părți. Limita zilnică: ~2 întâlniri lungi.
               </p>
             )}
 
