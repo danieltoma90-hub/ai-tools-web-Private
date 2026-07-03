@@ -50,6 +50,7 @@ async def _run_job(job_id: str, input_path: Path, orig_filename: str, use_ai: bo
     def _on_step(step: str) -> None:
         jobs.set_step(job_id, step)
 
+    xlsx_path: Path | None = None
     try:
         xlsx_path, scenarios = await run_scenarii_pipeline(input_path, use_ai=use_ai, on_step=_on_step)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -70,12 +71,13 @@ async def _run_job(job_id: str, input_path: Path, orig_filename: str, use_ai: bo
             ai_used=ai_used,
             storage_path=storage_path,
         )
-        xlsx_path.unlink(missing_ok=True)
     except Exception as e:
         logger.error("scenarii job %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
         jobs.fail(job_id, str(e) or type(e).__name__)
     finally:
         input_path.unlink(missing_ok=True)
+        if xlsx_path is not None:
+            xlsx_path.unlink(missing_ok=True)
 
 
 @router.post("/scenarii/generate")

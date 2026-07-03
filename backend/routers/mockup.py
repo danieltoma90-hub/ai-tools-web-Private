@@ -53,6 +53,7 @@ async def _run_job(job_id: str, input_path: Path, orig_filename: str, use_ai: bo
     def _on_step(step: str) -> None:
         jobs.set_step(job_id, step)
 
+    docx_path: Path | None = None
     try:
         docx_path, html, ai_used = await run_mockup_pipeline(input_path, use_ai=use_ai, on_step=_on_step)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -72,12 +73,13 @@ async def _run_job(job_id: str, input_path: Path, orig_filename: str, use_ai: bo
             ai_used=ai_used,
             storage_path=storage_path,
         )
-        docx_path.unlink(missing_ok=True)
     except Exception as e:
         logger.error("mockup job %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
         jobs.fail(job_id, str(e) or type(e).__name__)
     finally:
         input_path.unlink(missing_ok=True)
+        if docx_path is not None:
+            docx_path.unlink(missing_ok=True)
 
 
 @router.post("/mockup/generate")

@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from main import app
 from auth import verify_token
@@ -83,3 +83,33 @@ async def test_estimate_then_generate_then_job_done(client):
         assert "<html" in job["html"].lower()
     finally:
         app.dependency_overrides.clear()
+
+
+async def test_generate_ai_over_budget_returns_422(client, monkeypatch):
+    import pytest
+    if not SAMPLE.exists():
+        pytest.skip("fișierul exemplu lipsește local")
+    monkeypatch.setenv("LLM_DAILY_TOKEN_BUDGET", "10")
+    import llm_client
+    llm_client._usage["day"] = ""
+    llm_client._usage["tokens"] = 0
+
+    app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
+    try:
+        est_res = await client.post(
+            "/api/mockup/estimate",
+            files={"file": (SAMPLE.name, SAMPLE.read_bytes(), _DOCX_MIME)},
+            headers={"Authorization": "Bearer fake"},
+        )
+        est = est_res.json()
+        assert est["fits_budget"] is False
+
+        response = await client.post(
+            "/api/mockup/generate",
+            json={"estimate_id": est["estimate_id"], "use_ai": True},
+            headers={"Authorization": "Bearer fake"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+    assert "buget" in response.json()["detail"].lower()

@@ -48,6 +48,24 @@ def test_extract_structure_captures_body_text(spec_docx):
     assert vanzari["text"] == ["Oferta se transforma in comanda cu un click."]
 
 
+def test_extract_structure_h1_only_body_text(tmp_path):
+    doc = Document()
+    doc.add_heading("Modul Simplu", level=1)
+    doc.add_paragraph("Functionalitatea se activeaza din meniul principal.")
+    doc.add_paragraph("Sistemul blocheaza accesul utilizatorilor fara drepturi.")
+    path = tmp_path / "h1only.docx"
+    doc.save(str(path))
+
+    structure = _extract_structure(path)
+    cap = structure["Modul Simplu"][0]
+    assert cap["titlu"] == "Modul Simplu"
+    assert cap["text"] == [
+        "Functionalitatea se activeaza din meniul principal.",
+        "Sistemul blocheaza accesul utilizatorilor fara drepturi.",
+    ]
+    assert cap["subcapitole"] == []
+
+
 def test_estimate_scenarii_job(spec_docx, monkeypatch):
     monkeypatch.setenv("LLM_DAILY_TOKEN_BUDGET", "500000")
     llm_client._usage["day"] = ""

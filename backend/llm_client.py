@@ -1,7 +1,7 @@
 """Client LLM provider-agnostic pentru mockup si scenarii.
 
 Provider implicit: Mistral La Plateforme (tier gratuit "Experiment").
-Providerul se schimba din env LLM_PROVIDER fara a atinge pipeline-urile.
+Implementare curenta: doar Mistral. Clientul e izolat aici ca un provider nou sa nu atinga pipeline-urile.
 NU se foloseste pentru minuta (aceea ramane pe Groq).
 """
 import asyncio

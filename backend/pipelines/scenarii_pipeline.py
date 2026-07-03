@@ -48,6 +48,10 @@ def _extract_structure(docx_path: Path) -> dict[str, list[dict]]:
                 current_sub["text"].append(text)
             elif current_cap is not None:
                 current_cap["text"].append(text)
+            else:
+                # Text direct sub H1, fara H2/H3 — capitol implicit cu titlul modulului
+                current_cap = {"titlu": current_h1, "text": [text], "subcapitole": []}
+                modules[current_h1].append(current_cap)
 
     return dict(modules)
 
