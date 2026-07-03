@@ -46,7 +46,7 @@ class ScreenSpec:
     cell_comments: dict[str, str] = field(default_factory=dict)
 
 
-from config import MANDATORY_FILTERS
+from .config import MANDATORY_FILTERS
 
 
 def _is_date_or_number(val) -> bool:

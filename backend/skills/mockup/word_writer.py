@@ -4,8 +4,8 @@ from docx import Document
 from docx.shared import Inches, RGBColor
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
-from parser import ScreenSpec
-from image_writer import write_mockup_image
+from .parser import ScreenSpec
+from .image_writer import write_mockup_image
 
 
 _WHITE = RGBColor(0xFF, 0xFF, 0xFF)

@@ -1,4 +1,4 @@
-from parser import ScreenSpec
+from .parser import ScreenSpec
 
 _HEADERS = {"Observatii", "Descriere functionalitate", "Mod de lucru"}
 

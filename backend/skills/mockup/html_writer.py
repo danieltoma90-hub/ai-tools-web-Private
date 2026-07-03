@@ -1,5 +1,5 @@
 from pathlib import Path
-from parser import ScreenSpec, Section
+from .parser import ScreenSpec, Section
 
 
 _STYLE = """

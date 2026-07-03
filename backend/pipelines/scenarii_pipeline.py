@@ -1,3 +1,4 @@
+import os
 import re
 import tempfile
 from collections import defaultdict
@@ -125,6 +126,8 @@ def run_scenarii_pipeline(docx_path: Path) -> Path:
 
     ws.freeze_panes = "B2"
 
-    output_path = Path(tempfile.mktemp(suffix=".xlsx"))
+    fd, tmp_name = tempfile.mkstemp(suffix=".xlsx")
+    os.close(fd)
+    output_path = Path(tmp_name)
     wb.save(str(output_path))
     return output_path

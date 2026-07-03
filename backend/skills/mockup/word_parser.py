@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from docx import Document
-from parser import ScreenSpec, Section, FilterField, ButtonDef, ColumnDef
+from .parser import ScreenSpec, Section, FilterField, ButtonDef, ColumnDef
 
 _NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
