@@ -7,6 +7,7 @@ from pathlib import Path
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from docx import Document
+from pydantic import BaseModel
 
 import llm_client
 
@@ -55,6 +56,71 @@ CALL_OVERHEAD_TOKENS = 1200   # system prompt + structura JSON ceruta
 OUT_TOKENS_PER_MODULE = 6000  # buget de raspuns per modul H1
 
 
+class _Scenariu(BaseModel):
+    capitol: str = ""
+    subcapitol: str = ""
+    titlu_scenariu: str
+    obiectiv: str = ""
+    preconditii: str = ""
+    pasi: str = ""
+    rezultat_asteptat: str = ""
+    tip_test: str = "Funcțional - Pozitiv"
+    prioritate: str = "High"
+    dependente: str = "—"
+    observatii: str = ""
+
+
+_SYSTEM_PROMPT = """Ești inginer QA senior pentru aplicații ERP (Charisma). Primești un fragment \
+de specificație funcțională în limba română, structurat pe capitole și subcapitole.
+Generează scenarii de testare concrete, STRICT pe baza textului primit — nu inventa funcționalități.
+Pentru fiecare capitol/subcapitol: cazul pozitiv principal și, unde textul menționează validări, \
+restricții sau reguli, câte un caz negativ.
+Scrie în română, cu diacritice. Pașii sunt numerotați, precondițiile cu bullet •.
+Răspunde DOAR cu JSON valid, fără alt text:
+{"scenarii": [{"capitol": "...", "subcapitol": "...", "titlu_scenariu": "...", "obiectiv": "...", \
+"preconditii": "• ...", "pasi": "1. ...\\n2. ...", "rezultat_asteptat": "...", \
+"tip_test": "Funcțional - Pozitiv" sau "Funcțional - Negativ", \
+"prioritate": "Critical"|"High"|"Medium"|"Low", "dependente": "...", "observatii": "..."}]}"""
+
+
+def _module_prompt(modul: str, capitole: list[dict]) -> str:
+    lines = [f"MODUL: {modul}", ""]
+    for cap in capitole:
+        lines.append(f"CAPITOL: {cap['titlu']}")
+        lines.extend(cap["text"])
+        for sub in cap["subcapitole"]:
+            lines.append(f"SUBCAPITOL: {sub['titlu']}")
+            lines.extend(sub["text"])
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _module_stubs(modul: str, capitole: list[dict], nota: str = "") -> list[dict]:
+    stubs: list[dict] = []
+    for cap in capitole:
+        subs = cap.get("subcapitole", [])
+        if subs:
+            for sub in subs:
+                stubs.append(_stub(modul, cap["titlu"], sub["titlu"]))
+        else:
+            stubs.append(_stub(modul, cap["titlu"], ""))
+    if nota:
+        for s in stubs:
+            s["observatii"] = nota
+    return stubs
+
+
+async def _generate_module_ai(modul: str, capitole: list[dict]) -> list[dict]:
+    content = await llm_client.chat(
+        _SYSTEM_PROMPT, _module_prompt(modul, capitole), max_tokens=OUT_TOKENS_PER_MODULE
+    )
+    data = llm_client.parse_json(content)
+    items = data.get("scenarii", [])
+    if not items:
+        raise ValueError("Răspuns AI fără scenarii")
+    return [_Scenariu(**s).model_dump() for s in items]
+
+
 def _structure_chars(structure: dict[str, list[dict]]) -> int:
     total = 0
     for modul, capitole in structure.items():
@@ -97,35 +163,7 @@ def _stub(modul: str, capitol: str, subcapitol: str) -> dict:
     }
 
 
-def run_scenarii_pipeline(docx_path: Path) -> Path:
-    """DOCX spec → Excel cu scenarii de testare. Returns path to .xlsx."""
-    structure = _extract_structure(docx_path)
-
-    scenarios: list[dict] = []
-    for modul, capitole in structure.items():
-        for cap in capitole:
-            subs = cap.get("subcapitole", [])
-            if subs:
-                for sub in subs:
-                    scenarios.append(_stub(modul, cap["titlu"], sub["titlu"]))
-            else:
-                scenarios.append(_stub(modul, cap["titlu"], ""))
-
-    if not scenarios:
-        scenarios.append({
-            "capitol": "General",
-            "subcapitol": "",
-            "titlu_scenariu": "Verificare generală",
-            "obiectiv": "Verifică funcționalitățile generale din specificație.",
-            "preconditii": "• Utilizator autentificat",
-            "pasi": "1. Navigare la funcționalitate\n2. Execuție flux\n3. Validare",
-            "rezultat_asteptat": "Funcționare conform specificației.",
-            "tip_test": "Funcțional - Pozitiv",
-            "prioritate": "High",
-            "dependente": "—",
-            "observatii": "Nicio structură de headings detectată în document.",
-        })
-
+def _write_excel(scenarios: list[dict]) -> Path:
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Scenarii"
@@ -146,7 +184,7 @@ def run_scenarii_pipeline(docx_path: Path) -> Path:
     wrap = Alignment(wrap_text=True, vertical="top")
     for i, s in enumerate(scenarios, start=1):
         ws.append([
-            f"TC-{i:03d}",
+            s["id"],
             s["capitol"],
             s["subcapitol"],
             s["titlu_scenariu"],
@@ -173,3 +211,63 @@ def run_scenarii_pipeline(docx_path: Path) -> Path:
     output_path = Path(tmp_name)
     wb.save(str(output_path))
     return output_path
+
+
+async def run_scenarii_pipeline(
+    docx_path: Path,
+    use_ai: bool = False,
+    on_step=None,
+) -> tuple[Path, list[dict]]:
+    """DOCX spec → Excel cu scenarii de testare. Returns (xlsx_path, scenarios).
+
+    use_ai=True: un apel Mistral per modul H1, cu fallback la stub-uri per modul.
+    use_ai=False: stub-urile deterministe de azi (plan B garantat).
+    """
+    structure = _extract_structure(docx_path)
+
+    scenarios: list[dict] = []
+    module_items = list(structure.items())
+    for idx, (modul, capitole) in enumerate(module_items, start=1):
+        if on_step:
+            on_step(f"module:{idx}/{len(module_items)}:{modul}")
+        if use_ai:
+            try:
+                generated = await _generate_module_ai(modul, capitole)
+                for s in generated:
+                    s["ai"] = True
+                scenarios.extend(generated)
+                continue
+            except Exception:
+                fallback = _module_stubs(modul, capitole, nota="Generat fără AI (fallback — apelul AI a eșuat)")
+                for s in fallback:
+                    s["ai"] = False
+                scenarios.extend(fallback)
+                continue
+        stubs = _module_stubs(modul, capitole)
+        for s in stubs:
+            s["ai"] = False
+        scenarios.extend(stubs)
+
+    if not scenarios:
+        empty = {
+            "capitol": "General",
+            "subcapitol": "",
+            "titlu_scenariu": "Verificare generală",
+            "obiectiv": "Verifică funcționalitățile generale din specificație.",
+            "preconditii": "• Utilizator autentificat",
+            "pasi": "1. Navigare la funcționalitate\n2. Execuție flux\n3. Validare",
+            "rezultat_asteptat": "Funcționare conform specificației.",
+            "tip_test": "Funcțional - Pozitiv",
+            "prioritate": "High",
+            "dependente": "—",
+            "observatii": "Nicio structură de headings detectată în document.",
+            "ai": False,
+        }
+        scenarios.append(empty)
+
+    for i, s in enumerate(scenarios, start=1):
+        s["id"] = f"TC-{i:03d}"
+
+    if on_step:
+        on_step("building")
+    return _write_excel(scenarios), scenarios
