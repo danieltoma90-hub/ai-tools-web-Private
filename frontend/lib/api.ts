@@ -66,19 +66,88 @@ export async function postMinutaFree(file: File): Promise<{
   }>;
 }
 
-export async function postMockup(file: File) {
-  return postFile("mockup", file) as Promise<{
-    filename: string;
-    docx_b64: string;
-    html: string;
-  }>;
+export type EstimateResponse = {
+  estimate_id: string;
+  est_tokens: number;
+  est_minutes: number;
+  fits_budget: boolean;
+  modules?: number;
+};
+
+export type Scenariu = {
+  id: string;
+  capitol: string;
+  subcapitol: string;
+  titlu_scenariu: string;
+  obiectiv: string;
+  preconditii: string;
+  pasi: string;
+  rezultat_asteptat: string;
+  tip_test: string;
+  prioritate: string;
+  dependente: string;
+  observatii: string;
+  ai: boolean;
+};
+
+export type ScenariiJob = {
+  status: "processing" | "done" | "error";
+  step?: string; // "module:2/5:Nume" | "building"
+  filename?: string;
+  xlsx_b64?: string;
+  scenarios?: Scenariu[];
+  ai_used?: boolean;
+  storage_path?: string;
+  error?: string;
+};
+
+export type MockupJob = {
+  status: "processing" | "done" | "error";
+  step?: string; // "parsing" | "ai" | "building"
+  filename?: string;
+  docx_b64?: string;
+  html?: string;
+  ai_used?: boolean;
+  storage_path?: string;
+  error?: string;
+};
+
+function postGenerate(path: string, estimateId: string, useAi: boolean) {
+  return apiFetch(`${PROXY}/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ estimate_id: estimateId, use_ai: useAi }),
+  });
 }
 
-export async function postScenarii(file: File) {
-  return postFile("scenarii", file) as Promise<{
-    filename: string;
-    xlsx_b64: string;
-  }>;
+export async function postScenariiEstimate(file: File): Promise<EstimateResponse> {
+  return postFile("scenarii/estimate", file) as Promise<EstimateResponse>;
+}
+
+export async function postScenariiGenerate(
+  estimateId: string,
+  useAi: boolean
+): Promise<{ job_id: string }> {
+  return postGenerate("scenarii/generate", estimateId, useAi) as Promise<{ job_id: string }>;
+}
+
+export async function getScenariiJob(jobId: string): Promise<ScenariiJob> {
+  return apiFetch(`${PROXY}/scenarii/job/${jobId}`) as Promise<ScenariiJob>;
+}
+
+export async function postMockupEstimate(file: File): Promise<EstimateResponse> {
+  return postFile("mockup/estimate", file) as Promise<EstimateResponse>;
+}
+
+export async function postMockupGenerate(
+  estimateId: string,
+  useAi: boolean
+): Promise<{ job_id: string }> {
+  return postGenerate("mockup/generate", estimateId, useAi) as Promise<{ job_id: string }>;
+}
+
+export async function getMockupJob(jobId: string): Promise<MockupJob> {
+  return apiFetch(`${PROXY}/mockup/job/${jobId}`) as Promise<MockupJob>;
 }
 
 export async function getDocuments(tool?: string) {
