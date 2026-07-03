@@ -67,9 +67,9 @@ async def enrich(spec: ScreenSpec, descriptions: dict) -> dict:
     pg = data.get("prezentare_generala")
     if isinstance(pg, dict):
         merged["prezentare_generala"] = {
-            "scop": str(pg.get("scop", "")),
-            "flux": [str(x) for x in pg.get("flux", []) if str(x).strip()],
-            "legaturi": str(pg.get("legaturi", "")),
+            "scop": str(pg.get("scop") or ""),
+            "flux": [str(x) for x in (pg.get("flux") or []) if x and str(x).strip()],
+            "legaturi": str(pg.get("legaturi") or ""),
         }
     for key in ("descrieri_filtre", "descrieri_butoane", "descrieri_coloane"):
         overrides = data.get(key)

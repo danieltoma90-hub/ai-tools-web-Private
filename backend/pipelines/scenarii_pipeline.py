@@ -118,7 +118,12 @@ async def _generate_module_ai(modul: str, capitole: list[dict]) -> list[dict]:
     items = data.get("scenarii", [])
     if not items:
         raise ValueError("Răspuns AI fără scenarii")
-    return [_Scenariu(**s).model_dump() for s in items]
+    # Mistral trimite null pentru campurile goale; Pydantic aplica default-urile
+    # doar pentru chei absente, deci eliminam valorile None inainte de validare.
+    return [
+        _Scenariu(**{k: v for k, v in s.items() if v is not None}).model_dump()
+        for s in items
+    ]
 
 
 def _structure_chars(structure: dict[str, list[dict]]) -> int:

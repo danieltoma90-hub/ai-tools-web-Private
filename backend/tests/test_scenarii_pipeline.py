@@ -157,3 +157,32 @@ async def test_run_pipeline_without_ai_keeps_stub_behavior(spec_docx):
         assert scenarios[0]["titlu_scenariu"].startswith("Verificare:")
     finally:
         xlsx_path.unlink(missing_ok=True)
+
+
+async def test_run_pipeline_ai_tolerates_null_fields(spec_docx):
+    response = json.dumps({
+        "scenarii": [{
+            "capitol": "Facturi furnizor",
+            "subcapitol": None,
+            "titlu_scenariu": "Scenariu cu null-uri",
+            "obiectiv": "Verifica toleranta la null.",
+            "preconditii": None,
+            "pasi": "1. Pas unic",
+            "rezultat_asteptat": "OK",
+            "tip_test": None,
+            "prioritate": None,
+            "dependente": None,
+            "observatii": None,
+        }]
+    })
+    with patch("pipelines.scenarii_pipeline.llm_client.chat", new=AsyncMock(return_value=response)):
+        xlsx_path, scenarios = await run_scenarii_pipeline(spec_docx, use_ai=True)
+    try:
+        ai_rows = [s for s in scenarios if s["ai"]]
+        assert len(ai_rows) == 2  # un scenariu AI per modul (2 module in fixture)
+        assert ai_rows[0]["titlu_scenariu"] == "Scenariu cu null-uri"
+        assert ai_rows[0]["subcapitol"] == ""
+        assert ai_rows[0]["tip_test"] == "Funcțional - Pozitiv"
+        assert ai_rows[0]["dependente"] == "—"
+    finally:
+        xlsx_path.unlink(missing_ok=True)

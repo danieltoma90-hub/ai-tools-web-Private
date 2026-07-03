@@ -101,3 +101,17 @@ async def test_unsupported_extension_raises(tmp_path):
     bad.write_bytes(b"%PDF")
     with pytest.raises(ValueError, match="Format nesuportat"):
         await run_mockup_pipeline(bad)
+
+
+async def test_enrich_tolerates_null_overview_fields():
+    spec, descriptions = _mini_spec()
+    response = json.dumps({
+        "prezentare_generala": {"scop": None, "flux": [None, "Pas valid"], "legaturi": None},
+        "descrieri_filtre": {},
+    })
+    with patch("skills.mockup.ai_enricher.llm_client.chat", new=AsyncMock(return_value=response)):
+        merged = await ai_enricher.enrich(spec, descriptions)
+    pg = merged["prezentare_generala"]
+    assert pg["scop"] == ""
+    assert pg["legaturi"] == ""
+    assert pg["flux"] == ["Pas valid"]
