@@ -216,14 +216,30 @@ def _render_body(spec: ScreenSpec, compact: bool = False) -> str:
     return "".join(body_parts)
 
 
-def write_html(spec: ScreenSpec, output_path: Path):
+def _render_overview(overview: dict) -> str:
+    flux = "".join(f"<li>{s}</li>" for s in overview.get("flux", []))
+    legaturi = overview.get("legaturi", "")
+    return (
+        '<div style="max-width:1100px;background:#eef4fb;border:1px solid #b8cfe4;'
+        'border-radius:4px;padding:10px 14px;margin-bottom:10px;font-size:12px">'
+        f'<div style="font-weight:bold;color:#1a3a5c;margin-bottom:6px">Prezentare generală</div>'
+        f'<p style="margin:0 0 6px 0">{overview.get("scop", "")}</p>'
+        + (f"<ol style='margin:0 0 6px 18px;padding:0'>{flux}</ol>" if flux else "")
+        + (f'<p style="margin:0;font-style:italic">{legaturi}</p>' if legaturi else "")
+        + "</div>"
+    )
+
+
+def write_html(spec: ScreenSpec, output_path: Path, overview: dict | None = None):
     if not spec.sections:
         return
+    overview_html = _render_overview(overview) if overview else ""
     html = (
         f'<!DOCTYPE html>\n<html lang="ro">\n<head>\n'
         f'<meta charset="UTF-8"/>\n'
         f"<title>{spec.screen_title} — Charisma ERP Mockup</title>\n"
         f"<style>{_STYLE}</style>\n</head>\n<body>\n"
+        + overview_html
         + _render_body(spec, compact=False)
         + "\n</body>\n</html>"
     )

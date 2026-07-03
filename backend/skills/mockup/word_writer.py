@@ -48,6 +48,16 @@ def write_word(spec: ScreenSpec, descriptions: dict, output_path: Path):
     doc.add_picture(io.BytesIO(img_bytes), width=Inches(6.3))
     doc.add_paragraph()
 
+    overview = descriptions.get("prezentare_generala")
+    if overview:
+        doc.add_heading("Prezentare Generală", 2)
+        if overview.get("scop"):
+            doc.add_paragraph(overview["scop"])
+        for step in overview.get("flux", []):
+            doc.add_paragraph(step, style="List Number")
+        if overview.get("legaturi"):
+            doc.add_paragraph(overview["legaturi"])
+
     doc.add_heading("Descriere Generală", 2)
     doc.add_paragraph(descriptions.get("descriere_generala", ""))
 
