@@ -129,9 +129,9 @@ export default function MockupPage() {
     <div className="flex h-screen">
       <div className="flex-1 p-6 overflow-auto">
         <ToolCard
-          icon="🖥️"
+          icon="🎨"
           title="Mockup Ecran"
-          description="Specificație (.xlsx sau .docx) → Documentație Word + preview HTML"
+          description="Fișier Excel (.xlsx) sau Word (.docx) → HTML mockup"
         />
 
         {state === "idle" && (
