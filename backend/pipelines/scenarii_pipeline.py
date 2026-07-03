@@ -8,13 +8,16 @@ import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from docx import Document
 
+import llm_client
+
 
 def _extract_structure(docx_path: Path) -> dict[str, list[dict]]:
-    """Extrage ierarhia de heading-uri din DOCX, grupate pe secțiunea H1."""
+    """Extrage ierarhia de heading-uri + textul de corp, grupate pe secțiunea H1."""
     doc = Document(str(docx_path))
     modules: dict[str, list[dict]] = defaultdict(list)
     current_h1 = "General"
     current_cap: dict | None = None
+    current_sub: dict | None = None
 
     for p in doc.paragraphs:
         style = p.style.name if p.style else ""
@@ -25,17 +28,56 @@ def _extract_structure(docx_path: Path) -> dict[str, list[dict]]:
         if re.match(r"Heading 1", style, re.I):
             current_h1 = text
             current_cap = None
+            current_sub = None
         elif re.match(r"Heading 2", style, re.I):
-            current_cap = {"titlu": text, "subcapitole": []}
+            current_cap = {"titlu": text, "text": [], "subcapitole": []}
+            current_sub = None
             modules[current_h1].append(current_cap)
         elif re.match(r"Heading [3-9]", style, re.I):
+            current_sub = {"titlu": text, "text": []}
             if current_cap is not None:
-                current_cap["subcapitole"].append({"titlu": text})
+                current_cap["subcapitole"].append(current_sub)
             else:
-                cap = {"titlu": text, "subcapitole": []}
-                modules[current_h1].append(cap)
+                current_cap = {"titlu": text, "text": [], "subcapitole": []}
+                current_sub = None
+                modules[current_h1].append(current_cap)
+        else:
+            # Paragraf de corp — se ataseaza celui mai specific heading curent
+            if current_sub is not None:
+                current_sub["text"].append(text)
+            elif current_cap is not None:
+                current_cap["text"].append(text)
 
     return dict(modules)
+
+
+CALL_OVERHEAD_TOKENS = 1200   # system prompt + structura JSON ceruta
+OUT_TOKENS_PER_MODULE = 6000  # buget de raspuns per modul H1
+
+
+def _structure_chars(structure: dict[str, list[dict]]) -> int:
+    total = 0
+    for modul, capitole in structure.items():
+        total += len(modul)
+        for cap in capitole:
+            total += len(cap["titlu"]) + sum(len(t) for t in cap["text"])
+            for sub in cap["subcapitole"]:
+                total += len(sub["titlu"]) + sum(len(t) for t in sub["text"])
+    return total
+
+
+def estimate_scenarii_job(docx_path: Path) -> dict:
+    """Pre-check: tokeni estimați, module și dacă încape în bugetul zilnic gratuit."""
+    structure = _extract_structure(docx_path)
+    modules = max(1, len(structure))
+    input_tokens = llm_client.estimate_tokens(" " * _structure_chars(structure))
+    est_tokens = input_tokens + modules * (CALL_OVERHEAD_TOKENS + OUT_TOKENS_PER_MODULE)
+    return {
+        "est_tokens": est_tokens,
+        "modules": modules,
+        "est_minutes": max(1, round(modules * 25 / 60)),
+        "fits_budget": est_tokens <= llm_client.remaining_budget(),
+    }
 
 
 def _stub(modul: str, capitol: str, subcapitol: str) -> dict:
