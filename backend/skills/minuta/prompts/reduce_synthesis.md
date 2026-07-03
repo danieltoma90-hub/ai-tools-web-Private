@@ -32,9 +32,10 @@ JSON valid, fără markdown fence:
 
 ## Reguli de combinare
 
+- **NU pierde informație**: fiecare punct din notițe trebuie să se regăsească în minuta finală (în paragraf, bullet sau tabel). Nu rezuma excesiv — scrie detaliat, cu explicații complete, ca un consultant care redactează minuta oficială.
 - **Fuzionează subiectele duplicate**: același subiect discutat în fragmente diferite = O singură secțiune care combină toate punctele.
 - Secțiunile urmează ordinea cronologică a discuției.
-- Minutele tipice au **4-8 secțiuni**, fiecare cu 2-6 blocuri. Nu fragmenta excesiv.
+- Minutele tipice au **5-9 secțiuni**, fiecare cu 2-6 blocuri. Nu fragmenta excesiv.
 - Folosește `table_2col` doar când 3+ elemente similare au explicații agreate (headers tipice: „Parametru/Explicatie agreata", „Functionalitate/Comportament").
 - Deciziile agreate → `**bold**` în text. Întrebări deschise → prefix „TBD:" + `**bold**`.
 - Titluri secțiuni: substantive concrete („Clarificare Parametrii MRP"), nu generice („Discuții", „Diverse").

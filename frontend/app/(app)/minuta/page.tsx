@@ -80,8 +80,9 @@ export default function MinutaPage() {
 
     try {
       let job_id: string;
+      let est_minutes: number | undefined;
       try {
-        ({ job_id } = await postMinutaFree(file));
+        ({ job_id, est_minutes } = await postMinutaFree(file));
       } catch (initErr) {
         // Render free tier se adoarme dupa inactivitate — retry automat dupa 5s
         const msg = initErr instanceof Error ? initErr.message : "";
@@ -89,10 +90,13 @@ export default function MinutaPage() {
           setFreeLabel("Server pornit, se retransmite automat...");
           await new Promise((r) => setTimeout(r, 5000));
           if (cancelledRef.current) return;
-          ({ job_id } = await postMinutaFree(file));
+          ({ job_id, est_minutes } = await postMinutaFree(file));
         } else {
           throw initErr;
         }
+      }
+      if (est_minutes) {
+        setFreeLabel(`Procesare pornită — durează aproximativ ${est_minutes} minute...`);
       }
 
       while (true) {
@@ -176,7 +180,7 @@ export default function MinutaPage() {
 
             {mode === "free" && (
               <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                Versiunea Free procesează întregul transcript, bucată cu bucată, pe API-ul gratuit Groq. O întâlnire de 1 oră durează ~10-15 minute (limitele gratuite permit 1 apel/minut) — progresul e afișat pe părți. Limita zilnică: ~2 întâlniri lungi.
+                Versiunea Free procesează întregul transcript, bucată cu bucată, pe API-ul gratuit Groq. O întâlnire de 1 oră durează ~7-8 minute (limitele gratuite permit 1 apel/minut) — durata estimată și progresul sunt afișate la pornire. Fișierele foarte mari (4+ ore) necesită versiunea Cu AI.
               </p>
             )}
 

@@ -21,10 +21,10 @@ JSON valid, fără markdown fence:
 
 ## Reguli
 
-- Maxim 4 subiecte per fragment, maxim 4 puncte per subiect.
-- Punctele sunt telegrafice dar complete: includ cifre, nume de ecrane Charisma, termeni tehnici exact cum apar.
+- Maxim 6 subiecte per fragment, maxim 5 puncte per subiect.
+- Punctele sunt fraze scurte dar complete și informative: includ cifre, nume de ecrane Charisma, termeni tehnici, cerințe și răspunsuri exact cum apar în discuție. NU pierde nicio informație de business.
 - `decizii` = doar acorduri explicite („s-a agreat", „rămâne stabilit"). Dacă nu există, listă goală.
 - `actiuni` = doar sarcini concrete cu responsabil identificabil. Dacă nu există, listă goală.
 - NU inventa conținut. NU repeta politeturi, small talk, probleme tehnice de conexiune.
 - Dacă fragmentul continuă un subiect început anterior (începe în mijlocul unei idei), extrage ce se înțelege din fragment.
-- Fii concis: totalul output-ului să nu depășească ~900 caractere.
+- Totalul output-ului să nu depășească ~1.500 caractere.

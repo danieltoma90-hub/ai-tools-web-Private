@@ -54,8 +54,16 @@ export async function pollMinutaJob(jobId: string): Promise<{
   }>;
 }
 
-export async function postMinutaFree(file: File): Promise<{ job_id: string }> {
-  return postFile("minuta-free", file) as Promise<{ job_id: string }>;
+export async function postMinutaFree(file: File): Promise<{
+  job_id: string;
+  est_minutes?: number;
+  chunks?: number;
+}> {
+  return postFile("minuta-free", file) as Promise<{
+    job_id: string;
+    est_minutes?: number;
+    chunks?: number;
+  }>;
 }
 
 export async function postMockup(file: File) {

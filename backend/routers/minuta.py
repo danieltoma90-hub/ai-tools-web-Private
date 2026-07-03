@@ -15,7 +15,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Up
 
 from auth import verify_token
 from pipelines.minuta_pipeline import run_minuta_pipeline
-from pipelines.minuta_free_pipeline import run_minuta_free_pipeline
+from pipelines.minuta_free_pipeline import estimate_free_job, run_minuta_free_pipeline
 from storage import upload_file
 
 router = APIRouter()
@@ -151,6 +151,19 @@ async def generate_minuta_free(
             tmp.write(content)
             input_path = Path(tmp.name)
 
+        # Pre-check: fisierul incape in bugetul zilnic gratuit Groq?
+        est = estimate_free_job(input_path)
+        if not est["fits_free_tier"]:
+            input_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Fișierul este prea mare pentru versiunea Free "
+                    f"(~{est['est_tokens']:,} tokens necesari, peste limita zilnică gratuită). "
+                    f"Folosiți versiunea „Cu AI (Claude)” — procesează întâlniri oricât de lungi."
+                ),
+            )
+
         job_id = str(uuid.uuid4())
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         stem = Path(filename_raw).stem
@@ -158,7 +171,11 @@ async def generate_minuta_free(
 
         _jobs[job_id] = {"status": "processing", "user_email": user_email}
         background_tasks.add_task(_run_free_job, job_id, input_path, api_key, stem, timestamp)
-        return {"job_id": job_id}
+        return {
+            "job_id": job_id,
+            "est_minutes": est["est_minutes"],
+            "chunks": est["chunks"],
+        }
 
     except HTTPException:
         raise

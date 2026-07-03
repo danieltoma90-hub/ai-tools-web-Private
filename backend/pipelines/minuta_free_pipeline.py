@@ -52,33 +52,71 @@ def _next_model(current: str) -> str | None:
     idx = FALLBACK_CHAIN.index(current) if current in FALLBACK_CHAIN else -1
     return FALLBACK_CHAIN[idx + 1] if 0 <= idx < len(FALLBACK_CHAIN) - 1 else None
 
-MAX_OUTPUT_TOKENS = 2_000
+# Buget de output per tip de apel: sinteza primeste cel mai mult — acolo se
+# scrie continutul final al minutei
+OUT_TOKENS = {"metadata": 800, "map": 1_200, "reduce": 3_000}
 PROMPT_RESERVE_TOKENS = 1_000   # promptul .md + framing
 ROMANIAN_CHARS_PER_TOKEN = 2.2  # romana tokenizeaza mult mai des decat engleza
 SAFETY = 0.8
 
 CALL_DELAY_S = 62  # limita TPM e pe fereastra de 1 minut
 
+# limita zilnica combinata a lantului de modele (200k gpt-oss + 100k llama),
+# cu marja — peste asta recomandam versiunea Claude
+MAX_FREE_TOKENS_PER_JOB = 280_000
+
+
+def _min_tpm() -> int:
+    # dimensionam dupa cel mai mic TPM din lant, ca cererea sa incapa
+    # si dupa un eventual fallback pe alt model in mijlocul jobului
+    return min(MODEL_TPM.get(m, 8_000) for m in FALLBACK_CHAIN)
+
 
 def _chunk_size_chars() -> int:
-    # dimensionam dupa cel mai mic TPM din lant, ca bucata sa incapa
-    # si dupa un eventual fallback pe alt model in mijlocul jobului
-    tpm = min(MODEL_TPM.get(m, 8_000) for m in FALLBACK_CHAIN)
-    budget_tokens = tpm - PROMPT_RESERVE_TOKENS - MAX_OUTPUT_TOKENS
+    budget_tokens = _min_tpm() - PROMPT_RESERVE_TOKENS - OUT_TOKENS["map"]
     return int(budget_tokens * ROMANIAN_CHARS_PER_TOKEN * SAFETY)
 
 
 # ── Parsare transcript ─────────────────────────────────────────────────────────
 
+_CUE_ID_RE = re.compile(r"^[\w-]+/\d+-\d+$")
+_SPEAKER_RE = re.compile(r"<v\s+([^>]+)>")
+
+
 def extract_vtt_text(vtt_path: Path) -> str:
+    """Text compact din VTT Teams: fara ID-uri de cue si timestamps, cu tag-urile
+    <v Vorbitor> transformate in 'Vorbitor: replica' si replicile consecutive
+    ale aceluiasi vorbitor comasate (reduce ~50% din volum, fara pierdere)."""
     lines = vtt_path.read_text(encoding="utf-8").splitlines()
-    text_lines = []
+
+    turns: list[tuple[str, list[str]]] = []  # (vorbitor, fragmente de text)
+    speaker = ""
     for line in lines:
         line = line.strip()
-        if not line or line == "WEBVTT" or re.match(r"^\d{2}:\d{2}:\d{2}", line):
+        if (
+            not line
+            or line == "WEBVTT"
+            or re.match(r"^\d{2}:\d{2}:\d{2}", line)
+            or _CUE_ID_RE.match(line)
+        ):
             continue
-        text_lines.append(line)
-    return "\n".join(text_lines)
+        m = _SPEAKER_RE.search(line)
+        if m:
+            speaker = m.group(1).strip()
+        text = _SPEAKER_RE.sub("", line).replace("</v>", "").strip()
+        if not text:
+            continue
+        if turns and turns[-1][0] == speaker:
+            frags = turns[-1][1]
+            if not frags or frags[-1] != text:  # sare peste liniile duplicate
+                frags.append(text)
+        else:
+            turns.append((speaker, [text]))
+
+    return "\n".join(
+        f"{spk}: {' '.join(frags)}" if spk else " ".join(frags)
+        for spk, frags in turns
+    )
 
 
 def extract_docx_text(docx_path: Path) -> str:
@@ -104,7 +142,9 @@ def _split_chunks(text: str, chunk_chars: int) -> list[str]:
 
 # ── Apel LLM cu retry ─────────────────────────────────────────────────────────
 
-async def _call_groq(client: AsyncGroq, prompt_file: str, content: str, state: dict) -> str:
+async def _call_groq(
+    client: AsyncGroq, prompt_file: str, content: str, state: dict, out_tokens: int
+) -> str:
     """state["model"] = modelul curent; la limita zilnica trece pe urmatorul din lant."""
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
 
@@ -118,7 +158,7 @@ async def _call_groq(client: AsyncGroq, prompt_file: str, content: str, state: d
             response = await client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": f"{prompt}\n\n{content}"}],
-                max_tokens=MAX_OUTPUT_TOKENS,
+                max_tokens=out_tokens,
                 temperature=0.1,
                 **kwargs,
             )
@@ -273,6 +313,37 @@ def _build_preview_html(data: dict) -> str:
 </body></html>"""
 
 
+# ── Estimare job (pre-check inainte de pornire) ───────────────────────────────
+
+def estimate_free_job(transcript_path: Path) -> dict:
+    """Estimeaza numarul de apeluri, tokens si durata pentru un transcript.
+
+    Returneaza {"chunks", "calls", "est_tokens", "est_minutes", "fits_free_tier"}.
+    """
+    if transcript_path.suffix.lower() == ".vtt":
+        text = extract_vtt_text(transcript_path)
+    else:
+        text = extract_docx_text(transcript_path)
+
+    chunk_chars = _chunk_size_chars()
+    chunks = max(1, len(_split_chunks(text, chunk_chars)))
+    calls = chunks + 2  # metadata + map + reduce
+
+    avg_call_tokens = (
+        int(chunk_chars / ROMANIAN_CHARS_PER_TOKEN)
+        + PROMPT_RESERVE_TOKENS
+        + OUT_TOKENS["map"]
+    )
+    est_tokens = calls * avg_call_tokens
+    return {
+        "chunks": chunks,
+        "calls": calls,
+        "est_tokens": est_tokens,
+        "est_minutes": max(1, round(calls * CALL_DELAY_S / 60)),
+        "fits_free_tier": est_tokens <= MAX_FREE_TOKENS_PER_JOB,
+    }
+
+
 # ── Pipeline principal ─────────────────────────────────────────────────────────
 
 async def run_minuta_free_pipeline(
@@ -303,7 +374,7 @@ async def run_minuta_free_pipeline(
     meta_raw = await _call_groq(
         client, "extract_meeting_metadata.md",
         f"---TRANSCRIPT (inceput)---\n{text[:int(chunk_chars * 0.7)]}",
-        state,
+        state, OUT_TOKENS["metadata"],
     )
     meta_raw = _parse_json(meta_raw)
 
@@ -316,7 +387,7 @@ async def run_minuta_free_pipeline(
         raw = await _call_groq(
             client, "map_chunk_notes.md",
             f"---FRAGMENT {i}/{total}---\n{chunk}",
-            state,
+            state, OUT_TOKENS["map"],
         )
         try:
             notes.append(_parse_json(raw))
@@ -331,12 +402,18 @@ async def run_minuta_free_pipeline(
     await asyncio.sleep(CALL_DELAY_S)
     if on_step:
         await on_step("synthesis")
-    notes = _compress_notes(notes, max_chars=int(chunk_chars * 0.9))
+    # notitele trebuie sa incapa alaturi de prompt si de output-ul mare al sintezei
+    reduce_input_budget = _min_tpm() - PROMPT_RESERVE_TOKENS - OUT_TOKENS["reduce"]
+    notes = _compress_notes(
+        notes, max_chars=int(reduce_input_budget * ROMANIAN_CHARS_PER_TOKEN * 0.9)
+    )
     notes_text = "\n\n".join(
         f"---FRAGMENT {i}/{total}---\n{json.dumps(n, ensure_ascii=False)}"
         for i, n in enumerate(notes, start=1)
     )
-    final_raw = await _call_groq(client, "reduce_synthesis.md", notes_text, state)
+    final_raw = await _call_groq(
+        client, "reduce_synthesis.md", notes_text, state, OUT_TOKENS["reduce"]
+    )
     final = _parse_json(final_raw)
 
     if on_step:
