@@ -41,6 +41,17 @@ MODEL_TPM = {
     "llama-3.3-70b-versatile": 12_000,
 }
 
+# Cand limita ZILNICA (TPD) a modelului curent e atinsa, trecem automat pe
+# urmatorul — fiecare model are cota zilnica separata (200k gpt-oss, 100k llama)
+FALLBACK_CHAIN = [GROQ_MODEL] + [
+    m for m in ("llama-3.3-70b-versatile", "openai/gpt-oss-120b") if m != GROQ_MODEL
+]
+
+
+def _next_model(current: str) -> str | None:
+    idx = FALLBACK_CHAIN.index(current) if current in FALLBACK_CHAIN else -1
+    return FALLBACK_CHAIN[idx + 1] if 0 <= idx < len(FALLBACK_CHAIN) - 1 else None
+
 MAX_OUTPUT_TOKENS = 2_000
 PROMPT_RESERVE_TOKENS = 1_000   # promptul .md + framing
 ROMANIAN_CHARS_PER_TOKEN = 2.2  # romana tokenizeaza mult mai des decat engleza
@@ -50,7 +61,9 @@ CALL_DELAY_S = 62  # limita TPM e pe fereastra de 1 minut
 
 
 def _chunk_size_chars() -> int:
-    tpm = MODEL_TPM.get(GROQ_MODEL, 8_000)
+    # dimensionam dupa cel mai mic TPM din lant, ca bucata sa incapa
+    # si dupa un eventual fallback pe alt model in mijlocul jobului
+    tpm = min(MODEL_TPM.get(m, 8_000) for m in FALLBACK_CHAIN)
     budget_tokens = tpm - PROMPT_RESERVE_TOKENS - MAX_OUTPUT_TOKENS
     return int(budget_tokens * ROMANIAN_CHARS_PER_TOKEN * SAFETY)
 
@@ -91,17 +104,19 @@ def _split_chunks(text: str, chunk_chars: int) -> list[str]:
 
 # ── Apel LLM cu retry ─────────────────────────────────────────────────────────
 
-async def _call_groq(client: AsyncGroq, prompt_file: str, content: str) -> str:
+async def _call_groq(client: AsyncGroq, prompt_file: str, content: str, state: dict) -> str:
+    """state["model"] = modelul curent; la limita zilnica trece pe urmatorul din lant."""
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
-    kwargs = {}
-    if GROQ_MODEL.startswith("openai/"):
-        kwargs["reasoning_effort"] = "low"  # gpt-oss: reasoning tokens conteaza la TPM
 
     last_error: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(4):
+        model = state["model"]
+        kwargs = {}
+        if model.startswith("openai/"):
+            kwargs["reasoning_effort"] = "low"  # gpt-oss: reasoning tokens conteaza la TPM
         try:
             response = await client.chat.completions.create(
-                model=GROQ_MODEL,
+                model=model,
                 messages=[{"role": "user", "content": f"{prompt}\n\n{content}"}],
                 max_tokens=MAX_OUTPUT_TOKENS,
                 temperature=0.1,
@@ -110,8 +125,17 @@ async def _call_groq(client: AsyncGroq, prompt_file: str, content: str) -> str:
             return response.choices[0].message.content
         except RateLimitError as e:
             last_error = e
-            if attempt < 2:
-                await asyncio.sleep(65)  # asteapta resetul ferestrei de 1 minut
+            if "per day" in str(e) or "TPD" in str(e):
+                nxt = _next_model(model)
+                if nxt is None:
+                    raise RuntimeError(
+                        "Limita zilnică gratuită Groq a fost atinsă pentru toate modelele. "
+                        "Reîncercați mâine sau folosiți versiunea cu AI (Claude)."
+                    ) from e
+                state["model"] = nxt
+                continue  # reincearca imediat pe modelul de rezerva (cota separata)
+            if attempt < 3:
+                await asyncio.sleep(65)  # limita pe minut — asteapta resetul ferestrei
     raise last_error
 
 
@@ -271,6 +295,7 @@ async def run_minuta_free_pipeline(
     total = len(chunks)
 
     client = AsyncGroq(api_key=api_key)
+    state = {"model": GROQ_MODEL}  # mutat de _call_groq la fallback pe limita zilnica
 
     # 1) Metadata — doar inceputul sedintei (participanti, subiect, agenda)
     if on_step:
@@ -278,6 +303,7 @@ async def run_minuta_free_pipeline(
     meta_raw = await _call_groq(
         client, "extract_meeting_metadata.md",
         f"---TRANSCRIPT (inceput)---\n{text[:int(chunk_chars * 0.7)]}",
+        state,
     )
     meta_raw = _parse_json(meta_raw)
 
@@ -290,6 +316,7 @@ async def run_minuta_free_pipeline(
         raw = await _call_groq(
             client, "map_chunk_notes.md",
             f"---FRAGMENT {i}/{total}---\n{chunk}",
+            state,
         )
         try:
             notes.append(_parse_json(raw))
@@ -309,7 +336,7 @@ async def run_minuta_free_pipeline(
         f"---FRAGMENT {i}/{total}---\n{json.dumps(n, ensure_ascii=False)}"
         for i, n in enumerate(notes, start=1)
     )
-    final_raw = await _call_groq(client, "reduce_synthesis.md", notes_text)
+    final_raw = await _call_groq(client, "reduce_synthesis.md", notes_text, state)
     final = _parse_json(final_raw)
 
     if on_step:
