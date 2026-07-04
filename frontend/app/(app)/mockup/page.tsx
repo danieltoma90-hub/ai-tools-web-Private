@@ -15,6 +15,9 @@ import {
 
 type State = "idle" | "estimating" | "ready" | "processing" | "done" | "error";
 
+// Sincronizat cu experimental.proxyClientMaxBodySize din next.config.ts
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
 function stepLabel(step: string): string {
   if (step === "parsing") return "Analizez fișierul...";
   if (step === "ai") return "Îmbogățesc descrierile cu AI...";
@@ -48,6 +51,14 @@ export default function MockupPage() {
 
   async function handleEstimate() {
     if (!file) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(
+        `Fișierul are ${(file.size / 1024 / 1024).toFixed(1)}MB — peste limita de 25MB. ` +
+          "Reduceți dimensiunea (de ex. eliminați imaginile din document) și reîncercați."
+      );
+      setState("error");
+      return;
+    }
     setState("estimating");
     setError("");
     cancelledRef.current = false;
