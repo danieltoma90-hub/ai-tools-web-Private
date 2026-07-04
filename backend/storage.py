@@ -1,9 +1,16 @@
+import os
 import re
+import tempfile
+import uuid
 from pathlib import Path
+
 from auth import get_supabase
 
 BUCKET = "documents"
 ALLOWED_TOOLS = {"minuta", "mockup", "scenarii"}
+UPLOADS_BUCKET = "uploads"
+UPLOAD_TOOLS_EXT = {"scenarii": {".docx"}, "mockup": {".docx", ".xlsx"}}
+UPLOAD_MAX_BYTES = 52_428_800  # 50MB — maximul planului free Supabase
 
 
 def _safe_filename(filename: str) -> str:
@@ -89,3 +96,96 @@ def delete_file(storage_path: str) -> None:
     """Șterge un fișier din Supabase Storage."""
     sb = get_supabase()
     sb.storage.from_(BUCKET).remove([storage_path])
+
+
+_uploads_bucket_ready = False
+
+
+def ensure_uploads_bucket() -> None:
+    """Creează bucket-ul privat 'uploads' dacă lipsește. Idempotent, memoizat per proces.
+
+    Curăță best-effort obiectele orfane mai vechi de 24h (upload-uri abandonate
+    înainte de estimate — fluxul normal șterge obiectul la download).
+    """
+    global _uploads_bucket_ready
+    if _uploads_bucket_ready:
+        return
+    sb = get_supabase()
+    existing = {getattr(b, "name", None) or getattr(b, "id", "") for b in sb.storage.list_buckets()}
+    if UPLOADS_BUCKET not in existing:
+        sb.storage.create_bucket(
+            UPLOADS_BUCKET,
+            options={"public": False, "file_size_limit": UPLOAD_MAX_BYTES},
+        )
+    _cleanup_old_uploads(sb)
+    _uploads_bucket_ready = True
+
+
+def _cleanup_old_uploads(sb, max_age_hours: int = 24) -> None:
+    """Șterge obiectele orfane mai vechi de max_age_hours din bucket-ul uploads. Best-effort."""
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+    for folder in UPLOAD_TOOLS_EXT:
+        try:
+            items = sb.storage.from_(UPLOADS_BUCKET).list(folder)
+        except Exception:
+            continue
+        stale = []
+        for item in items:
+            created = item.get("created_at", "")
+            try:
+                created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if created_dt < cutoff:
+                stale.append(f"{folder}/{item['name']}")
+        if stale:
+            try:
+                sb.storage.from_(UPLOADS_BUCKET).remove(stale)
+            except Exception:
+                pass
+
+
+def create_upload_url(tool: str, filename: str) -> dict:
+    """URL semnat de upload pentru fișierul-sursă al unui tool. Obiect: {tool}/{uuid}{ext}."""
+    allowed = UPLOAD_TOOLS_EXT.get(tool)
+    if allowed is None:
+        raise ValueError(f"Tool necunoscut pentru upload: {tool!r}")
+    ext = Path(_safe_filename(filename)).suffix.lower()
+    if ext not in allowed:
+        raise ValueError(f"Extensie neacceptată pentru {tool}: {ext or '(fără extensie)'}")
+
+    ensure_uploads_bucket()
+    storage_path = f"{tool}/{uuid.uuid4().hex}{ext}"
+    sb = get_supabase()
+    signed = sb.storage.from_(UPLOADS_BUCKET).create_signed_upload_url(storage_path)
+    return {
+        "storage_path": storage_path,
+        "signed_url": signed["signed_url"],
+        "token": signed["token"],
+    }
+
+
+def download_upload(storage_path: str) -> Path:
+    """Descarcă un fișier-sursă din bucket-ul 'uploads' într-un temp local și șterge obiectul.
+
+    Storage-ul e releu, nu depozit: după descărcare obiectul dispare (best-effort).
+    """
+    prefix = storage_path.split("/", 1)[0]
+    if prefix not in UPLOAD_TOOLS_EXT or ".." in storage_path:
+        raise ValueError(f"Cale de upload invalidă: {storage_path!r}")
+
+    sb = get_supabase()
+    data = sb.storage.from_(UPLOADS_BUCKET).download(storage_path)
+
+    fd, tmp_name = tempfile.mkstemp(suffix=Path(storage_path).suffix)
+    os.close(fd)
+    path = Path(tmp_name)
+    path.write_bytes(data)
+
+    try:
+        sb.storage.from_(UPLOADS_BUCKET).remove([storage_path])
+    except Exception:
+        pass  # obiect orfan — inofensiv, bucketul e doar releu
+    return path
