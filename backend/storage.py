@@ -2,6 +2,7 @@ import os
 import re
 import tempfile
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from auth import get_supabase
@@ -123,8 +124,6 @@ def ensure_uploads_bucket() -> None:
 
 def _cleanup_old_uploads(sb, max_age_hours: int = 24) -> None:
     """Șterge obiectele orfane mai vechi de max_age_hours din bucket-ul uploads. Best-effort."""
-    from datetime import datetime, timedelta, timezone
-
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
     for folder in UPLOAD_TOOLS_EXT:
         try:
@@ -172,8 +171,16 @@ def download_upload(storage_path: str) -> Path:
 
     Storage-ul e releu, nu depozit: după descărcare obiectul dispare (best-effort).
     """
-    prefix = storage_path.split("/", 1)[0]
-    if prefix not in UPLOAD_TOOLS_EXT or ".." in storage_path:
+    parts = storage_path.split("/")
+    allowed_exts = {ext for exts in UPLOAD_TOOLS_EXT.values() for ext in exts}
+    if (
+        len(parts) != 2
+        or parts[0] not in UPLOAD_TOOLS_EXT
+        or parts[1] in ("", ".", "..")
+        or "%" in storage_path
+        or "\\" in storage_path
+        or Path(parts[1]).suffix.lower() not in allowed_exts
+    ):
         raise ValueError(f"Cale de upload invalidă: {storage_path!r}")
 
     sb = get_supabase()

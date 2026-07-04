@@ -85,6 +85,14 @@ def test_download_upload_rejects_foreign_paths():
         storage.download_upload("documents/altceva.docx")
     with pytest.raises(ValueError):
         storage.download_upload("../etc/passwd")
+    with pytest.raises(ValueError):
+        storage.download_upload("scenarii/%2e%2e/etc/passwd")   # traversal URL-encoded
+    with pytest.raises(ValueError):
+        storage.download_upload("scenarii/a/b.docx")            # adancime > 2
+    with pytest.raises(ValueError):
+        storage.download_upload("scenarii/abc.exe")             # extensie in afara whitelist-ului
+    with pytest.raises(ValueError):
+        storage.download_upload("scenarii/")                    # segment gol
 
 
 def test_ensure_uploads_bucket_cleans_old_orphans():
@@ -104,3 +112,5 @@ def test_ensure_uploads_bucket_cleans_old_orphans():
     with patch("storage.get_supabase", return_value=sb):
         storage.ensure_uploads_bucket()
     sb.storage.from_.return_value.remove.assert_called_once_with(["scenarii/vechi.docx"])
+    removed = sb.storage.from_.return_value.remove.call_args[0][0]
+    assert "scenarii/nou.docx" not in removed
