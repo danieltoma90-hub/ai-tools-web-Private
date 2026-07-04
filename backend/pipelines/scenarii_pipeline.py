@@ -56,6 +56,93 @@ def _extract_structure(docx_path: Path) -> dict[str, list[dict]]:
     return dict(modules)
 
 
+CHUNK_INPUT_TOKENS = 15_000  # input maxim per apel AI (~33k caractere)
+
+
+def _cap_tokens(cap: dict) -> int:
+    chars = len(cap["titlu"]) + sum(len(t) for t in cap["text"])
+    for sub in cap["subcapitole"]:
+        chars += len(sub["titlu"]) + sum(len(t) for t in sub["text"])
+    return llm_client.estimate_tokens(" " * chars)
+
+
+def _split_huge_sub(sub: dict) -> list[dict]:
+    """Sparge un subcapitol urias pe paragrafe, in parti sub limita."""
+    parts: list[dict] = []
+    current: list[str] = []
+    current_tokens = 0
+    for para in sub["text"]:
+        p_tokens = llm_client.estimate_tokens(para)
+        if current and current_tokens + p_tokens > CHUNK_INPUT_TOKENS:
+            titlu = sub["titlu"] if not parts else f"{sub['titlu']} (continuare)"
+            parts.append({"titlu": titlu, "text": current})
+            current, current_tokens = [], 0
+        current.append(para)
+        current_tokens += p_tokens
+    titlu = sub["titlu"] if not parts else f"{sub['titlu']} (continuare)"
+    parts.append({"titlu": titlu, "text": current})
+    return parts
+
+
+def _split_huge_cap(cap: dict) -> list[dict]:
+    """Sparge un capitol urias la granite de subcapitol (si mai jos, pe paragrafe)."""
+    pieces: list[dict] = []
+    current = {"titlu": cap["titlu"], "text": list(cap["text"]), "subcapitole": []}
+    current_tokens = _cap_tokens(current)
+
+    subs: list[dict] = []
+    for sub in cap["subcapitole"]:
+        sub_tokens = llm_client.estimate_tokens(
+            " " * (len(sub["titlu"]) + sum(len(t) for t in sub["text"]))
+        )
+        if sub_tokens > CHUNK_INPUT_TOKENS:
+            subs.extend(_split_huge_sub(sub))
+        else:
+            subs.append(sub)
+
+    for sub in subs:
+        sub_tokens = llm_client.estimate_tokens(
+            " " * (len(sub["titlu"]) + sum(len(t) for t in sub["text"]))
+        )
+        if current["subcapitole"] and current_tokens + sub_tokens > CHUNK_INPUT_TOKENS:
+            pieces.append(current)
+            current = {"titlu": f"{cap['titlu']} (continuare)", "text": [], "subcapitole": []}
+            current_tokens = 0
+        current["subcapitole"].append(sub)
+        current_tokens += sub_tokens
+    pieces.append(current)
+    return pieces
+
+
+def _pack_chunks(structure: dict[str, list[dict]]) -> list[dict]:
+    """Grupeaza capitolele fiecarui modul in bucati <= CHUNK_INPUT_TOKENS.
+
+    Granite naturale: capitol (H2); capitol urias -> subcapitole; subcapitol
+    urias -> paragrafe. Invariant: niciun paragraf pierdut sau duplicat.
+    """
+    chunks: list[dict] = []
+    for modul, capitole in structure.items():
+        pieces: list[dict] = []
+        for cap in capitole:
+            if _cap_tokens(cap) > CHUNK_INPUT_TOKENS:
+                pieces.extend(_split_huge_cap(cap))
+            else:
+                pieces.append(cap)
+
+        current: list[dict] = []
+        current_tokens = 0
+        for cap in pieces:
+            cap_tokens = _cap_tokens(cap)
+            if current and current_tokens + cap_tokens > CHUNK_INPUT_TOKENS:
+                chunks.append({"modul": modul, "capitole": current})
+                current, current_tokens = [], 0
+            current.append(cap)
+            current_tokens += cap_tokens
+        if current:
+            chunks.append({"modul": modul, "capitole": current})
+    return chunks
+
+
 CALL_OVERHEAD_TOKENS = 1200   # system prompt + structura JSON ceruta
 OUT_TOKENS_PER_MODULE = 6000  # buget de raspuns per modul H1
 

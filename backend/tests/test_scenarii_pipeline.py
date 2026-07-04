@@ -204,3 +204,89 @@ async def test_run_pipeline_ai_tolerates_null_fields(spec_docx):
         assert ai_rows[0]["dependente"] == "—"
     finally:
         xlsx_path.unlink(missing_ok=True)
+
+
+from pipelines.scenarii_pipeline import CHUNK_INPUT_TOKENS, _pack_chunks
+
+
+def _all_paragraphs(structure):
+    out = []
+    for capitole in structure.values():
+        for cap in capitole:
+            out.extend(cap["text"])
+            for sub in cap["subcapitole"]:
+                out.extend(sub["text"])
+    return out
+
+
+def _chunk_paragraphs(chunks):
+    out = []
+    for ch in chunks:
+        for cap in ch["capitole"]:
+            out.extend(cap["text"])
+            for sub in cap["subcapitole"]:
+                out.extend(sub["text"])
+    return out
+
+
+def test_pack_chunks_small_structure_one_chunk_per_module(spec_docx):
+    from pipelines.scenarii_pipeline import _extract_structure
+    structure = _extract_structure(spec_docx)
+    chunks = _pack_chunks(structure)
+    # fixture mica: cate un chunk per modul
+    assert len(chunks) == 2
+    assert chunks[0]["modul"] == "Modul Achizitii"
+    assert _chunk_paragraphs(chunks) == _all_paragraphs(structure)
+
+
+def test_pack_chunks_splits_on_chapter_boundaries():
+    # 4 capitole a ~7k tokeni fiecare => 2 per chunk (7k+7k=14k <= limita 15k)
+    big_text = "x" * int(7_000 * 2.2)
+    structure = {
+        "Modul Mare": [
+            {"titlu": f"Cap {i}", "text": [big_text], "subcapitole": []}
+            for i in range(1, 5)
+        ]
+    }
+    chunks = _pack_chunks(structure)
+    assert len(chunks) == 2
+    assert [c["titlu"] for c in chunks[0]["capitole"]] == ["Cap 1", "Cap 2"]
+    assert [c["titlu"] for c in chunks[1]["capitole"]] == ["Cap 3", "Cap 4"]
+    assert _chunk_paragraphs(chunks) == _all_paragraphs(structure)
+
+
+def test_pack_chunks_splits_huge_chapter_at_subchapters():
+    big = "x" * int(9_000 * 2.2)
+    structure = {
+        "Modul Mare": [{
+            "titlu": "Cap Urias",
+            "text": [],
+            "subcapitole": [
+                {"titlu": f"Sub {i}", "text": [big]} for i in range(1, 4)
+            ],
+        }]
+    }
+    chunks = _pack_chunks(structure)
+    assert len(chunks) >= 2
+    # titlul capitolului apare in fiecare parte (prima intacta, urmatoarele "(continuare)")
+    titles = [cap["titlu"] for ch in chunks for cap in ch["capitole"]]
+    assert titles[0] == "Cap Urias"
+    assert all(t == "Cap Urias" or t == "Cap Urias (continuare)" for t in titles)
+    assert _chunk_paragraphs(chunks) == _all_paragraphs(structure)
+
+
+def test_pack_chunks_splits_huge_subchapter_by_paragraphs():
+    para = "x" * int(4_000 * 2.2)
+    structure = {
+        "Modul Mare": [{
+            "titlu": "Cap",
+            "text": [],
+            "subcapitole": [{"titlu": "Sub Urias", "text": [para] * 10}],  # ~40k tokeni
+        }]
+    }
+    chunks = _pack_chunks(structure)
+    assert len(chunks) >= 3
+    subs = [s["titlu"] for ch in chunks for cap in ch["capitole"] for s in cap["subcapitole"]]
+    assert subs[0] == "Sub Urias"
+    assert all(t in ("Sub Urias", "Sub Urias (continuare)") for t in subs)
+    assert _chunk_paragraphs(chunks) == _all_paragraphs(structure)
