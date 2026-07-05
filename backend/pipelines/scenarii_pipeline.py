@@ -86,6 +86,26 @@ def _split_huge_sub(sub: dict) -> list[dict]:
 
 def _split_huge_cap(cap: dict) -> list[dict]:
     """Sparge un capitol urias la granite de subcapitol (si mai jos, pe paragrafe)."""
+    # Text propriu urias -> il spargem direct pe paragrafe (capitol fara/pe langa subcapitole)
+    own_tokens = llm_client.estimate_tokens(
+        " " * (len(cap["titlu"]) + sum(len(t) for t in cap["text"]))
+    )
+    if own_tokens > CHUNK_INPUT_TOKENS:
+        text_parts = _split_huge_sub({"titlu": cap["titlu"], "text": cap["text"]})
+        pieces = [
+            {"titlu": p["titlu"], "text": p["text"], "subcapitole": []}
+            for p in text_parts
+        ]
+        if cap["subcapitole"]:
+            pieces.extend(
+                _split_huge_cap({
+                    "titlu": f"{cap['titlu']} (continuare)",
+                    "text": [],
+                    "subcapitole": cap["subcapitole"],
+                })
+            )
+        return pieces
+
     pieces: list[dict] = []
     current = {"titlu": cap["titlu"], "text": list(cap["text"]), "subcapitole": []}
     current_tokens = _cap_tokens(current)

@@ -290,3 +290,31 @@ def test_pack_chunks_splits_huge_subchapter_by_paragraphs():
     assert subs[0] == "Sub Urias"
     assert all(t in ("Sub Urias", "Sub Urias (continuare)") for t in subs)
     assert _chunk_paragraphs(chunks) == _all_paragraphs(structure)
+
+
+def test_pack_chunks_splits_huge_chapter_body_without_subchapters():
+    para = "x" * int(4_000 * 2.2)
+    structure = {
+        "Modul Mare": [{"titlu": "Cap Text Mare", "text": [para] * 10, "subcapitole": []}]
+    }
+    chunks = _pack_chunks(structure)
+    assert len(chunks) >= 3
+    titles = [cap["titlu"] for ch in chunks for cap in ch["capitole"]]
+    assert titles[0] == "Cap Text Mare"
+    assert all(t in ("Cap Text Mare", "Cap Text Mare (continuare)") for t in titles)
+    assert _chunk_paragraphs(chunks) == _all_paragraphs(structure)
+
+
+def test_pack_chunks_huge_body_plus_subchapters_keeps_order():
+    para = "x" * int(4_000 * 2.2)
+    structure = {
+        "Modul Mare": [{
+            "titlu": "Cap Mixt",
+            "text": [f"BODY-{i}" + para for i in range(8)],
+            "subcapitole": [{"titlu": "Sub 1", "text": ["SUB-text " + para]}],
+        }]
+    }
+    chunks = _pack_chunks(structure)
+    flat = _chunk_paragraphs(chunks)
+    assert flat == _all_paragraphs(structure)  # ordine: body-urile inaintea sub-textului
+    assert flat[-1].startswith("SUB-text")
