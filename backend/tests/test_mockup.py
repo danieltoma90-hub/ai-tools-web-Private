@@ -41,6 +41,21 @@ async def test_estimate_wrong_format_returns_422(client):
     assert response.status_code == 422
 
 
+async def test_estimate_missing_upload_returns_422(client):
+    app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
+    try:
+        with patch("routers.mockup.download_upload", side_effect=Exception("object not found")):
+            response = await client.post(
+                "/api/mockup/estimate",
+                json={"storage_path": "mockup/lipsa.docx", "filename": "spec.docx"},
+                headers={"Authorization": "Bearer fake"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+    assert "nu a fost găsit" in response.json()["detail"]
+
+
 async def test_generate_with_expired_estimate_returns_404(client):
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
