@@ -22,6 +22,8 @@ def test_estimate_tokens_romanian_heuristic():
 
 
 def test_budget_counter_and_remaining(monkeypatch):
+    monkeypatch.delenv("LLM_DAILY_TOKEN_BUDGET", raising=False)
+    assert llm_client.daily_budget() == 2_000_000
     monkeypatch.setenv("LLM_DAILY_TOKEN_BUDGET", "1000")
     assert llm_client.remaining_budget() == 1000
     llm_client.add_usage(300)

@@ -73,7 +73,8 @@ def test_estimate_scenarii_job(spec_docx, monkeypatch):
 
     est = estimate_scenarii_job(spec_docx)
     assert est["modules"] == 2
-    assert est["est_tokens"] > 2 * 7200  # overhead + output per modul
+    assert est["calls"] == 2
+    assert est["est_tokens"] > 2 * 7200  # overhead + output per apel
     assert est["est_minutes"] >= 1
     assert est["fits_budget"] is True
 
@@ -124,13 +125,13 @@ async def test_run_pipeline_ai_generates_from_llm(spec_docx):
     with patch("pipelines.scenarii_pipeline.llm_client.chat", new=AsyncMock(return_value=_AI_RESPONSE)) as mock_chat:
         xlsx_path, scenarios = await run_scenarii_pipeline(spec_docx, use_ai=True, on_step=steps.append)
     try:
-        assert mock_chat.await_count == 2  # un apel per modul H1
+        assert mock_chat.await_count == 2  # un apel per chunk (2 module mica = 2 chunks)
         # 2 module x 2 scenarii din mock
         assert len(scenarios) == 4
         assert scenarios[0]["id"] == "TC-001"
         assert scenarios[0]["ai"] is True
         assert scenarios[0]["titlu_scenariu"] == "Introducere factura valida"
-        assert any(s.startswith("module:1/2:") for s in steps)
+        assert any(s.startswith("chunk:1/2:") for s in steps)
         assert "building" in steps
 
         wb = openpyxl.load_workbook(str(xlsx_path), data_only=True)
@@ -165,6 +166,47 @@ async def test_run_pipeline_ai_falls_back_per_module(spec_docx):
         assert all("fără AI" in s["observatii"] for s in stub_rows)
     finally:
         xlsx_path.unlink(missing_ok=True)
+
+
+async def test_run_pipeline_ai_fallback_per_chunk():
+    # 2 chunks in acelasi modul; al doilea apel pica -> doar capitolele lui devin stub
+    big_text = "x" * int(10_000 * 2.2)
+    structure = {
+        "Modul Mare": [
+            {"titlu": "Cap A", "text": [big_text], "subcapitole": []},
+            {"titlu": "Cap B", "text": [big_text], "subcapitole": []},
+        ]
+    }
+    calls = {"n": 0}
+
+    async def flaky(system, user, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _AI_RESPONSE
+        raise RuntimeError("Eroare LLM (429)")
+
+    from docx import Document as WordDoc
+    import tempfile, os
+    doc = WordDoc()
+    doc.add_heading("Modul Mare", level=1)
+    for titlu in ("Cap A", "Cap B"):
+        doc.add_heading(titlu, level=2)
+        doc.add_paragraph(big_text)
+    fd, name = tempfile.mkstemp(suffix=".docx"); os.close(fd)
+    doc.save(name)
+
+    with patch("pipelines.scenarii_pipeline.llm_client.chat", side_effect=flaky):
+        xlsx_path, scenarios = await run_scenarii_pipeline(Path(name), use_ai=True)
+    try:
+        assert calls["n"] == 2
+        ai_rows = [s for s in scenarios if s["ai"]]
+        stub_rows = [s for s in scenarios if not s["ai"]]
+        assert len(ai_rows) == 2          # din _AI_RESPONSE la primul chunk
+        assert len(stub_rows) == 1        # Cap B -> stub
+        assert "fără AI" in stub_rows[0]["observatii"]
+    finally:
+        xlsx_path.unlink(missing_ok=True)
+        Path(name).unlink(missing_ok=True)
 
 
 async def test_run_pipeline_without_ai_keeps_stub_behavior(spec_docx):

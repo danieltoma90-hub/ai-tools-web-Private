@@ -39,7 +39,7 @@ def _api_key() -> str:
 
 
 def daily_budget() -> int:
-    return int(os.environ.get("LLM_DAILY_TOKEN_BUDGET", "500000"))
+    return int(os.environ.get("LLM_DAILY_TOKEN_BUDGET", "2000000"))
 
 
 def _usage_today() -> int:

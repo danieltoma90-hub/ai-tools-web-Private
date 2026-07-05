@@ -164,7 +164,7 @@ def _pack_chunks(structure: dict[str, list[dict]]) -> list[dict]:
 
 
 CALL_OVERHEAD_TOKENS = 1200   # system prompt + structura JSON ceruta
-OUT_TOKENS_PER_MODULE = 6000  # buget de raspuns per modul H1
+OUT_TOKENS_PER_CALL = 6000  # buget de raspuns per apel AI
 
 
 class _Scenariu(BaseModel):
@@ -194,8 +194,11 @@ Răspunde DOAR cu JSON valid, fără alt text:
 "prioritate": "Critical"|"High"|"Medium"|"Low", "dependente": "...", "observatii": "..."}]}"""
 
 
-def _module_prompt(modul: str, capitole: list[dict]) -> str:
-    lines = [f"MODUL: {modul}", ""]
+def _chunk_prompt(modul: str, capitole: list[dict], part: int, total: int) -> str:
+    header = f"MODUL: {modul}"
+    if total > 1:
+        header += f" (partea {part} din {total})"
+    lines = [header, ""]
     for cap in capitole:
         lines.append(f"CAPITOL: {cap['titlu']}")
         lines.extend(cap["text"])
@@ -221,9 +224,9 @@ def _module_stubs(modul: str, capitole: list[dict], nota: str = "") -> list[dict
     return stubs
 
 
-async def _generate_module_ai(modul: str, capitole: list[dict]) -> list[dict]:
+async def _generate_chunk_ai(modul: str, capitole: list[dict], part: int, total: int) -> list[dict]:
     content = await llm_client.chat(
-        _SYSTEM_PROMPT, _module_prompt(modul, capitole), max_tokens=OUT_TOKENS_PER_MODULE
+        _SYSTEM_PROMPT, _chunk_prompt(modul, capitole, part, total), max_tokens=OUT_TOKENS_PER_CALL
     )
     data = llm_client.parse_json(content)
     items = data.get("scenarii", [])
@@ -249,15 +252,17 @@ def _structure_chars(structure: dict[str, list[dict]]) -> int:
 
 
 def estimate_scenarii_job(docx_path: Path) -> dict:
-    """Pre-check: tokeni estimați, module și dacă încape în bugetul zilnic gratuit."""
+    """Pre-check: tokeni estimați, apeluri, module și dacă încape în bugetul zilnic."""
     structure = _extract_structure(docx_path)
-    modules = max(1, len(structure))
+    chunks = _pack_chunks(structure)
+    calls = max(1, len(chunks))
     input_tokens = llm_client.estimate_tokens(" " * _structure_chars(structure))
-    est_tokens = input_tokens + modules * (CALL_OVERHEAD_TOKENS + OUT_TOKENS_PER_MODULE)
+    est_tokens = input_tokens + calls * (CALL_OVERHEAD_TOKENS + OUT_TOKENS_PER_CALL)
     return {
         "est_tokens": est_tokens,
-        "modules": modules,
-        "est_minutes": max(1, round(modules * 25 / 60)),
+        "calls": calls,
+        "modules": max(1, len(structure)),
+        "est_minutes": max(1, round(calls * 30 / 60)),
         "fits_budget": est_tokens <= llm_client.remaining_budget(),
     }
 
@@ -336,33 +341,47 @@ async def run_scenarii_pipeline(
 ) -> tuple[Path, list[dict]]:
     """DOCX spec → Excel cu scenarii de testare. Returns (xlsx_path, scenarios).
 
-    use_ai=True: un apel Mistral per modul H1, cu fallback la stub-uri per modul.
+    use_ai=True: un apel Mistral per bucată (chunk), cu fallback la stub-uri per bucată.
     use_ai=False: stub-urile deterministe de azi (plan B garantat).
     """
     structure = _extract_structure(docx_path)
 
     scenarios: list[dict] = []
-    module_items = list(structure.items())
-    for idx, (modul, capitole) in enumerate(module_items, start=1):
-        if on_step:
-            on_step(f"module:{idx}/{len(module_items)}:{modul}")
-        if use_ai:
+    if use_ai:
+        chunks = _pack_chunks(structure)
+        # numarul partii in cadrul modulului, pentru antetul promptului
+        per_module_totals: dict[str, int] = {}
+        for ch in chunks:
+            per_module_totals[ch["modul"]] = per_module_totals.get(ch["modul"], 0) + 1
+        per_module_seen: dict[str, int] = {}
+
+        for idx, ch in enumerate(chunks, start=1):
+            modul = ch["modul"]
+            per_module_seen[modul] = per_module_seen.get(modul, 0) + 1
+            if on_step:
+                on_step(f"chunk:{idx}/{len(chunks)}:{modul}")
             try:
-                generated = await _generate_module_ai(modul, capitole)
+                generated = await _generate_chunk_ai(
+                    modul, ch["capitole"],
+                    part=per_module_seen[modul], total=per_module_totals[modul],
+                )
                 for s in generated:
                     s["ai"] = True
                 scenarios.extend(generated)
-                continue
             except Exception:
-                fallback = _module_stubs(modul, capitole, nota="Generat fără AI (fallback — apelul AI a eșuat)")
+                fallback = _module_stubs(
+                    modul, ch["capitole"],
+                    nota="Generat fără AI (fallback — apelul AI a eșuat)",
+                )
                 for s in fallback:
                     s["ai"] = False
                 scenarios.extend(fallback)
-                continue
-        stubs = _module_stubs(modul, capitole)
-        for s in stubs:
-            s["ai"] = False
-        scenarios.extend(stubs)
+    else:
+        for modul, capitole in structure.items():
+            stubs = _module_stubs(modul, capitole)
+            for s in stubs:
+                s["ai"] = False
+            scenarios.extend(stubs)
 
     if not scenarios:
         empty = {
