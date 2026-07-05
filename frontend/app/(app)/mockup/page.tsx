@@ -7,16 +7,17 @@ import ResultPanel from "@/components/ResultPanel";
 import HistoryPanel from "@/components/HistoryPanel";
 import EstimateCard from "@/components/EstimateCard";
 import {
+  uploadSourceFile,
   postMockupEstimate,
   postMockupGenerate,
   getMockupJob,
   type EstimateResponse,
 } from "@/lib/api";
 
-type State = "idle" | "estimating" | "ready" | "processing" | "done" | "error";
+type State = "idle" | "uploading" | "estimating" | "ready" | "processing" | "done" | "error";
 
-// Sincronizat cu experimental.proxyClientMaxBodySize din next.config.ts
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+// Limita bucket-ului Supabase (plan free)
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function stepLabel(step: string): string {
   if (step === "parsing") return "Analizez fișierul...";
@@ -53,30 +54,34 @@ export default function MockupPage() {
     if (!file) return;
     if (file.size > MAX_UPLOAD_BYTES) {
       setError(
-        `Fișierul are ${(file.size / 1024 / 1024).toFixed(1)}MB — peste limita de 25MB. ` +
+        `Fișierul are ${(file.size / 1024 / 1024).toFixed(1)}MB — peste limita de 50MB a storage-ului. ` +
           "Reduceți dimensiunea (de ex. eliminați imaginile din document) și reîncercați."
       );
       setState("error");
       return;
     }
-    setState("estimating");
+    setState("uploading");
     setError("");
     cancelledRef.current = false;
     try {
-      let est: EstimateResponse;
+      let uploaded: { storage_path: string };
       try {
-        est = await postMockupEstimate(file);
+        uploaded = await uploadSourceFile(file, "mockup");
       } catch (initErr) {
+        // Render free tier adoarme — retry automat după 5s (sign-ul trece prin proxy)
         const msg = initErr instanceof Error ? initErr.message : "";
         if (isColdStartError(msg)) {
-          setProgressLabel("Server pornit, se retransmite automat...");
           await new Promise((r) => setTimeout(r, 5000));
           if (cancelledRef.current) return;
-          est = await postMockupEstimate(file);
+          uploaded = await uploadSourceFile(file, "mockup");
         } else {
           throw initErr;
         }
       }
+      if (cancelledRef.current) return;
+
+      setState("estimating");
+      const est = await postMockupEstimate(uploaded.storage_path, file.name);
       if (cancelledRef.current) return;
       setEstimate(est);
       setState("ready");
@@ -156,6 +161,10 @@ export default function MockupPage() {
               Continuă → Estimare
             </button>
           </div>
+        )}
+
+        {state === "uploading" && (
+          <ProcessingSpinner label="Se încarcă fișierul... (fișierele mari pot dura ~1 minut)" />
         )}
 
         {state === "estimating" && <ProcessingSpinner label="Analizez fișierul..." />}

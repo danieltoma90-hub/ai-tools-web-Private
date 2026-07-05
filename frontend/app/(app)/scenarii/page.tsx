@@ -8,6 +8,7 @@ import HistoryPanel from "@/components/HistoryPanel";
 import EstimateCard from "@/components/EstimateCard";
 import ScenariiPreviewTable from "@/components/ScenariiPreviewTable";
 import {
+  uploadSourceFile,
   postScenariiEstimate,
   postScenariiGenerate,
   getScenariiJob,
@@ -15,14 +16,14 @@ import {
   type Scenariu,
 } from "@/lib/api";
 
-type State = "idle" | "estimating" | "ready" | "processing" | "done" | "error";
+type State = "idle" | "uploading" | "estimating" | "ready" | "processing" | "done" | "error";
 
-// Sincronizat cu experimental.proxyClientMaxBodySize din next.config.ts
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+// Limita bucket-ului Supabase (plan free)
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function stepLabel(step: string): string {
-  const m = step.match(/^module:(\d+)\/(\d+):(.*)$/);
-  if (m) return `Analizez modulul ${m[1]} din ${m[2]}: ${m[3]}...`;
+  const m = step.match(/^chunk:(\d+)\/(\d+):(.*)$/);
+  if (m) return `Generez scenarii — partea ${m[1]} din ${m[2]} (${m[3]})...`;
   if (step === "building") return "Generez documentul Excel...";
   return "Se procesează...";
 }
@@ -55,31 +56,34 @@ export default function ScenariPage() {
     if (!file) return;
     if (file.size > MAX_UPLOAD_BYTES) {
       setError(
-        `Fișierul are ${(file.size / 1024 / 1024).toFixed(1)}MB — peste limita de 25MB. ` +
+        `Fișierul are ${(file.size / 1024 / 1024).toFixed(1)}MB — peste limita de 50MB a storage-ului. ` +
           "Reduceți dimensiunea (de ex. eliminați imaginile din document) și reîncercați."
       );
       setState("error");
       return;
     }
-    setState("estimating");
+    setState("uploading");
     setError("");
     cancelledRef.current = false;
     try {
-      let est: EstimateResponse;
+      let uploaded: { storage_path: string };
       try {
-        est = await postScenariiEstimate(file);
+        uploaded = await uploadSourceFile(file, "scenarii");
       } catch (initErr) {
-        // Render free tier adoarme — retry automat dupa 5s
+        // Render free tier adoarme — retry automat după 5s (sign-ul trece prin proxy)
         const msg = initErr instanceof Error ? initErr.message : "";
         if (isColdStartError(msg)) {
-          setProgressLabel("Server pornit, se retransmite automat...");
           await new Promise((r) => setTimeout(r, 5000));
           if (cancelledRef.current) return;
-          est = await postScenariiEstimate(file);
+          uploaded = await uploadSourceFile(file, "scenarii");
         } else {
           throw initErr;
         }
       }
+      if (cancelledRef.current) return;
+
+      setState("estimating");
+      const est = await postScenariiEstimate(uploaded.storage_path, file.name);
       if (cancelledRef.current) return;
       setEstimate(est);
       setState("ready");
@@ -159,6 +163,10 @@ export default function ScenariPage() {
               Continuă → Estimare
             </button>
           </div>
+        )}
+
+        {state === "uploading" && (
+          <ProcessingSpinner label="Se încarcă fișierul... (fișierele mari pot dura ~1 minut)" />
         )}
 
         {state === "estimating" && <ProcessingSpinner label="Analizez specificația..." />}

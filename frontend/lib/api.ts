@@ -71,6 +71,7 @@ export type EstimateResponse = {
   est_tokens: number;
   est_minutes: number;
   fits_budget: boolean;
+  calls?: number;
   modules?: number;
 };
 
@@ -120,8 +121,42 @@ function postGenerate(path: string, estimateId: string, useAi: boolean) {
   });
 }
 
-export async function postScenariiEstimate(file: File): Promise<EstimateResponse> {
-  return postFile("scenarii/estimate", file) as Promise<EstimateResponse>;
+export async function uploadSourceFile(
+  file: File,
+  tool: "scenarii" | "mockup"
+): Promise<{ storage_path: string }> {
+  const sign = (await apiFetch(`${PROXY}/uploads/sign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: file.name, tool }),
+  })) as { storage_path: string; signed_url: string; token: string };
+
+  const res = await fetch(sign.signed_url, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `Încărcarea fișierului în storage a eșuat (cod ${res.status}). Reîncearcă.`
+    );
+  }
+  return { storage_path: sign.storage_path };
+}
+
+function postEstimate(path: string, storagePath: string, filename: string) {
+  return apiFetch(`${PROXY}/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ storage_path: storagePath, filename }),
+  });
+}
+
+export async function postScenariiEstimate(
+  storagePath: string,
+  filename: string
+): Promise<EstimateResponse> {
+  return postEstimate("scenarii/estimate", storagePath, filename) as Promise<EstimateResponse>;
 }
 
 export async function postScenariiGenerate(
@@ -135,8 +170,11 @@ export async function getScenariiJob(jobId: string): Promise<ScenariiJob> {
   return apiFetch(`${PROXY}/scenarii/job/${jobId}`) as Promise<ScenariiJob>;
 }
 
-export async function postMockupEstimate(file: File): Promise<EstimateResponse> {
-  return postFile("mockup/estimate", file) as Promise<EstimateResponse>;
+export async function postMockupEstimate(
+  storagePath: string,
+  filename: string
+): Promise<EstimateResponse> {
+  return postEstimate("mockup/estimate", storagePath, filename) as Promise<EstimateResponse>;
 }
 
 export async function postMockupGenerate(
