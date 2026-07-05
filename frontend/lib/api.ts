@@ -93,7 +93,7 @@ export type Scenariu = {
 
 export type ScenariiJob = {
   status: "processing" | "done" | "error";
-  step?: string; // "module:2/5:Nume" | "building"
+  step?: string; // "chunk:2/5:Nume" | "building"
   filename?: string;
   xlsx_b64?: string;
   scenarios?: Scenariu[];

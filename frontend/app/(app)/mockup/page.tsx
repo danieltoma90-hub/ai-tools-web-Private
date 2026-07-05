@@ -101,11 +101,21 @@ export default function MockupPage() {
     try {
       const { job_id } = await postMockupGenerate(estimate.estimate_id, useAi);
 
+      let pollFailures = 0;
       while (true) {
         await new Promise((r) => setTimeout(r, 2000));
         if (cancelledRef.current) return;
 
-        const job = await getMockupJob(job_id);
+        let job;
+        try {
+          job = await getMockupJob(job_id);
+          pollFailures = 0;
+        } catch (pollErr) {
+          // Jobul continuă pe server — tolerăm până la 3 eșecuri consecutive de polling
+          pollFailures += 1;
+          if (pollFailures >= 3) throw pollErr;
+          continue;
+        }
         if (cancelledRef.current) return;
 
         if (job.step) setProgressLabel(stepLabel(job.step));

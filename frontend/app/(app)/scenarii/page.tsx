@@ -103,11 +103,21 @@ export default function ScenariPage() {
     try {
       const { job_id } = await postScenariiGenerate(estimate.estimate_id, useAi);
 
+      let pollFailures = 0;
       while (true) {
         await new Promise((r) => setTimeout(r, 2000));
         if (cancelledRef.current) return;
 
-        const job = await getScenariiJob(job_id);
+        let job;
+        try {
+          job = await getScenariiJob(job_id);
+          pollFailures = 0;
+        } catch (pollErr) {
+          // Jobul continuă pe server — tolerăm până la 3 eșecuri consecutive de polling
+          pollFailures += 1;
+          if (pollFailures >= 3) throw pollErr;
+          continue;
+        }
         if (cancelledRef.current) return;
 
         if (job.step) setProgressLabel(stepLabel(job.step));

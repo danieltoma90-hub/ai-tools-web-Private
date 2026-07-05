@@ -19,7 +19,7 @@ export default function EstimateCard({ estimate, toolLabel, onAi, onNoAi, onCanc
         </h3>
         <p className="text-sm text-slate-600">
           ~{tokens} tokeni · ~{estimate.est_minutes} min
-          {estimate.calls ? ` · ${estimate.calls} apeluri AI` : ""}
+          {estimate.calls ? ` · ${estimate.calls} ${estimate.calls === 1 ? "apel" : "apeluri"} AI` : ""}
           {estimate.modules ? ` · ${estimate.modules} module` : ""}
         </p>
       </div>

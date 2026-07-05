@@ -139,7 +139,7 @@ async def test_generate_ai_over_budget_returns_422(client, monkeypatch):
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 422
-    assert "buget" in response.json()["detail"].lower() or "cota" in response.json()["detail"].lower()
+    assert "buget" in response.json()["detail"].lower()
 
 
 async def test_job_not_found_returns_404(client):

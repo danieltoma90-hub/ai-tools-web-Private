@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import tempfile
@@ -10,6 +11,8 @@ from docx import Document
 from pydantic import BaseModel
 
 import llm_client
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_structure(docx_path: Path) -> dict[str, list[dict]]:
@@ -368,7 +371,8 @@ async def run_scenarii_pipeline(
                 for s in generated:
                     s["ai"] = True
                 scenarios.extend(generated)
-            except Exception:
+            except Exception as e:
+                logger.warning("chunk %d/%d (%s) fallback pe stub-uri: %s", idx, len(chunks), modul, e)
                 fallback = _module_stubs(
                     modul, ch["capitole"],
                     nota="Generat fără AI (fallback — apelul AI a eșuat)",

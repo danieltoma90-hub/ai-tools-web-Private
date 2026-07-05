@@ -135,7 +135,7 @@ def _cleanup_old_uploads(sb, max_age_hours: int = 24) -> None:
             created = item.get("created_at", "")
             try:
                 created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-            except ValueError:
+            except (ValueError, AttributeError, TypeError):
                 continue
             if created_dt < cutoff:
                 stale.append(f"{folder}/{item['name']}")

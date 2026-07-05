@@ -109,8 +109,8 @@ async def generate_scenarii(
         Path(est["file_path"]).unlink(missing_ok=True)
         raise HTTPException(
             status_code=422,
-            detail="Bugetul zilnic gratuit de tokeni nu ajunge pentru acest fișier. "
-                   "Continuă fără AI sau revino mâine.",
+            detail="Fișierul necesită mai mulți tokeni decât bugetul zilnic gratuit disponibil. "
+                   "Continuă fără AI, revino mâine sau mărește LLM_DAILY_TOKEN_BUDGET.",
         )
 
     user_email = getattr(user, "email", None) or "anonymous"
