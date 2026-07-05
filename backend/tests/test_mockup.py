@@ -9,13 +9,21 @@ SAMPLE = (
     / "skills" / "mockup" / "input"
     / "Ecran generare consum de motorina pe baza de alimentari.docx"
 )
-_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def _sample_tempfile() -> Path:
+    import os as _os, tempfile as _tf
+    fd, name = _tf.mkstemp(suffix=".docx")
+    _os.close(fd)
+    p = Path(name)
+    p.write_bytes(SAMPLE.read_bytes())
+    return p
 
 
 async def test_estimate_without_auth_returns_401(client):
     response = await client.post(
         "/api/mockup/estimate",
-        files={"file": ("t.xlsx", b"PK...", "application/octet-stream")},
+        json={"storage_path": "mockup/x.docx", "filename": "t.xlsx"},
     )
     assert response.status_code == 401
 
@@ -25,7 +33,7 @@ async def test_estimate_wrong_format_returns_422(client):
     try:
         response = await client.post(
             "/api/mockup/estimate",
-            files={"file": ("t.pdf", b"pdf", "application/pdf")},
+            json={"storage_path": "mockup/x.pdf", "filename": "t.pdf"},
             headers={"Authorization": "Bearer fake"},
         )
     finally:
@@ -53,11 +61,12 @@ async def test_estimate_then_generate_then_job_done(client):
 
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
-        est_res = await client.post(
-            "/api/mockup/estimate",
-            files={"file": (SAMPLE.name, SAMPLE.read_bytes(), _DOCX_MIME)},
-            headers={"Authorization": "Bearer fake"},
-        )
+        with patch("routers.mockup.download_upload", return_value=_sample_tempfile()):
+            est_res = await client.post(
+                "/api/mockup/estimate",
+                json={"storage_path": "mockup/x.docx", "filename": SAMPLE.name},
+                headers={"Authorization": "Bearer fake"},
+            )
         assert est_res.status_code == 200
         est = est_res.json()
         assert est["est_tokens"] > 0
@@ -96,11 +105,12 @@ async def test_generate_ai_over_budget_returns_422(client, monkeypatch):
 
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
-        est_res = await client.post(
-            "/api/mockup/estimate",
-            files={"file": (SAMPLE.name, SAMPLE.read_bytes(), _DOCX_MIME)},
-            headers={"Authorization": "Bearer fake"},
-        )
+        with patch("routers.mockup.download_upload", return_value=_sample_tempfile()):
+            est_res = await client.post(
+                "/api/mockup/estimate",
+                json={"storage_path": "mockup/x.docx", "filename": SAMPLE.name},
+                headers={"Authorization": "Bearer fake"},
+            )
         est = est_res.json()
         assert est["fits_budget"] is False
 

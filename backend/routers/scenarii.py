@@ -1,20 +1,24 @@
 import base64
 import logging
-import tempfile
 import traceback
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 import jobs
 from auth import verify_token
 from pipelines.scenarii_pipeline import estimate_scenarii_job, run_scenarii_pipeline
-from storage import upload_file
+from storage import download_upload, upload_file
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class EstimateRequest(BaseModel):
+    storage_path: str
+    filename: str
 
 
 class GenerateRequest(BaseModel):
@@ -24,17 +28,25 @@ class GenerateRequest(BaseModel):
 
 @router.post("/scenarii/estimate")
 async def estimate_scenarii(
-    file: UploadFile = File(...),
+    req: EstimateRequest,
     user=Depends(verify_token),
 ):
-    """Pas 1: încarcă spec-ul, întoarce estimarea de tokeni. Fișierul se păstrează ~10 min."""
-    filename_raw = file.filename or ""
-    if Path(filename_raw).suffix.lower() != ".docx":
+    """Pas 1: fișierul e deja în Supabase Storage (upload direct din browser).
+
+    Îl descărcăm local, estimăm, și-l păstrăm ~10 min pentru generate.
+    """
+    if Path(req.filename).suffix.lower() != ".docx":
         raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .docx")
 
-    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
-        tmp.write(await file.read())
-        input_path = Path(tmp.name)
+    try:
+        input_path = download_upload(req.storage_path)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail="Fișierul încărcat nu a fost găsit în storage — reîncarcă fișierul.",
+        )
 
     try:
         est = estimate_scenarii_job(input_path)
@@ -42,7 +54,7 @@ async def estimate_scenarii(
         input_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=f"Fișier .docx invalid: {e}")
 
-    estimate_id = jobs.save_estimate(input_path, filename_raw, est)
+    estimate_id = jobs.save_estimate(input_path, req.filename, est)
     return {"estimate_id": estimate_id, **est}
 
 

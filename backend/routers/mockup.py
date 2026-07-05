@@ -1,22 +1,26 @@
 import base64
 import logging
-import tempfile
 import traceback
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 import jobs
 from auth import verify_token
 from pipelines.mockup_pipeline import estimate_mockup_job, run_mockup_pipeline
-from storage import upload_file
+from storage import download_upload, upload_file
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 ALLOWED_EXTENSIONS = {".xlsx", ".docx"}
+
+
+class EstimateRequest(BaseModel):
+    storage_path: str
+    filename: str
 
 
 class GenerateRequest(BaseModel):
@@ -26,18 +30,25 @@ class GenerateRequest(BaseModel):
 
 @router.post("/mockup/estimate")
 async def estimate_mockup(
-    file: UploadFile = File(...),
+    req: EstimateRequest,
     user=Depends(verify_token),
 ):
-    """Pas 1: încarcă fișierul, întoarce estimarea de tokeni. Fișierul se păstrează ~10 min."""
-    filename_raw = file.filename or ""
-    ext = Path(filename_raw).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    """Pas 1: fișierul e deja în Supabase Storage (upload direct din browser).
+
+    Îl descărcăm local, estimăm, și-l păstrăm ~10 min pentru generate.
+    """
+    if Path(req.filename).suffix.lower() not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .xlsx sau .docx")
 
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        tmp.write(await file.read())
-        input_path = Path(tmp.name)
+    try:
+        input_path = download_upload(req.storage_path)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail="Fișierul încărcat nu a fost găsit în storage — reîncarcă fișierul.",
+        )
 
     try:
         est = estimate_mockup_job(input_path)
@@ -45,7 +56,7 @@ async def estimate_mockup(
         input_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=f"Fișier invalid: {e}")
 
-    estimate_id = jobs.save_estimate(input_path, filename_raw, est)
+    estimate_id = jobs.save_estimate(input_path, req.filename, est)
     return {"estimate_id": estimate_id, **est}
 
 

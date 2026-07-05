@@ -1,4 +1,6 @@
 import io
+import tempfile
+from pathlib import Path as _P
 from unittest.mock import patch
 
 from docx import Document
@@ -17,13 +19,18 @@ def _spec_bytes() -> bytes:
     return buf.getvalue()
 
 
-_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+def _spec_tempfile() -> str:
+    fd, name = tempfile.mkstemp(suffix=".docx")
+    import os as _os
+    _os.close(fd)
+    _P(name).write_bytes(_spec_bytes())
+    return name
 
 
 async def test_estimate_without_auth_returns_401(client):
     response = await client.post(
         "/api/scenarii/estimate",
-        files={"file": ("spec.docx", _spec_bytes(), _DOCX_MIME)},
+        json={"storage_path": "scenarii/x.docx", "filename": "spec.docx"},
     )
     assert response.status_code == 401
 
@@ -33,7 +40,7 @@ async def test_estimate_wrong_format_returns_422(client):
     try:
         response = await client.post(
             "/api/scenarii/estimate",
-            files={"file": ("spec.pdf", b"pdf", "application/pdf")},
+            json={"storage_path": "scenarii/x.pdf", "filename": "spec.pdf"},
             headers={"Authorization": "Bearer fake"},
         )
     finally:
@@ -41,14 +48,30 @@ async def test_estimate_wrong_format_returns_422(client):
     assert response.status_code == 422
 
 
+async def test_estimate_missing_upload_returns_422(client):
+    app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
+    try:
+        with patch("routers.scenarii.download_upload", side_effect=Exception("object not found")):
+            response = await client.post(
+                "/api/scenarii/estimate",
+                json={"storage_path": "scenarii/lipsa.docx", "filename": "spec.docx"},
+                headers={"Authorization": "Bearer fake"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+    assert "nu a fost găsit" in response.json()["detail"]
+
+
 async def test_estimate_then_generate_then_job_done(client):
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
-        est_res = await client.post(
-            "/api/scenarii/estimate",
-            files={"file": ("spec.docx", _spec_bytes(), _DOCX_MIME)},
-            headers={"Authorization": "Bearer fake"},
-        )
+        with patch("routers.scenarii.download_upload", return_value=_P(_spec_tempfile())):
+            est_res = await client.post(
+                "/api/scenarii/estimate",
+                json={"storage_path": "scenarii/x.docx", "filename": "spec.docx"},
+                headers={"Authorization": "Bearer fake"},
+            )
         assert est_res.status_code == 200
         est = est_res.json()
         assert est["modules"] == 1
@@ -99,11 +122,12 @@ async def test_generate_ai_over_budget_returns_422(client, monkeypatch):
 
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
-        est_res = await client.post(
-            "/api/scenarii/estimate",
-            files={"file": ("spec.docx", _spec_bytes(), _DOCX_MIME)},
-            headers={"Authorization": "Bearer fake"},
-        )
+        with patch("routers.scenarii.download_upload", return_value=_P(_spec_tempfile())):
+            est_res = await client.post(
+                "/api/scenarii/estimate",
+                json={"storage_path": "scenarii/x.docx", "filename": "spec.docx"},
+                headers={"Authorization": "Bearer fake"},
+            )
         est = est_res.json()
         assert est["fits_budget"] is False
 
