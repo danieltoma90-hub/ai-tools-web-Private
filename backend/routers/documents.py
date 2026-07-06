@@ -32,8 +32,8 @@ def delete_document(storage_path: str, user=Depends(verify_token)):
     """Șterge un document din Supabase Storage.
     Utilizatorul poate șterge doar propriile documente (email-ul este în path).
     """
-    user_email = user.get("email", "")
-    safe_owner = user_email.replace("@", "@")  # email as-is
+    # verify_token returnează obiect supabase User, nu dict — .get() ar crăpa
+    user_email = getattr(user, "email", None) or ""
     # Verifică că path-ul conține email-ul utilizatorului curent
     if user_email and f"/{user_email}/" not in storage_path and f"/{user_email.replace('@', '%40')}/" not in storage_path:
         raise HTTPException(status_code=403, detail="Nu poți șterge documentele altora")

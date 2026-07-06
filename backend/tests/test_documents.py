@@ -31,3 +31,41 @@ async def test_documents_returns_list(client):
     assert len(data) == 1
     assert data[0]["name"] == "Minuta_Test.docx"
     assert "download_url" in data[0]
+
+
+class _FakeUser:
+    """Ca obiectul supabase User din productie: are .email, NU are .get()."""
+    email = "ana@totalsoft.ro"
+
+
+@pytest.mark.asyncio
+async def test_delete_document_works_with_user_object(client):
+    app.dependency_overrides[verify_token] = lambda: _FakeUser()
+    try:
+        with patch("routers.documents.delete_file") as mock_del:
+            response = await client.delete(
+                "/api/documents?storage_path=mockup/ana@totalsoft.ro/x.docx",
+                headers={"Authorization": "Bearer fake"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    mock_del.assert_called_once_with("mockup/ana@totalsoft.ro/x.docx")
+
+
+@pytest.mark.asyncio
+async def test_delete_document_foreign_owner_returns_403(client):
+    app.dependency_overrides[verify_token] = lambda: _FakeUser()
+    try:
+        with patch("routers.documents.delete_file") as mock_del:
+            response = await client.delete(
+                "/api/documents?storage_path=mockup/altcineva@totalsoft.ro/x.docx",
+                headers={"Authorization": "Bearer fake"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 403
+    mock_del.assert_not_called()
