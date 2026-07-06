@@ -110,6 +110,19 @@ vercel --prod
 - Build: `pip install -r requirements.txt`
 - Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 
+## Fiabilitate / Keep-alive (IMPORTANT — nu dezactivați)
+
+Free tier-urile „mor" fără trafic: **Render adoarme după 15 min** (cold start 30-60s), iar **Supabase se PAUZEAZĂ după 7 zile fără activitate în DB** (login/storage picate; reactivare doar manuală din dashboard-ul Supabase).
+
+Soluția activă (2026-07-06):
+- `GET /health` face și un ping Supabase (`list_buckets`) → un singur ping ține treze ambele platforme. Răspuns: `{"status":"ok","supabase":"ok"}`.
+- **2 joburi pe cron-job.org** (contul lui Daniel) pinguie `https://ai-tools-backend-3vvz.onrender.com/health`:
+  1. L-V, 6:30–20:30, la 10 min (Render treaz în orele de lucru; ~340h/lună din 750 — NU treceți pe 24/7, depășirea celor 750h SUSPENDĂ serviciul)
+  2. zilnic la 6 ore (Supabase activ non-stop)
+- Notificările email de la cron-job.org = monitorizare gratuită a producției.
+
+Dacă joburile dispar: Render redoarme în 15 min (doar UX mai lent), dar **Supabase se pauzează în 7 zile** — asta rupe complet aplicația. Verificare rapidă: `curl https://ai-tools-backend-3vvz.onrender.com/health` + istoricul din cron-job.org.
+
 ## Useri Supabase
 - **Admin**: `daniel.toma@totalsoft.ro` / `claudiu`
 - Adăugare useri noi: pagina `/invite` din app (trimite email cu link, doar `@totalsoft.ro`)
