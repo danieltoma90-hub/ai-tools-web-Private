@@ -4,6 +4,8 @@ import { getDocuments } from "@/lib/api";
 
 type Doc = {
   name: string;
+  tool: string;
+  storage_path: string;
   created_at: string;
   size: number;
   download_url: string;
@@ -19,14 +21,6 @@ const TOOL_LABELS: Record<string, string> = {
   mockup: "Mockup",
   scenarii: "Scenarii",
 };
-
-function detectTool(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.startsWith("minuta")) return "minuta";
-  if (lower.includes("scenar")) return "scenarii";
-  if (lower.endsWith(".html") || lower.includes("ecran")) return "mockup";
-  return "general";
-}
 
 function formatBytes(b: number) {
   if (b < 1024) return `${b} B`;
@@ -56,9 +50,7 @@ export default function RepositoryPage() {
   }, []);
 
   const filtered =
-    filter === "toate"
-      ? docs
-      : docs.filter((d) => detectTool(d.name) === filter);
+    filter === "toate" ? docs : docs.filter((d) => d.tool === filter);
 
   return (
     <div className="p-6">
@@ -120,12 +112,11 @@ export default function RepositoryPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtered.map((doc) => {
-                const tool = detectTool(doc.name);
                 return (
-                  <tr key={doc.name} className="hover:bg-slate-50">
+                  <tr key={doc.storage_path ?? doc.name} className="hover:bg-slate-50">
                     <td className="px-4 py-3">
-                      <span className="text-base">
-                        {TOOL_ICONS[tool] ?? "📄"}
+                      <span className="text-base" title={TOOL_LABELS[doc.tool] ?? doc.tool}>
+                        {TOOL_ICONS[doc.tool] ?? "📄"}
                       </span>
                     </td>
                     <td className="px-4 py-3 font-medium text-[#1e3a5f] max-w-xs truncate">
