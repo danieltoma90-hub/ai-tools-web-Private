@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from auth import verify_token
-from storage import list_files, get_signed_url, delete_file
+from storage import list_files, get_signed_urls, delete_file
 
 router = APIRouter()
 
@@ -8,13 +8,14 @@ router = APIRouter()
 @router.get("/documents")
 def get_documents(tool: str | None = None, user=Depends(verify_token)):
     files = list_files(tool=tool)
+    paths = [f.get("storage_path", "") for f in files]
+    try:
+        urls = get_signed_urls(paths)
+    except Exception:
+        urls = {}
     result = []
     for f in files:
         storage_path = f.get("storage_path", "")
-        try:
-            download_url = get_signed_url(storage_path)
-        except Exception:
-            download_url = ""
         result.append({
             "name": f["name"],
             "tool": f.get("tool", ""),
@@ -22,7 +23,7 @@ def get_documents(tool: str | None = None, user=Depends(verify_token)):
             "storage_path": storage_path,
             "created_at": f.get("created_at", ""),
             "size": (f.get("metadata") or {}).get("size", 0),
-            "download_url": download_url,
+            "download_url": urls.get(storage_path, ""),
         })
     return result
 

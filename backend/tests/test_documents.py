@@ -13,12 +13,14 @@ async def test_documents_without_auth_returns_401(client):
 @pytest.mark.asyncio
 async def test_documents_returns_list(client):
     mock_files = [
-        {"name": "Minuta_Test.docx", "created_at": "2026-06-25T14:00:00", "metadata": {"size": 5000}},
+        {"name": "Minuta_Test.docx", "storage_path": "minuta/ana/Minuta_Test.docx",
+         "created_at": "2026-06-25T14:00:00", "metadata": {"size": 5000}},
     ]
     app.dependency_overrides[verify_token] = lambda: {"id": "user1"}
     try:
         with patch("routers.documents.list_files", return_value=mock_files), \
-             patch("routers.documents.get_signed_url", return_value="https://supabase.co/signed"):
+             patch("routers.documents.get_signed_urls",
+                   return_value={"minuta/ana/Minuta_Test.docx": "https://supabase.co/signed"}):
             response = await client.get(
                 "/api/documents",
                 headers={"Authorization": "Bearer fake"}

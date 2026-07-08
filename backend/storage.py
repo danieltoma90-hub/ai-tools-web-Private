@@ -2,6 +2,7 @@ import os
 import re
 import tempfile
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -46,42 +47,48 @@ def list_files(tool: str | None = None) -> list[dict]:
 
     Structura bucket: {tool}/{user_email}/{filename}
     Acceptă și vechea structură flat {tool}/{filename} (legacy).
+    Listările pe foldere ruleaza in paralel (fiecare e un HTTP round-trip).
     """
     sb = get_supabase()
     tools = [tool] if tool else sorted(ALLOWED_TOOLS)
     all_files = []
 
-    for t in tools:
+    def _list_folder(path: str) -> list[dict]:
         try:
-            items = sb.storage.from_(BUCKET).list(t)
+            return sb.storage.from_(BUCKET).list(path)
         except Exception:
-            continue
+            return []
 
-        for item in items:
-            name = item.get("name", "")
-            if not name:
-                continue
-            meta = item.get("metadata") or {}
-            if meta.get("size"):
-                # Fisier direct in folderul tool (structura legacy flat)
-                item["tool"] = t
-                item["owner"] = "—"
-                item["storage_path"] = f"{t}/{name}"
-                all_files.append(item)
-            else:
-                # Subfolder = email utilizator; listam fisierele din interior
-                owner_email = name
-                try:
-                    sub_items = sb.storage.from_(BUCKET).list(f"{t}/{owner_email}")
-                except Exception:
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        tool_items = dict(zip(tools, pool.map(_list_folder, tools)))
+
+        subfolders: list[tuple[str, str]] = []  # (tool, owner_email)
+        for t in tools:
+            for item in tool_items[t]:
+                name = item.get("name", "")
+                if not name:
                     continue
-                for f in sub_items:
-                    if not f.get("name") or not (f.get("metadata") or {}).get("size"):
-                        continue
-                    f["tool"] = t
-                    f["owner"] = owner_email
-                    f["storage_path"] = f"{t}/{owner_email}/{f['name']}"
-                    all_files.append(f)
+                meta = item.get("metadata") or {}
+                if meta.get("size"):
+                    # Fisier direct in folderul tool (structura legacy flat)
+                    item["tool"] = t
+                    item["owner"] = "—"
+                    item["storage_path"] = f"{t}/{name}"
+                    all_files.append(item)
+                else:
+                    subfolders.append((t, name))
+
+        sub_results = pool.map(
+            _list_folder, [f"{t}/{owner}" for t, owner in subfolders]
+        )
+        for (t, owner_email), sub_items in zip(subfolders, sub_results):
+            for f in sub_items:
+                if not f.get("name") or not (f.get("metadata") or {}).get("size"):
+                    continue
+                f["tool"] = t
+                f["owner"] = owner_email
+                f["storage_path"] = f"{t}/{owner_email}/{f['name']}"
+                all_files.append(f)
 
     return sorted(all_files, key=lambda x: x.get("created_at", ""), reverse=True)
 
@@ -91,6 +98,26 @@ def get_signed_url(storage_path: str, expires_in: int = 3600) -> str:
     sb = get_supabase()
     result = sb.storage.from_(BUCKET).create_signed_url(storage_path, expires_in)
     return result["signedURL"]
+
+
+def get_signed_urls(storage_paths: list[str], expires_in: int = 3600) -> dict[str, str]:
+    """URL-uri temporare de download pentru mai multe fișiere, într-UN singur
+    apel API (per-fisier ar insemna un round-trip de ~0.5s fiecare)."""
+    if not storage_paths:
+        return {}
+    sb = get_supabase()
+    results = sb.storage.from_(BUCKET).create_signed_urls(storage_paths, expires_in)
+    urls: dict[str, str] = {}
+    for path, item in zip(storage_paths, results):
+        if item.get("error"):
+            continue
+        url = item.get("signedURL") or item.get("signedUrl") or item.get("signed_url") or ""
+        # raspunsul batch poate returna path-uri relative — le facem absolute
+        if url.startswith("/"):
+            base = os.environ.get("SUPABASE_URL", "").rstrip("/")
+            url = f"{base}/storage/v1{url}"
+        urls[item.get("path") or path] = url
+    return urls
 
 
 def delete_file(storage_path: str) -> None:
