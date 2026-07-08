@@ -31,6 +31,15 @@ def _load_spec(input_path: Path):
 def estimate_mockup_job(input_path: Path) -> dict:
     """Pre-check: tokeni necesari pentru imbogatirea AI a acestui ecran."""
     spec, descriptions = _load_spec(input_path)
+    has_content = any(
+        s.filter_fields or s.buttons or s.columns for s in spec.sections
+    )
+    if not has_content:
+        raise ValueError(
+            "Nu am recunoscut structura ecranului în fișier. Sheet-ul „Ecran” trebuie "
+            "să conțină fie o zonă de filtrare („Zona de filtrare”/„Filtre” pe coloana A), "
+            "fie titlul ecranului urmat de butoane și de antetul grid-ului."
+        )
     est_tokens = ai_enricher.estimate_enrich_tokens(spec, descriptions)
     return {
         "est_tokens": est_tokens,

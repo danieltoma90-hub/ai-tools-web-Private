@@ -106,6 +106,9 @@ def _parse_ecran(ws) -> tuple[str, list[Section]]:
     grid_header_row_idx: int = 0
     last_data_row_idx: int = 0
     data_collection_frozen: bool = False
+    # Ecrane fara zona de filtrare (ex: ecrane de import): titlul sta singur
+    # pe col A, butoanele si grid-ul incep tot de la col A
+    filterless: bool = False
 
     for row_idx in range(1, ws.max_row + 1):
         row = _row_values(ws, row_idx)
@@ -120,7 +123,10 @@ def _parse_ecran(ws) -> tuple[str, list[Section]]:
 
         # New section: "Zona de filtrare" or "Filtre"
         if isinstance(col_a, str) and col_a.strip() in _SECTION_MARKERS:
-            if current is not None:
+            # O sectiune auto-pornita (layout fara filtre) ramasa goala e inlocuita
+            if current is not None and (
+                current.filter_fields or current.buttons or current.columns or current.data_rows
+            ):
                 sections.append(current)
             # Title is in col C (index 2)
             title = str(row[2]).strip() if len(row) > 2 and row[2] else (
@@ -133,13 +139,34 @@ def _parse_ecran(ws) -> tuple[str, list[Section]]:
             grid_header_row_idx = 0
             last_data_row_idx = 0
             data_collection_frozen = False
+            filterless = False
             continue
 
         if current is None:
+            # Layout fara zona de filtrare: primul rand cu o singura celula text
+            # scurta pe col A e titlul ecranului (ex: "Import Devize")
+            if (
+                isinstance(col_a, str) and col_a.strip()
+                and len(non_none) == 1
+                and not _is_action_cell(col_a)
+            ):
+                title = col_a.strip()
+                screen_title = screen_title or title
+                current = Section(title=title)
+                filter_labels_seen = []
+                grid_col_start = 0
+                grid_header_row_idx = 0
+                last_data_row_idx = 0
+                data_collection_frozen = False
+                filterless = True
             continue
 
-        # Col A: filter field names (short strings, not dates/numbers)
-        if isinstance(col_a, str) and not _is_date_or_number(col_a):
+        # Col A: filter field names (short strings, not dates/numbers) —
+        # doar in layout-ul clasic cu zona de filtrare
+        if (
+            not filterless
+            and isinstance(col_a, str) and not _is_date_or_number(col_a)
+        ):
             label = col_a.strip()
             if label and label not in filter_labels_seen:
                 filter_labels_seen.append(label)
@@ -158,8 +185,9 @@ def _parse_ecran(ws) -> tuple[str, list[Section]]:
                 if col_b_val is not None:
                     current.filter_values[label] = _fmt_val(col_b_val)
 
-        # Scan remaining cells for buttons
-        for col_idx, cell_val in enumerate(row[1:], start=2):
+        # Scan cells for buttons (in layout fara filtre si col A poate fi buton)
+        btn_scan = enumerate(row, start=1) if filterless else enumerate(row[1:], start=2)
+        for col_idx, cell_val in btn_scan:
             if cell_val is None:
                 continue
             if _is_action_cell(cell_val):
@@ -176,17 +204,19 @@ def _parse_ecran(ws) -> tuple[str, list[Section]]:
                             ButtonDef(label=label, group="direct", coord=_coord(row_idx, col_idx))
                         )
 
-        # Grid header detection: 3+ string cells from col 3 onwards, no button labels
-        str_from_c = [
-            (col_idx + 3, v)
-            for col_idx, v in enumerate(row[2:])
+        # Grid header detection: 3+ string cells, no button labels.
+        # Layout clasic: de la col C (col A-B = filtre); fara filtre: de la col A.
+        grid_scan_start = 0 if filterless else 2
+        str_cells = [
+            (col_idx + grid_scan_start + 1, v)
+            for col_idx, v in enumerate(row[grid_scan_start:])
             if isinstance(v, str) and not _is_date_or_number(v) and v.strip()
             and v.strip() not in _DIRECT_BTNS and not _is_action_cell(v)
         ]
-        if len(str_from_c) >= 3 and not current.columns:
-            grid_col_start = str_from_c[0][0]
+        if len(str_cells) >= 3 and not current.columns:
+            grid_col_start = str_cells[0][0]
             grid_header_row_idx = row_idx
-            for abs_col, v in str_from_c:
+            for abs_col, v in str_cells:
                 current.columns.append(
                     ColumnDef(name=v.strip(), coord=_coord(row_idx, abs_col))
                 )
