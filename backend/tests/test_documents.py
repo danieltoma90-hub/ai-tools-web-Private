@@ -35,6 +35,27 @@ async def test_documents_returns_list(client):
     assert "download_url" in data[0]
 
 
+@pytest.mark.asyncio
+async def test_storage_usage_returns_percent(client):
+    app.dependency_overrides[verify_token] = lambda: {"id": "user1"}
+    try:
+        with patch(
+            "routers.documents.get_storage_usage",
+            return_value={"used_bytes": 950, "quota_bytes": 1000, "percent": 95.0},
+        ):
+            response = await client.get(
+                "/api/storage/usage",
+                headers={"Authorization": "Bearer fake"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["percent"] == 95.0
+    assert data["quota_bytes"] == 1000
+
+
 class _FakeUser:
     """Ca obiectul supabase User din productie: are .email, NU are .get()."""
     email = "ana@totalsoft.ro"

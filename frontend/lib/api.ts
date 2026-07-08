@@ -209,3 +209,15 @@ export async function deleteDocument(storagePath: string) {
     { method: "DELETE" }
   );
 }
+
+export async function getStorageUsage(): Promise<{
+  used_bytes: number;
+  quota_bytes: number;
+  percent: number;
+}> {
+  return apiFetch(`${PROXY}/storage/usage`) as Promise<{
+    used_bytes: number;
+    quota_bytes: number;
+    percent: number;
+  }>;
+}

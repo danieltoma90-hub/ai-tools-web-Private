@@ -93,6 +93,34 @@ def list_files(tool: str | None = None) -> list[dict]:
     return sorted(all_files, key=lambda x: x.get("created_at", ""), reverse=True)
 
 
+# Supabase free tier: 1 GB de storage per proiect (override prin env)
+STORAGE_QUOTA_MB = int(os.environ.get("STORAGE_QUOTA_MB", "1024"))
+
+
+def get_storage_usage() -> dict:
+    """Spatiul ocupat (bytes) in bucket-urile documents + uploads vs cota.
+
+    Best-effort: fisierele din documents vin din list_files (paralel);
+    uploads e listat per folder de tool.
+    """
+    used = sum((f.get("metadata") or {}).get("size", 0) for f in list_files())
+
+    sb = get_supabase()
+    for t in UPLOAD_TOOLS_EXT:
+        try:
+            items = sb.storage.from_(UPLOADS_BUCKET).list(t)
+        except Exception:
+            continue
+        used += sum((i.get("metadata") or {}).get("size", 0) for i in items)
+
+    quota = STORAGE_QUOTA_MB * 1024 * 1024
+    return {
+        "used_bytes": used,
+        "quota_bytes": quota,
+        "percent": round(used / quota * 100, 1) if quota else 0.0,
+    }
+
+
 def get_signed_url(storage_path: str, expires_in: int = 3600) -> str:
     """Generează URL temporar de download (valid expires_in secunde)."""
     sb = get_supabase()

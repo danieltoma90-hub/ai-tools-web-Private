@@ -1,8 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from auth import verify_token
-from storage import list_files, get_signed_urls, delete_file
+from storage import list_files, get_signed_urls, get_storage_usage, delete_file
 
 router = APIRouter()
+
+
+@router.get("/storage/usage")
+def storage_usage(user=Depends(verify_token)):
+    """Spațiul ocupat vs cota Supabase — pentru alerta de curățenie din Repository."""
+    return get_storage_usage()
 
 
 @router.get("/documents")
