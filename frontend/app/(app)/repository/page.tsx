@@ -95,6 +95,7 @@ export default function RepositoryPage() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("toate");
+  const [ownerFilter, setOwnerFilter] = useState<string>("toti");
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -135,8 +136,16 @@ export default function RepositoryPage() {
     }
   }
 
-  const filtered =
-    filter === "toate" ? docs : docs.filter((d) => d.tool === filter);
+  const owners = useMemo(
+    () => [...new Set(docs.map((d) => d.owner).filter((o) => o && o !== "—"))].sort(),
+    [docs]
+  );
+
+  const filtered = docs.filter(
+    (d) =>
+      (filter === "toate" || d.tool === filter) &&
+      (ownerFilter === "toti" || d.owner === ownerFilter)
+  );
 
   const barColor = overThreshold
     ? "bg-red-500"
@@ -153,7 +162,7 @@ export default function RepositoryPage() {
             Toate documentele generate de echipă
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {["toate", "minuta", "mockup", "scenarii"].map((f) => (
             <button
               key={f}
@@ -167,6 +176,23 @@ export default function RepositoryPage() {
               {f === "toate" ? "Toate" : `${TOOL_ICONS[f]} ${TOOL_LABELS[f]}`}
             </button>
           ))}
+          <select
+            value={ownerFilter}
+            onChange={(e) => setOwnerFilter(e.target.value)}
+            className={`px-2 py-1 rounded-full text-xs font-medium border cursor-pointer ${
+              ownerFilter !== "toti"
+                ? "bg-blue-600 text-white border-blue-600"
+                : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+            }`}
+            title="Filtrează după utilizatorul care a generat documentul"
+          >
+            <option value="toti">👤 Toți utilizatorii</option>
+            {owners.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -275,6 +301,9 @@ export default function RepositoryPage() {
                   Nume fișier
                 </th>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">
+                  Generat de
+                </th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">
                   Data
                 </th>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">
@@ -298,6 +327,9 @@ export default function RepositoryPage() {
                   </td>
                   <td className="px-4 py-3 font-medium text-[#1e3a5f] max-w-xs truncate">
                     {doc.name}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500 text-xs max-w-[180px] truncate" title={doc.owner}>
+                    {doc.owner}
                   </td>
                   <td className="px-4 py-3 text-slate-500 text-xs">
                     {formatDate(doc.created_at)}
