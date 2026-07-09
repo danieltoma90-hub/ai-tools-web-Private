@@ -59,7 +59,7 @@ export default function ResultPanel({
       {docxB64 && (
         <button
           onClick={downloadFile}
-          className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700"
+          className="w-full bg-[#18257f] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-[#131e66]"
         >
           {downloadLabel}
         </button>
@@ -68,7 +68,7 @@ export default function ResultPanel({
       {previewHtml && (
         <button
           onClick={openPreview}
-          className="w-full bg-white border border-blue-600 text-blue-600 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-50"
+          className="w-full bg-white border border-[#18257f] text-[#18257f] py-2.5 rounded-lg text-sm font-semibold hover:bg-[#eef0f8]"
         >
           👁 Preview în tab nou
         </button>

@@ -63,13 +63,13 @@ export default async function InvitePage({
             type="email"
             name="email"
             placeholder="coleg@totalsoft.ro"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#18257f]"
             required
           />
         </div>
         <button
           type="submit"
-          className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-700"
+          className="w-full bg-[#18257f] text-white py-2 rounded-lg text-sm font-semibold hover:bg-[#131e66]"
         >
           Trimite invitație
         </button>

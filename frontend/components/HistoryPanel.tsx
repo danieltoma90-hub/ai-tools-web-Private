@@ -51,7 +51,7 @@ export default function HistoryPanel({ refreshKey }: { refreshKey: number }) {
             href={doc.download_url}
             target="_blank"
             rel="noreferrer"
-            className="inline-block bg-blue-50 text-blue-600 text-[8px] px-1.5 py-0.5 rounded"
+            className="inline-block bg-[#eef0f8] text-[#18257f] text-[8px] px-1.5 py-0.5 rounded"
           >
             ↓ descarcă
           </a>

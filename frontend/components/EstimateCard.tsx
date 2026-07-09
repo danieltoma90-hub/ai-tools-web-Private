@@ -35,7 +35,7 @@ export default function EstimateCard({ estimate, toolLabel, onAi, onNoAi, onCanc
         <button
           onClick={onAi}
           disabled={!estimate.fits_budget}
-          className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-full bg-[#18257f] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-[#131e66] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           ✨ Generează cu AI
         </button>

@@ -160,7 +160,7 @@ export default function MinutaPage() {
                 onClick={() => setMode("ai")}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   mode === "ai"
-                    ? "bg-blue-600 text-white"
+                    ? "bg-[#18257f] text-white"
                     : "bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
@@ -195,7 +195,7 @@ export default function MinutaPage() {
               className={`w-full text-white py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
                 mode === "free"
                   ? "bg-emerald-600 hover:bg-emerald-700"
-                  : "bg-blue-600 hover:bg-blue-700"
+                  : "bg-[#18257f] hover:bg-[#131e66]"
               }`}
             >
               {mode === "free" ? "⚡ Generează Free" : "✨ Generează cu AI"}
@@ -224,7 +224,7 @@ export default function MinutaPage() {
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
               {error}
             </div>
-            <button onClick={reset} className="text-sm text-blue-600 underline">
+            <button onClick={reset} className="text-sm text-[#18257f] underline">
               Încearcă din nou
             </button>
           </div>

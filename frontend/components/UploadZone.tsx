@@ -33,8 +33,8 @@ export default function UploadZone({ accept, label, onFile }: Props) {
       onClick={() => inputRef.current?.click()}
       className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
         dragOver
-          ? "border-blue-400 bg-blue-50"
-          : "border-slate-300 hover:border-blue-300 hover:bg-slate-50"
+          ? "border-[#5a6bc4] bg-[#eef0f8]"
+          : "border-slate-300 hover:border-[#8a93cf] hover:bg-slate-50"
       }`}
     >
       <input
@@ -49,13 +49,13 @@ export default function UploadZone({ accept, label, onFile }: Props) {
       />
       <p className="text-2xl mb-2">⬆️</p>
       {selected ? (
-        <p className="text-sm font-medium text-blue-700">{selected}</p>
+        <p className="text-sm font-medium text-[#131e66]">{selected}</p>
       ) : (
         <>
           <p className="text-sm text-slate-600">Trage {label} aici</p>
           <p className="text-xs text-slate-400 mt-1">
             sau{" "}
-            <span className="text-blue-600 font-medium">
+            <span className="text-[#18257f] font-medium">
               caută pe calculator
             </span>
           </p>

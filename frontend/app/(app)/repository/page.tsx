@@ -105,6 +105,11 @@ export default function RepositoryPage() {
   }, []);
 
   useEffect(() => {
+    // filtru initial din URL (?tool=minuta) — folosit de butonul Istoric
+    const toolParam = new URLSearchParams(window.location.search).get("tool");
+    if (toolParam && ["minuta", "mockup", "scenarii"].includes(toolParam)) {
+      setFilter(toolParam);
+    }
     getDocuments()
       .then(setDocs)
       .finally(() => setLoading(false));
@@ -151,7 +156,7 @@ export default function RepositoryPage() {
     ? "bg-red-500"
     : (usage?.percent ?? 0) >= WARN_THRESHOLD
       ? "bg-amber-500"
-      : "bg-blue-500";
+      : "bg-[#343a8c]";
 
   return (
     <div className="p-6">
@@ -169,7 +174,7 @@ export default function RepositoryPage() {
               onClick={() => setFilter(f)}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 filter === f
-                  ? "bg-blue-600 text-white"
+                  ? "bg-[#18257f] text-white"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
@@ -181,7 +186,7 @@ export default function RepositoryPage() {
             onChange={(e) => setOwnerFilter(e.target.value)}
             className={`px-2 py-1 rounded-full text-xs font-medium border cursor-pointer ${
               ownerFilter !== "toti"
-                ? "bg-blue-600 text-white border-blue-600"
+                ? "bg-[#18257f] text-white border-[#18257f]"
                 : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
             }`}
             title="Filtrează după utilizatorul care a generat documentul"
@@ -206,7 +211,7 @@ export default function RepositoryPage() {
             {suggestions.length > 0 && (
               <button
                 onClick={() => setShowSuggestions((v) => !v)}
-                className="text-blue-600 hover:underline"
+                className="text-[#18257f] hover:underline"
               >
                 🧹 Sugestii curățenie ({suggestions.length})
               </button>
@@ -343,7 +348,7 @@ export default function RepositoryPage() {
                         href={doc.download_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="bg-blue-50 text-blue-600 text-xs px-2.5 py-1 rounded font-medium hover:bg-blue-100"
+                        className="bg-[#eef0f8] text-[#18257f] text-xs px-2.5 py-1 rounded font-medium hover:bg-[#e2e5f4]"
                       >
                         ↓ Descarcă
                       </a>
