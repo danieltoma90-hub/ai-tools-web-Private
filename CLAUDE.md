@@ -114,15 +114,13 @@ vercel --prod
 
 Free tier-urile „mor" fără trafic: **Render adoarme după 15 min** (cold start 30-60s), iar **Supabase se PAUZEAZĂ după 7 zile fără activitate în DB** (login/storage picate; reactivare doar manuală din dashboard-ul Supabase).
 
-Soluția activă (2026-07-06, joburi verzi 2026-07-08):
-- `/health` (GET+HEAD) face și un ping Supabase (`list_buckets`) → un singur ping ține treze ambele platforme. Răspuns GET: `{"status":"ok","supabase":"ok"}`.
-- **2 joburi pe cron-job.org** (contul lui Daniel) pinguie `https://ai-tools-backend-3vvz.onrender.com/health` cu **metoda HEAD** (vezi mai jos de ce):
-  1. L-V, 6:30–20:30, la 10 min (Render treaz în orele de lucru; ~340h/lună din 750 — NU treceți pe 24/7, depășirea celor 750h SUSPENDĂ serviciul)
-  2. zilnic la 6 ore (Supabase activ non-stop)
-- Notificările email de la cron-job.org = monitorizare gratuită a producției.
-- **DE CE HEAD, nu GET**: Cloudflare (edge-ul Render) re-encodează răspunsul `Transfer-Encoding: chunked` fără `Content-Length` (ignoră `Cache-Control: no-transform`), iar cron-job.org dă fals „output too large" chiar și pe 31 de octeți. HEAD nu are corp → imposibil să dea eroarea; handlerul (deci pingul Supabase) tot rulează. NU schimbați joburile pe GET.
+Soluția activă (revizuită 2026-07-09):
+- **Keep-alive Supabase (CRITIC) — ping DIRECT în Supabase, nu prin Render.** Un job cron-job.org (contul lui Daniel), la 6 ore, face `GET https://zjmtqitymnrmmmsfoolp.supabase.co/rest/v1/keepalive?select=id&limit=1` cu headerul `apikey: <cheia publishable>`. Interogarea pe tabelul `public.keepalive` (RLS: anon poate `select`) e activitate de DB → resetează timer-ul de pauză de 7 zile. Răspunde <1s cu `Content-Length` corect (fără cold start, fără „output too large"). Acesta e singurul mecanism care contează — Supabase pauzat = aplicație moartă.
+- **Warm-up Render: DEZACTIVAT intenționat.** Pe Render free, cold start-ul (~44s) depășește timeout-ul de 30s al cron-job.org → orice ping pe Render rece eșuează (503/timeout) și, după 15 eșecuri consecutive, cron-job.org dezactivează jobul. NU reactivați jobul care pinguie `/health` pe Render — se va dezactiva iar. Consecința acceptată: utilizatorii prind un cold start de ~40s la prima folosire din zi (aplicația reîncearcă automat — UX lent, NU eroare). Singurul fix pentru zero cold start: Render Starter $7/lună.
+- `/health` (GET+HEAD, cu ping Supabase intern) rămâne pentru verificări manuale, dar NU mai e ținta keep-alive-ului.
+- Notificările email de la cron-job.org = monitorizare gratuită.
 
-Dacă joburile dispar: Render redoarme în 15 min (doar UX mai lent), dar **Supabase se pauzează în 7 zile** — asta rupe complet aplicația. Verificare rapidă: `curl https://ai-tools-backend-3vvz.onrender.com/health` + istoricul din cron-job.org.
+Verificare rapidă: `curl -H "apikey: <cheia>" "https://zjmtqitymnrmmmsfoolp.supabase.co/rest/v1/keepalive?select=id&limit=1"` (așteptat 200 + `[{"id":1}]`) și istoricul jobului din cron-job.org (trebuie verde).
 
 ## Useri Supabase
 - **Admin**: `daniel.toma@totalsoft.ro` / `claudiu`
