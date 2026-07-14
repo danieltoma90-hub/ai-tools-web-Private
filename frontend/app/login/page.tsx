@@ -1,3 +1,5 @@
+import WarmBackend from "@/components/WarmBackend";
+
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_credentials: "Email sau parolă incorectă.",
   server_error: "Eroare de server. Încearcă din nou.",
@@ -16,10 +18,11 @@ export default async function LoginPage({
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <WarmBackend />
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-sm">
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-[#1e3a5f]">AI Tools</h1>
-          <p className="text-sm text-gray-500 mt-1">TotalSoft</p>
+          <h1 className="text-2xl font-bold text-[#1e3a5f] italic">AI Tools</h1>
+          <span className="inline-block h-[3px] w-14 bg-[#ffd500] mt-1" />
         </div>
         <form method="POST" action="/api/auth/login" className="space-y-4">
           <div>

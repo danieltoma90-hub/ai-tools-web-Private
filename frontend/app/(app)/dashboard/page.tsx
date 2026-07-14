@@ -1,16 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getDocuments, getStorageUsage } from "@/lib/api";
+import { getDashboardSummary, type DashboardSummary } from "@/lib/api";
 
-type Doc = {
-  name: string;
-  tool: string;
-  owner: string;
-  created_at: string;
-  size: number;
-  download_url: string;
-};
+const CACHE_KEY = "dashboard-summary-v1";
 
 const TOOLS = [
   {
@@ -32,7 +25,7 @@ const TOOLS = [
     tool: "scenarii",
     icon: "🧪",
     title: "Scenarii",
-    desc: "Specificație → scenarii de testare Excel, gata de import.",
+    desc: "Specificație → catalog standard + cerințe specifice client, în Excel.",
   },
 ];
 
@@ -51,27 +44,49 @@ function formatDate(iso: string) {
 }
 
 export default function Dashboard() {
-  const [docs, setDocs] = useState<Doc[]>([]);
-  const [usage, setUsage] = useState<{ percent: number } | null>(null);
+  const [data, setData] = useState<DashboardSummary | null>(null);
+  const [stale, setStale] = useState(false);
 
   useEffect(() => {
-    getDocuments().then(setDocs).catch(() => {});
-    getStorageUsage().then(setUsage).catch(() => {});
+    // 1) pictura instant din cache-ul sesiunii (stale-while-revalidate)
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        setData(JSON.parse(cached) as DashboardSummary);
+        setStale(true);
+      }
+    } catch {
+      // cache corupt — il ignoram
+    }
+    // 2) datele proaspete, intr-un singur apel
+    getDashboardSummary()
+      .then((fresh) => {
+        setData(fresh);
+        setStale(false);
+        try {
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
+        } catch {
+          // storage plin — nu blocam pagina
+        }
+      })
+      .catch(() => setStale(false));
   }, []);
-
-  const weekAgo = Date.now() - 7 * 24 * 3600 * 1000;
-  const recentCount = docs.filter(
-    (d) => d.created_at && new Date(d.created_at).getTime() > weekAgo
-  ).length;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="bg-[#343a8c] text-white rounded-xl px-6 py-5 mb-5">
         <h1 className="text-lg font-bold mb-1">Bună! 👋</h1>
         <p className="text-[13px] text-[#d5d8f5]">
-          {docs.length} documente în Repository
-          {recentCount > 0 && ` · ${recentCount} generate săptămâna aceasta`}
-          {usage && ` · spațiu ocupat ${usage.percent}%`}
+          {data ? (
+            <>
+              {data.total_documents} documente în Repository
+              {data.week_count > 0 && ` · ${data.week_count} generate săptămâna aceasta`}
+              {` · spațiu ocupat ${data.usage.percent}%`}
+              {stale && " · se actualizează..."}
+            </>
+          ) : (
+            "Se încarcă statisticile... (prima cerere trezește serverul, ~20s)"
+          )}
         </p>
       </div>
 
@@ -117,36 +132,41 @@ export default function Dashboard() {
             Vezi tot Repository →
           </Link>
         </div>
-        {docs.length === 0 && (
+        {!data && (
+          <p className="text-xs text-slate-400">Se încarcă...</p>
+        )}
+        {data && data.documents.length === 0 && (
           <p className="text-xs text-slate-400">Niciun document generat încă.</p>
         )}
-        <ul className="divide-y divide-slate-100">
-          {docs.slice(0, 5).map((d) => (
-            <li
-              key={`${d.tool}/${d.owner}/${d.name}`}
-              className="flex items-center gap-3 py-2 text-[13px]"
-            >
-              <span>{TOOL_ICONS[d.tool] ?? "📄"}</span>
-              <span className="flex-1 truncate font-medium text-[#1e3a5f]">
-                {d.name}
-              </span>
-              <span className="text-xs text-slate-400 hidden sm:block">
-                {d.owner}
-              </span>
-              <span className="text-xs text-slate-400 tabular-nums">
-                {formatDate(d.created_at)}
-              </span>
-              <a
-                href={d.download_url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-semibold text-[#18257f] hover:underline"
+        {data && (
+          <ul className="divide-y divide-slate-100">
+            {data.documents.map((d) => (
+              <li
+                key={`${d.tool}/${d.owner}/${d.name}`}
+                className="flex items-center gap-3 py-2 text-[13px]"
               >
-                ↓ Descarcă
-              </a>
-            </li>
-          ))}
-        </ul>
+                <span>{TOOL_ICONS[d.tool] ?? "📄"}</span>
+                <span className="flex-1 truncate font-medium text-[#1e3a5f]">
+                  {d.name}
+                </span>
+                <span className="text-xs text-slate-400 hidden sm:block">
+                  {d.owner}
+                </span>
+                <span className="text-xs text-slate-400 tabular-nums">
+                  {formatDate(d.created_at)}
+                </span>
+                <a
+                  href={d.download_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-semibold text-[#18257f] hover:underline"
+                >
+                  ↓ Descarcă
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

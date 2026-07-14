@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       ? expires_at - Math.floor(Date.now() / 1000)
       : 3600;
 
-    const response = NextResponse.redirect(new URL("/minuta", request.url), {
+    const response = NextResponse.redirect(new URL("/dashboard", request.url), {
       status: 303,
     });
     response.cookies.set("auth-token", access_token, {

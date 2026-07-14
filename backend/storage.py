@@ -97,13 +97,15 @@ def list_files(tool: str | None = None) -> list[dict]:
 STORAGE_QUOTA_MB = int(os.environ.get("STORAGE_QUOTA_MB", "1024"))
 
 
-def get_storage_usage() -> dict:
+def get_storage_usage(documents_files: list[dict] | None = None) -> dict:
     """Spatiul ocupat (bytes) in bucket-urile documents + uploads vs cota.
 
-    Best-effort: fisierele din documents vin din list_files (paralel);
-    uploads e listat per folder de tool.
+    documents_files: listarea deja obtinuta (evita un al doilea set de
+    round-trip-uri cand apelantul are deja list_files()).
     """
-    used = sum((f.get("metadata") or {}).get("size", 0) for f in list_files())
+    if documents_files is None:
+        documents_files = list_files()
+    used = sum((f.get("metadata") or {}).get("size", 0) for f in documents_files)
 
     sb = get_supabase()
     for t in UPLOAD_TOOLS_EXT:

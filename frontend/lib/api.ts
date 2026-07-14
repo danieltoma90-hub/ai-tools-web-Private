@@ -218,3 +218,20 @@ export async function getStorageUsage(): Promise<{
     percent: number;
   }>;
 }
+
+export type DashboardSummary = {
+  total_documents: number;
+  week_count: number;
+  usage: { used_bytes: number; quota_bytes: number; percent: number };
+  documents: {
+    name: string;
+    tool: string;
+    owner: string;
+    created_at: string;
+    download_url: string;
+  }[];
+};
+
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  return apiFetch(`${PROXY}/dashboard/summary`) as Promise<DashboardSummary>;
+}
