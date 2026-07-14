@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getDashboardSummary, type DashboardSummary } from "@/lib/api";
 
 const CACHE_KEY = "dashboard-summary-v1";
+const REFRESH_INTERVAL_MS = 30_000; // refresh periodic cat timp tabul e vizibil
+const RETRY_DELAY_MS = 5_000; // reincearca daca prima cerere esueaza (cold start)
 
 const TOOLS = [
   {
@@ -46,6 +48,33 @@ function formatDate(iso: string) {
 export default function Dashboard() {
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [stale, setStale] = useState(false);
+  const loadingRef = useRef(false);
+
+  const load = useCallback(async (retryOnFail: boolean) => {
+    if (loadingRef.current) return; // nu suprapunem cererile
+    loadingRef.current = true;
+    try {
+      const fresh = await getDashboardSummary();
+      setData(fresh);
+      setStale(false);
+      try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
+      } catch {
+        // storage plin — nu blocam pagina
+      }
+    } catch {
+      // serverul se trezeste / retea — reincearca o singura data
+      if (retryOnFail) {
+        setTimeout(() => {
+          loadingRef.current = false;
+          load(false);
+        }, RETRY_DELAY_MS);
+        return;
+      }
+      setStale(false);
+    }
+    loadingRef.current = false;
+  }, []);
 
   useEffect(() => {
     // 1) pictura instant din cache-ul sesiunii (stale-while-revalidate)
@@ -58,19 +87,27 @@ export default function Dashboard() {
     } catch {
       // cache corupt — il ignoram
     }
-    // 2) datele proaspete, intr-un singur apel
-    getDashboardSummary()
-      .then((fresh) => {
-        setData(fresh);
-        setStale(false);
-        try {
-          sessionStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
-        } catch {
-          // storage plin — nu blocam pagina
-        }
-      })
-      .catch(() => setStale(false));
-  }, []);
+    // 2) datele proaspete la fiecare intrare pe Acasa (cu retry la esec)
+    load(true);
+
+    // 3) refresh periodic doar cat timp tabul e vizibil
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") load(false);
+    }, REFRESH_INTERVAL_MS);
+
+    // 4) refresh cand utilizatorul revine in tab
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load(false);
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [load]);
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
