@@ -1,5 +1,6 @@
 import base64
 import logging
+import os
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +24,7 @@ class EstimateRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     estimate_id: str
-    use_ai: bool = True
+    engine: str = "claude"  # "claude" (credite API) | "groq" (gratuit)
 
 
 @router.post("/scenarii/estimate")
@@ -58,13 +59,13 @@ async def estimate_scenarii(
     return {"estimate_id": estimate_id, **est}
 
 
-async def _run_job(job_id: str, input_path: Path, orig_filename: str, use_ai: bool) -> None:
+async def _run_job(job_id: str, input_path: Path, orig_filename: str, engine: str) -> None:
     def _on_step(step: str) -> None:
         jobs.set_step(job_id, step)
 
     xlsx_path: Path | None = None
     try:
-        xlsx_path, scenarios = await run_scenarii_pipeline(input_path, use_ai=use_ai, on_step=_on_step)
+        xlsx_path, summary = await run_scenarii_pipeline(input_path, engine=engine, on_step=_on_step)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"Scenarii_{Path(orig_filename).stem}_{timestamp}.xlsx"
         job = jobs.get_job(job_id) or {}
@@ -74,13 +75,12 @@ async def _run_job(job_id: str, input_path: Path, orig_filename: str, use_ai: bo
         )
         with open(xlsx_path, "rb") as f:
             xlsx_b64 = base64.b64encode(f.read()).decode()
-        ai_used = use_ai and any(s.get("ai") for s in scenarios)
         jobs.finish(
             job_id,
             filename=filename,
             xlsx_b64=xlsx_b64,
-            scenarios=scenarios,
-            ai_used=ai_used,
+            summary=summary,
+            engine=engine,
             storage_path=storage_path,
         )
     except Exception as e:
@@ -98,24 +98,25 @@ async def generate_scenarii(
     background_tasks: BackgroundTasks,
     user=Depends(verify_token),
 ):
-    """Pas 2: pornește generarea (cu sau fără AI) pe fișierul din estimare."""
+    """Pas 2: pornește generarea (Claude sau Groq gratuit) pe fișierul din estimare."""
+    if req.engine not in ("claude", "groq"):
+        raise HTTPException(status_code=422, detail="engine trebuie să fie 'claude' sau 'groq'")
+
     est = jobs.pop_estimate(req.estimate_id)
     if est is None:
         raise HTTPException(
             status_code=404,
             detail="Estimarea a expirat sau serverul a fost repornit — reîncarcă fișierul.",
         )
-    if req.use_ai and not est.get("fits_budget", False):
+
+    key_env = "ANTHROPIC_API_KEY" if req.engine == "claude" else "GROQ_API_KEY"
+    if not os.environ.get(key_env):
         Path(est["file_path"]).unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=422,
-            detail="Fișierul necesită mai mulți tokeni decât bugetul zilnic gratuit disponibil. "
-                   "Continuă fără AI, revino mâine sau mărește LLM_DAILY_TOKEN_BUDGET.",
-        )
+        raise HTTPException(status_code=500, detail=f"{key_env} lipsă pe server")
 
     user_email = getattr(user, "email", None) or "anonymous"
     job_id = jobs.create_job(user_email)
-    background_tasks.add_task(_run_job, job_id, Path(est["file_path"]), est["filename"], req.use_ai)
+    background_tasks.add_task(_run_job, job_id, Path(est["file_path"]), est["filename"], req.engine)
     return {"job_id": job_id}
 
 

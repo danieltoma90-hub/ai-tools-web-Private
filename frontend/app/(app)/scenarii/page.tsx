@@ -5,15 +5,13 @@ import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import ResultPanel from "@/components/ResultPanel";
 import HistoryPanel from "@/components/HistoryPanel";
-import EstimateCard from "@/components/EstimateCard";
-import ScenariiPreviewTable from "@/components/ScenariiPreviewTable";
 import {
   uploadSourceFile,
   postScenariiEstimate,
   postScenariiGenerate,
   getScenariiJob,
   type EstimateResponse,
-  type Scenariu,
+  type ScenariiSummary,
 } from "@/lib/api";
 
 type State = "idle" | "uploading" | "estimating" | "ready" | "processing" | "done" | "error";
@@ -22,8 +20,10 @@ type State = "idle" | "uploading" | "estimating" | "ready" | "processing" | "don
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function stepLabel(step: string): string {
-  const m = step.match(/^chunk:(\d+)\/(\d+):(.*)$/);
-  if (m) return `Generez scenarii — partea ${m[1]} din ${m[2]} (${m[3]})...`;
+  if (step === "parsing") return "Analizez specificația și cerințele specifice...";
+  const m = step.match(/^gen:(\d+)\/(\d+)$/);
+  if (m) return `Generez scenariile specifice — lotul ${m[1]} din ${m[2]}...`;
+  if (step === "deps") return "Stabilesc dependențele și planul de execuție...";
   if (step === "building") return "Generez documentul Excel...";
   return "Se procesează...";
 }
@@ -46,8 +46,8 @@ export default function ScenariPage() {
   const [result, setResult] = useState<{
     filename: string;
     xlsxB64: string;
-    scenarios: Scenariu[];
-    aiUsed: boolean;
+    summary: ScenariiSummary | null;
+    engine: string;
   } | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
   const cancelledRef = useRef(false);
@@ -70,7 +70,7 @@ export default function ScenariPage() {
       try {
         uploaded = await uploadSourceFile(file, "scenarii");
       } catch (initErr) {
-        // Render free tier adoarme — retry automat după 5s (sign-ul trece prin proxy)
+        // Render free tier adoarme — retry automat după 5s
         const msg = initErr instanceof Error ? initErr.message : "";
         if (isColdStartError(msg)) {
           await new Promise((r) => setTimeout(r, 5000));
@@ -94,14 +94,16 @@ export default function ScenariPage() {
     }
   }
 
-  async function handleGenerate(useAi: boolean) {
+  async function handleGenerate(engine: "claude" | "groq") {
     if (!estimate) return;
     setState("processing");
-    setProgressLabel(useAi ? "Pornesc generarea cu AI..." : "Generez scenariile...");
+    setProgressLabel(
+      engine === "claude" ? "Pornesc generarea cu Claude..." : "Pornesc generarea Free (Groq)..."
+    );
     setError("");
     cancelledRef.current = false;
     try {
-      const { job_id } = await postScenariiGenerate(estimate.estimate_id, useAi);
+      const { job_id } = await postScenariiGenerate(estimate.estimate_id, engine);
 
       let pollFailures = 0;
       while (true) {
@@ -126,8 +128,8 @@ export default function ScenariPage() {
           setResult({
             filename: job.filename!,
             xlsxB64: job.xlsx_b64!,
-            scenarios: job.scenarios ?? [],
-            aiUsed: job.ai_used ?? false,
+            summary: job.summary ?? null,
+            engine: job.engine ?? engine,
           });
           setState("done");
           setHistoryKey((k) => k + 1);
@@ -159,11 +161,16 @@ export default function ScenariPage() {
         <ToolCard
           icon="🧪"
           title="Scenarii Testare"
-          description="Specificație (.docx) → Excel cu scenarii QA generate cu AI"
+          description="Specificație (.docx) → Excel: catalog standard + cerințe specifice client"
         />
 
         {state === "idle" && (
           <div className="flex flex-col gap-4">
+            <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              Fișierul generat pornește de la catalogul standard (170 scenarii CORE validate),
+              adaugă scenarii pentru „Cerințele specifice identificate în urma Analizei” (marcate galben)
+              și listează la final ce s-a exclus față de formatul standard.
+            </p>
             <UploadZone accept=".docx" label=".docx" onFile={setFile} />
             <button
               onClick={handleEstimate}
@@ -182,26 +189,71 @@ export default function ScenariPage() {
         {state === "estimating" && <ProcessingSpinner label="Analizez specificația..." />}
 
         {state === "ready" && estimate && (
-          <EstimateCard
-            estimate={estimate}
-            toolLabel="scenariile"
-            onAi={() => handleGenerate(true)}
-            onNoAi={() => handleGenerate(false)}
-            onCancel={reset}
-          />
+          <div className="bg-white border border-[#e2e5f0] rounded-xl p-5 flex flex-col gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-[#18257f] mb-1">Specificație analizată</h3>
+              <p className="text-xs text-slate-500">
+                {estimate.requirements ?? 0} cerințe specifice găsite în{" "}
+                {estimate.modules ?? 1} module · catalogul standard se filtrează după capitolele
+                specificației
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <button
+                onClick={() => handleGenerate("claude")}
+                className="border border-[#18257f] bg-[#18257f] text-white rounded-lg p-3 text-left hover:bg-[#131e66] transition-colors"
+              >
+                <span className="block text-sm font-bold">✨ Generează cu Claude</span>
+                <span className="block text-xs mt-1 text-[#d5d8f5]">
+                  Calitate maximă · ~{estimate.est_minutes} min · folosește credite API
+                </span>
+              </button>
+              <button
+                onClick={() => handleGenerate("groq")}
+                className="border border-emerald-600 bg-emerald-600 text-white rounded-lg p-3 text-left hover:bg-emerald-700 transition-colors"
+              >
+                <span className="block text-sm font-bold">⚡ Generează Free (Groq)</span>
+                <span className="block text-xs mt-1 text-emerald-100">
+                  Gratuit · ~{estimate.est_minutes_free ?? "?"} min · limite zilnice partajate
+                </span>
+              </button>
+            </div>
+            <button onClick={reset} className="text-xs text-slate-400 hover:underline w-fit">
+              Anulează
+            </button>
+          </div>
         )}
 
         {state === "processing" && <ProcessingSpinner label={progressLabel} />}
 
         {state === "done" && result && (
           <div className="flex flex-col gap-4">
-            {!result.aiUsed && (
-              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Scenariile au fost generate fără AI — conțin structura capitolelor
-                cu pași generici.
-              </p>
+            {result.summary && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
+                  <p className="text-xl font-bold text-[#18257f]">{result.summary.core_count}</p>
+                  <p className="text-[11px] text-slate-500">scenarii standard incluse</p>
+                </div>
+                <div className="bg-[#fff9c4] border border-amber-200 rounded-lg p-3 text-center">
+                  <p className="text-xl font-bold text-amber-700">{result.summary.specific_count}</p>
+                  <p className="text-[11px] text-amber-700">
+                    specifice client (din {result.summary.requirements} cerințe)
+                  </p>
+                </div>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                  <p className="text-xl font-bold text-red-600">{result.summary.excluded_count}</p>
+                  <p className="text-[11px] text-red-600">excluse vs standard</p>
+                </div>
+                <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
+                  <p className="text-xl font-bold text-[#18257f]">
+                    {result.engine === "claude" ? "✨" : "⚡"}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {result.engine === "claude" ? "Claude" : "Groq (free)"}
+                  </p>
+                </div>
+              </div>
             )}
-            <ScenariiPreviewTable scenarios={result.scenarios} />
             <ResultPanel
               filename={result.filename}
               docxB64={result.xlsxB64}

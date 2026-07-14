@@ -70,34 +70,27 @@ export type EstimateResponse = {
   estimate_id: string;
   est_tokens: number;
   est_minutes: number;
+  est_minutes_free?: number;
+  requirements?: number;
   fits_budget: boolean;
   calls?: number;
   modules?: number;
 };
 
-export type Scenariu = {
-  id: string;
-  capitol: string;
-  subcapitol: string;
-  titlu_scenariu: string;
-  obiectiv: string;
-  preconditii: string;
-  pasi: string;
-  rezultat_asteptat: string;
-  tip_test: string;
-  prioritate: string;
-  dependente: string;
-  observatii: string;
-  ai: boolean;
+export type ScenariiSummary = {
+  core_count: number;
+  specific_count: number;
+  excluded_count: number;
+  requirements: number;
 };
 
 export type ScenariiJob = {
   status: "processing" | "done" | "error";
-  step?: string; // "chunk:2/5:Nume" | "building"
+  step?: string; // "parsing" | "gen:2/5" | "deps" | "building"
   filename?: string;
   xlsx_b64?: string;
-  scenarios?: Scenariu[];
-  ai_used?: boolean;
+  summary?: ScenariiSummary;
+  engine?: "claude" | "groq";
   storage_path?: string;
   error?: string;
 };
@@ -161,9 +154,13 @@ export async function postScenariiEstimate(
 
 export async function postScenariiGenerate(
   estimateId: string,
-  useAi: boolean
+  engine: "claude" | "groq"
 ): Promise<{ job_id: string }> {
-  return postGenerate("scenarii/generate", estimateId, useAi) as Promise<{ job_id: string }>;
+  return apiFetch(`${PROXY}/scenarii/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ estimate_id: estimateId, engine }),
+  }) as Promise<{ job_id: string }>;
 }
 
 export async function getScenariiJob(jobId: string): Promise<ScenariiJob> {
