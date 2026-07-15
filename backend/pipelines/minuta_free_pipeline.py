@@ -17,7 +17,7 @@ import tempfile
 from html import escape
 from pathlib import Path
 
-from groq import AsyncGroq, RateLimitError
+from groq import APIStatusError, AsyncGroq, RateLimitError
 from docx import Document
 
 try:
@@ -79,7 +79,10 @@ def _chunk_size_chars() -> int:
 
 # ── Parsare transcript ─────────────────────────────────────────────────────────
 
-_CUE_ID_RE = re.compile(r"^[\w-]+/\d+-\d+$")
+# ID-uri de cue in variantele intalnite: "guid/17-0" (Teams), GUID simplu, contor numeric (SRT)
+_CUE_ID_RE = re.compile(
+    r"^(?:[\w-]+/\d+-\d+|[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}|\d+)$"
+)
 _SPEAKER_RE = re.compile(r"<v\s+([^>]+)>")
 
 
@@ -142,14 +145,30 @@ def _split_chunks(text: str, chunk_chars: int) -> list[str]:
 
 # ── Apel LLM cu retry ─────────────────────────────────────────────────────────
 
+# din mesajul Groq 413: "... (TPM): Limit 8000, Requested 10276 ..."
+_LIMIT_REQ_RE = re.compile(r"Limit (\d+), Requested (\d+)")
+
+
+def shrink_for_413(content: str, error_msg: str) -> str:
+    """Micsoreaza continutul exact cat cere eroarea 413 (cu marja 15%).
+
+    Estimarea chars/token e derutata de continut atipic (GUID-uri, timestamps,
+    nume) — raportul Limit/Requested din eroare e sursa de adevar."""
+    m = _LIMIT_REQ_RE.search(error_msg)
+    ratio = (int(m.group(1)) / int(m.group(2)) * 0.85) if m else 0.7
+    keep = max(500, int(len(content) * ratio))
+    return content[:keep]
+
+
 async def _call_groq(
     client: AsyncGroq, prompt_file: str, content: str, state: dict, out_tokens: int
 ) -> str:
-    """state["model"] = modelul curent; la limita zilnica trece pe urmatorul din lant."""
+    """state["model"] = modelul curent; la limita zilnica trece pe urmatorul din lant.
+    La 413 (o singura cerere peste TPM) continutul se micsoreaza si se reincearca."""
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
 
     last_error: Exception | None = None
-    for attempt in range(4):
+    for attempt in range(5):
         model = state["model"]
         kwargs = {}
         if model.startswith("openai/"):
@@ -174,8 +193,15 @@ async def _call_groq(
                     ) from e
                 state["model"] = nxt
                 continue  # reincearca imediat pe modelul de rezerva (cota separata)
-            if attempt < 3:
+            if attempt < 4:
                 await asyncio.sleep(65)  # limita pe minut — asteapta resetul ferestrei
+        except APIStatusError as e:
+            # 413 = cererea in sine depaseste TPM — taiem si reincercam imediat
+            if e.status_code == 413:
+                last_error = e
+                content = shrink_for_413(content, str(e))
+                continue
+            raise
     raise last_error
 
 

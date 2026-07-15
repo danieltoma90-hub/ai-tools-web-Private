@@ -86,11 +86,23 @@ async def _call_claude(prompt: str, content: str, max_tokens: int) -> str:
     return resp.content[0].text
 
 
+# din mesajul Groq 413: "... (TPM): Limit 8000, Requested 10276 ..."
+_LIMIT_REQ_RE = re.compile(r"Limit (\d+), Requested (\d+)")
+
+
+def _shrink_for_413(content: str, error_msg: str) -> str:
+    """Micsoreaza continutul cat cere eroarea 413 (marja 15%) — estimarea
+    chars/token e derutata de continut atipic (coduri, GUID-uri, tabele)."""
+    m = _LIMIT_REQ_RE.search(error_msg)
+    ratio = (int(m.group(1)) / int(m.group(2)) * 0.85) if m else 0.7
+    return content[: max(500, int(len(content) * ratio))]
+
+
 async def _call_groq(prompt: str, content: str, max_tokens: int, state: dict) -> str:
-    from groq import AsyncGroq, RateLimitError
+    from groq import APIStatusError, AsyncGroq, RateLimitError
     client = AsyncGroq(api_key=os.environ["GROQ_API_KEY"])
     last_err: Exception | None = None
-    for attempt in range(4):
+    for attempt in range(5):
         model = state.get("model", GROQ_CHAIN[0])
         kwargs = {"reasoning_effort": "low"} if model.startswith("openai/") else {}
         try:
@@ -110,8 +122,15 @@ async def _call_groq(prompt: str, content: str, max_tokens: int, state: dict) ->
                 raise RuntimeError(
                     "Limita zilnică gratuită Groq epuizată. Reîncercați mâine sau folosiți varianta Claude."
                 ) from e
-            if attempt < 3:
+            if attempt < 4:
                 await asyncio.sleep(65)
+        except APIStatusError as e:
+            # 413 = cererea in sine depaseste TPM — taiem continutul si reincercam
+            if e.status_code == 413:
+                last_err = e
+                content = _shrink_for_413(content, str(e))
+                continue
+            raise
     raise last_err
 
 
