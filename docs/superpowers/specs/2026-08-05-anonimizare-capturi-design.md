@@ -29,7 +29,7 @@ Capturile din Charisma ERP folosite în documentație conțin date reale de clie
 | Redactare | Canvas 2D API | acoperă cu fundal eșantionat + rescrie textul |
 | Împachetare | `jszip` | descărcare set ca `.zip` |
 
-Assets tesseract (WASM + `traineddata`) se **auto-găzduiesc** în `frontend/public/tesseract/` — nu se depinde de CDN extern la runtime.
+Assets tesseract (WASM + `traineddata`) se descarcă de la CDN la prima utilizare și rămân în cache-ul browserului. *(Revizuit la scrierea planului: auto-găzduirea în `frontend/public/tesseract/` ar adăuga ~15 MB în repo; se comută pe ea doar dacă spike-ul de validare arată că rețeaua corporate blochează CDN-ul.)*
 
 ### Module (fișiere)
 
@@ -63,7 +63,10 @@ Testate pe capturile reale (rezultate: toate cele 5 apariții „ORCHID S.R.L." 
 - **Firmă**: cuvânt capitalizat urmat de sufix juridic — `S.R.L.`, `S.A.`, `SRL`, `SA`, `PFA`, `LTD`, `GMBH`, `SNC`, `SCS`. **Sufixul trebuie să fie cu MAJUSCULE în textul original** — altfel cuvântul românesc „sa" produce fals pozitiv (constatat la test).
 - **Persoană**: ≥2 cuvinte consecutive cu MAJUSCULE (≥4 litere fiecare), excluzând lista de termeni de interfață: `ADMINISTRATOR, TOTALSOFT, TOTAL, MAIN, ORC, TVA, RON, TEST, PARTENER, NUME, CLIENT, DATA, PUNCT, LUCRU, NUMAR, SERIAL, VALOARE, REST, PLATA, SCADENTA, FACTURA, INTERN`.
 - **Grupare**: aparițiile cu același text normalizat (fără spații/punctuație, uppercase) = aceeași entitate → același înlocuitor în toate imaginile.
-- **Propagare prin substring**: după confirmarea unei entități, orice **cuvânt** OCR care o conține ca subșir devine candidat (rezolvă cazul „Baza de date: Main\Orchid", ratat de euristica de bază pentru că nu are sufix juridic). Se lucrează pe casetele **la nivel de cuvânt** furnizate de tesseract.js (`word.bbox`), nu pe linii întregi — astfel se redactează doar „Main\Orchid", nu toată eticheta. Când entitatea e doar o parte din cuvânt (`Orchid` în `Main\Orchid`), se redactează cuvântul întreg și se rescrie cu partea sensibilă înlocuită (`Main\TotalSoft`).
+- **Casete la nivel de cuvânt**: se lucrează pe `word.bbox` furnizat de tesseract.js, nu pe linii întregi — astfel se redactează doar denumirea, nu toată eticheta din jur.
+- **Propagare pe tot setul (potrivire exactă)**: o entitate — detectată automat sau marcată manual — se caută în **toate** imaginile și primește același înlocuitor peste tot. Marcarea manuală într-o singură captură acoperă astfel întregul set (ex. bara de status identică în 10 capturi).
+
+*Revizuit la scrierea planului:* propagarea **prin subșir** (a găsi automat `Orchid` în interiorul cuvântului `Main\Orchid` și a rescrie `Main\TotalSoft`) a fost **scoasă din scop** ca YAGNI — ar cere text de înlocuire diferit per apariție. Cazul e acoperit de selecția manuală, care se propagă pe tot setul cu o singură marcare.
 
 **Limitări cunoscute și acceptate:** adresele scrise cu MAJUSCULE (ex. „NUFERILOR") sunt clasificate ca persoană — fals pozitiv de tip, dar sunt oricum date sensibile; utilizatorul decide din tabel. Textul ratat complet se acoperă prin selecție manuală.
 
