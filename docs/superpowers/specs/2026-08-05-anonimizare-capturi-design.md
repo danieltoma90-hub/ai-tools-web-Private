@@ -37,7 +37,7 @@ Assets tesseract (WASM + `traineddata`) se **auto-găzduiesc** în `frontend/pub
 - `lib/anonimizare/classify.ts` — `classifyEntities(words) -> Entity[]`; euristici firmă/persoană; grupare pe text normalizat.
 - `lib/anonimizare/redact.ts` — `redactImage(image, edits) -> Blob`; eșantionare culoare fundal/cerneală, acoperire, rescriere text pe Canvas.
 - `components/anonimizare/RulesTable.tsx` — tabelul de reguli (bifă, text găsit, tip, înlocuitor editabil, nr. apariții).
-- `components/anonimizare/ManualBoxEditor.tsx` — desenare dreptunghi peste text ratat + text de înlocuire.
+- `components/anonimizare/ManualBoxEditor.tsx` — selecție cu dreptunghi pe imagine; reconstituie textul din selecție și creează un rând nou în tabelul de reguli (vezi „Selecție manuală inteligentă").
 - `app/(app)/anonimizare/page.tsx` — mașina de stări și orchestrarea.
 
 ### Model de date
@@ -65,7 +65,22 @@ Testate pe capturile reale (rezultate: toate cele 5 apariții „ORCHID S.R.L." 
 - **Grupare**: aparițiile cu același text normalizat (fără spații/punctuație, uppercase) = aceeași entitate → același înlocuitor în toate imaginile.
 - **Propagare prin substring**: după confirmarea unei entități, orice **cuvânt** OCR care o conține ca subșir devine candidat (rezolvă cazul „Baza de date: Main\Orchid", ratat de euristica de bază pentru că nu are sufix juridic). Se lucrează pe casetele **la nivel de cuvânt** furnizate de tesseract.js (`word.bbox`), nu pe linii întregi — astfel se redactează doar „Main\Orchid", nu toată eticheta. Când entitatea e doar o parte din cuvânt (`Orchid` în `Main\Orchid`), se redactează cuvântul întreg și se rescrie cu partea sensibilă înlocuită (`Main\TotalSoft`).
 
-**Limitări cunoscute și acceptate:** adresele scrise cu MAJUSCULE (ex. „NUFERILOR") sunt clasificate ca persoană — fals pozitiv de tip, dar sunt oricum date sensibile; utilizatorul decide din tabel. Textul ratat complet se acoperă manual.
+**Limitări cunoscute și acceptate:** adresele scrise cu MAJUSCULE (ex. „NUFERILOR") sunt clasificate ca persoană — fals pozitiv de tip, dar sunt oricum date sensibile; utilizatorul decide din tabel. Textul ratat complet se acoperă prin selecție manuală.
+
+## Selecție manuală inteligentă
+
+Pe orice imagine, utilizatorul trage un dreptunghi peste zona de anonimizat. Aplicația **reconstituie singură textul din selecție** și populează un rând nou în tabelul de reguli, identic ca formă cu cele detectate automat — utilizatorul doar editează înlocuitorul.
+
+Comportament:
+1. Se colectează cuvintele OCR ale căror casete **se intersectează ≥50%** cu selecția.
+2. Se reconstituie textul în ordinea de citire (sus→jos, stânga→dreapta), separat prin spațiu.
+3. Se rulează aceeași clasificare (firmă/persoană) pe textul reconstituit → se propune înlocuitorul (`TotalSoft` / `PartenerTestN`), **editabil**.
+4. Se creează un rând nou în tabel, cu bifa activă, marcat vizual ca „manual". Aparițiile sunt cuvintele din selecție.
+5. Ca orice altă entitate, textul reconstituit se propagă în tot setul (aceeași denumire găsită în alte imagini primește același înlocuitor).
+
+**Dacă OCR nu a găsit niciun cuvânt în selecție** (text ratat complet): rândul se creează cu textul original marcat `(nedetectat)`, caseta desenată devine singura apariție, iar utilizatorul scrie manual înlocuitorul. Redactarea funcționează identic — se acoperă și se rescrie.
+
+Selecția se poate șterge (rândul dispare din tabel).
 
 ## Redactare
 
@@ -75,7 +90,13 @@ Portarea tehnicii validate din skill-ul local:
 3. Se acoperă caseta (+2 px padding) cu fundalul.
 4. Se scrie textul înlocuitor, aliniat pe caseta originală.
 
-**Font (regulă unică, fără decizii ambigue):** familie `Arial, Helvetica, sans-serif`; se folosește **bold** dacă densitatea pixelilor de cerneală din casetă depășește 22% (heuristică pentru text îngroșat). Mărimea inițială = înălțimea casetei × 1,35, apoi **shrink-to-fit**: dacă textul măsurat (`ctx.measureText`) depășește lățimea casetei + 4 px, se reduce mărimea în pași de 0,5 px până încape (minim 7 px). Astfel un înlocuitor mai lung decât originalul (ex. `PartenerTest1` peste `AGACHE EUGEN`) nu iese din casetă și nu acoperă conținut vecin.
+**Font (regulă unică, fără decizii ambigue):** familie `Arial, Helvetica, sans-serif`; se folosește **bold** dacă densitatea pixelilor de cerneală din casetă depășește 22% (heuristică pentru text îngroșat). Mărimea = înălțimea casetei × 1,35.
+
+**Text prea lung — prioritate lizibilității.** Dacă înlocuitorul depășește lățimea casetei + 4 px:
+1. Se micșorează fontul în pași de 0,5 px, **dar nu sub 90%** din mărimea inițială (limită de lizibilitate).
+2. Dacă tot nu încape, se **trunchiază** textul caracter cu caracter și se adaugă elipsă: `PartenerTest1` → `Parten…`.
+
+Regula: **nu se micșorează textul până devine ilizibil** — se taie și se marchează cu `…`, convenția uzuală. Mărimea rezultată și eventuala trunchiere se aplică per apariție (aceeași entitate poate încăpea întreagă într-o casetă lată și trunchiată într-una îngustă).
 
 ## Flux UI (mașină de stări)
 
@@ -83,7 +104,7 @@ Portarea tehnicii validate din skill-ul local:
 
 - **idle** — zonă drag & drop, acceptă `.png`, `.jpg`; oricâte fișiere.
 - **scanning** — progres per imagine („Analizez 2 din 7...").
-- **review** — tabelul de reguli + galeria de imagini; pe fiecare imagine se pot desena casete manuale.
+- **review** — tabelul de reguli + galeria de imagini; pe fiecare imagine se poate trage o selecție care adaugă automat un rând nou în tabel (vezi „Selecție manuală inteligentă").
 - **applying** — redactare pe Canvas.
 - **done** — previzualizare rezultate + „Descarcă toate (.zip)"; buton „Anonimizează alt set".
 - **error** — mesaj în română + reluare.
@@ -103,7 +124,8 @@ Texte în română cu diacritice, în stilul celorlalte pagini (ToolCard, Upload
 ## Testare
 
 - Unitar: `classify.ts` — firmă cu/fără sufix, falsul pozitiv „sa", termenii de interfață excluși, gruparea aparițiilor, numerotarea entităților multiple.
-- Unitar: `redact.ts` — eșantionarea culorilor pe imagine sintetică, acoperirea casetei.
+- Unitar: `redact.ts` — eșantionarea culorilor pe imagine sintetică, acoperirea casetei, **trunchierea cu elipsă** (text lung într-o casetă îngustă → `Parten…`, fără a coborî sub 90% din mărime).
+- Unitar: reconstituirea textului din selecție (intersecție ≥50%, ordine de citire, cazul „niciun cuvânt găsit").
 - Vizual: capturile reale, comparate cu rezultatul deja obținut manual (`D:\AI_Claude\anonimizare\output\`).
 
 ## În afara scopului (YAGNI)
