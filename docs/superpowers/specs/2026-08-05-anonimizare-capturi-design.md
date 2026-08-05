@@ -1,0 +1,111 @@
+# Tool „Anonimizare capturi" — Design
+
+**Data:** 2026-08-05
+**Status:** aprobat de utilizator (sesiune brainstorming)
+**Scop:** al 4-lea tool în ai-tools-web — ascunde datele sensibile (nume de firme, parteneri) din capturi de ecran, pentru documentație / training / demo.
+
+## Problemă
+
+Capturile din Charisma ERP folosite în documentație conțin date reale de client (denumiri de firme, nume de parteneri). Anonimizarea manuală în editoare de imagini e lentă și inconsecventă. Există deja un skill local (`D:\AI_Claude\skills\anonimizare-screenshot`) care rezolvă redactarea, dar cere coordonate introduse manual și rulează doar pe calculatorul autorului.
+
+## Decizii (cu utilizatorul)
+
+1. **Zero backend** — tot procesul rulează în browser. Imaginile NU urcă pe server (nici temporar), nu se salvează în Repository.
+2. **Batch** — se încarcă mai multe capturi odată; regulile de înlocuire sunt globale pe tot setul; descărcare `.zip`.
+3. **Detecție automată + confirmare** — aplicația propune, utilizatorul confirmă/editează/debifează. Câmpul de înlocuire este **editabil**.
+4. **Numerotare** — entități multiple de același tip primesc sufix numeric (`PartenerTest1`, `PartenerTest2`); dacă e una singură, fără număr (`TotalSoft`).
+5. **Cost zero** — fără AI, fără API plătit, fără tokeni din abonament. OCR local open-source.
+
+**Respinse:** OCR pe server cu RapidOCR (vârf 409 MB RAM măsurat > 512 MB Render free); AI vision (ar consuma credite plătite; abonamentul Claude Code nu poate fi folosit ca API de backend multi-user).
+
+## Arhitectură
+
+100% client-side, într-o pagină Next.js nouă `frontend/app/(app)/anonimizare/page.tsx`. Fără endpoint de backend, fără storage.
+
+| Componentă | Tehnologie | Rol |
+|---|---|---|
+| OCR | `tesseract.js` (WASM) | extrage textul + casetele (bounding boxes) |
+| Clasificare | TypeScript, regex | firmă / persoană / nedetectat |
+| Redactare | Canvas 2D API | acoperă cu fundal eșantionat + rescrie textul |
+| Împachetare | `jszip` | descărcare set ca `.zip` |
+
+Assets tesseract (WASM + `traineddata`) se **auto-găzduiesc** în `frontend/public/tesseract/` — nu se depinde de CDN extern la runtime.
+
+### Module (fișiere)
+
+- `lib/anonimizare/ocr.ts` — inițializare worker tesseract, `recognize(file) -> Word[]` (text + box + confidence).
+- `lib/anonimizare/classify.ts` — `classifyEntities(words) -> Entity[]`; euristici firmă/persoană; grupare pe text normalizat.
+- `lib/anonimizare/redact.ts` — `redactImage(image, edits) -> Blob`; eșantionare culoare fundal/cerneală, acoperire, rescriere text pe Canvas.
+- `components/anonimizare/RulesTable.tsx` — tabelul de reguli (bifă, text găsit, tip, înlocuitor editabil, nr. apariții).
+- `components/anonimizare/ManualBoxEditor.tsx` — desenare dreptunghi peste text ratat + text de înlocuire.
+- `app/(app)/anonimizare/page.tsx` — mașina de stări și orchestrarea.
+
+### Model de date
+
+```ts
+type Word = { text: string; box: [number, number, number, number]; conf: number; imageIndex: number };
+type EntityKind = "firma" | "persoana";
+type Entity = {
+  id: string;
+  originalText: string;      // text normalizat, cheia de grupare
+  kind: EntityKind;
+  replacement: string;       // propus automat, editabil
+  enabled: boolean;          // bifa din tabel
+  occurrences: Word[];       // toate aparițiile, în toate imaginile
+};
+type ManualEdit = { imageIndex: number; box: [number,number,number,number]; text: string };
+```
+
+## Detecție (euristici validate)
+
+Testate pe capturile reale (rezultate: toate cele 5 apariții „ORCHID S.R.L." și 3 „AGACHE EUGEN" găsite, încredere 86-92%):
+
+- **Firmă**: cuvânt capitalizat urmat de sufix juridic — `S.R.L.`, `S.A.`, `SRL`, `SA`, `PFA`, `LTD`, `GMBH`, `SNC`, `SCS`. **Sufixul trebuie să fie cu MAJUSCULE în textul original** — altfel cuvântul românesc „sa" produce fals pozitiv (constatat la test).
+- **Persoană**: ≥2 cuvinte consecutive cu MAJUSCULE (≥4 litere fiecare), excluzând lista de termeni de interfață: `ADMINISTRATOR, TOTALSOFT, TOTAL, MAIN, ORC, TVA, RON, TEST, PARTENER, NUME, CLIENT, DATA, PUNCT, LUCRU, NUMAR, SERIAL, VALOARE, REST, PLATA, SCADENTA, FACTURA, INTERN`.
+- **Grupare**: aparițiile cu același text normalizat (fără spații/punctuație, uppercase) = aceeași entitate → același înlocuitor în toate imaginile.
+- **Propagare prin substring**: după confirmarea unei entități, orice **cuvânt** OCR care o conține ca subșir devine candidat (rezolvă cazul „Baza de date: Main\Orchid", ratat de euristica de bază pentru că nu are sufix juridic). Se lucrează pe casetele **la nivel de cuvânt** furnizate de tesseract.js (`word.bbox`), nu pe linii întregi — astfel se redactează doar „Main\Orchid", nu toată eticheta. Când entitatea e doar o parte din cuvânt (`Orchid` în `Main\Orchid`), se redactează cuvântul întreg și se rescrie cu partea sensibilă înlocuită (`Main\TotalSoft`).
+
+**Limitări cunoscute și acceptate:** adresele scrise cu MAJUSCULE (ex. „NUFERILOR") sunt clasificate ca persoană — fals pozitiv de tip, dar sunt oricum date sensibile; utilizatorul decide din tabel. Textul ratat complet se acoperă manual.
+
+## Redactare
+
+Portarea tehnicii validate din skill-ul local:
+1. Se eșantionează **culoarea fundalului** = mediana unei benzi de 4 px deasupra casetei (prinde gradientul barelor de status).
+2. Se eșantionează **culoarea cernelii** = mediana pixelilor întunecați din casetă.
+3. Se acoperă caseta (+2 px padding) cu fundalul.
+4. Se scrie textul înlocuitor, aliniat pe caseta originală.
+
+**Font (regulă unică, fără decizii ambigue):** familie `Arial, Helvetica, sans-serif`; se folosește **bold** dacă densitatea pixelilor de cerneală din casetă depășește 22% (heuristică pentru text îngroșat). Mărimea inițială = înălțimea casetei × 1,35, apoi **shrink-to-fit**: dacă textul măsurat (`ctx.measureText`) depășește lățimea casetei + 4 px, se reduce mărimea în pași de 0,5 px până încape (minim 7 px). Astfel un înlocuitor mai lung decât originalul (ex. `PartenerTest1` peste `AGACHE EUGEN`) nu iese din casetă și nu acoperă conținut vecin.
+
+## Flux UI (mașină de stări)
+
+`idle → scanning → review → applying → done | error`
+
+- **idle** — zonă drag & drop, acceptă `.png`, `.jpg`; oricâte fișiere.
+- **scanning** — progres per imagine („Analizez 2 din 7...").
+- **review** — tabelul de reguli + galeria de imagini; pe fiecare imagine se pot desena casete manuale.
+- **applying** — redactare pe Canvas.
+- **done** — previzualizare rezultate + „Descarcă toate (.zip)"; buton „Anonimizează alt set".
+- **error** — mesaj în română + reluare.
+
+Texte în română cu diacritice, în stilul celorlalte pagini (ToolCard, UploadZone, ProcessingSpinner refolosite).
+
+## Risc principal și plan de validare
+
+**Riscul:** euristicile și acuratețea au fost validate cu **RapidOCR** (motor Python). În browser se folosește **tesseract.js** — alt motor, acuratețe potențial diferită pe text mic de interfață.
+
+**Mitigare — prima activitate de implementare este un test de validare:** se rulează tesseract.js pe aceleași două capturi (`D:\AI_Claude\anonimizare\input\`) și se compară: câte dintre cele 8 apariții-țintă sunt găsite, cu ce încredere și cu ce acuratețe a casetelor. Rezultatul se raportează utilizatorului **înainte** de a construi interfața.
+
+**Praguri de decizie:**
+- Găsește ≥6 din 8 apariții → se continuă cu design-ul complet.
+- Găsește <6 → se continuă cu **marcarea manuală** ca mod principal (tool-ul rămâne util), iar detecția automată se amână.
+
+## Testare
+
+- Unitar: `classify.ts` — firmă cu/fără sufix, falsul pozitiv „sa", termenii de interfață excluși, gruparea aparițiilor, numerotarea entităților multiple.
+- Unitar: `redact.ts` — eșantionarea culorilor pe imagine sintetică, acoperirea casetei.
+- Vizual: capturile reale, comparate cu rezultatul deja obținut manual (`D:\AI_Claude\anonimizare\output\`).
+
+## În afara scopului (YAGNI)
+
+Salvare pe server / Repository; procesare PDF; detecție AI; editare avansată de imagine (blur, pixelare); OCR pentru alte limbi decât română/engleză.
