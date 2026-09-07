@@ -235,3 +235,26 @@ export type DashboardSummary = {
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   return apiFetch(`${PROXY}/dashboard/summary`) as Promise<DashboardSummary>;
 }
+
+export type ProviderStatus = {
+  provider: string;
+  configured: boolean;
+  key_hint?: string;
+  state:
+    | "ok"
+    | "cheie_invalida"
+    | "fara_credit"
+    | "limita_atinsa"
+    | "model_indisponibil"
+    | "lipsa"
+    | "eroare";
+  message: string;
+};
+
+export async function getProviderDiagnostics(): Promise<{
+  providers: ProviderStatus[];
+}> {
+  return apiFetch(`${PROXY}/diagnostics/providers`) as Promise<{
+    providers: ProviderStatus[];
+  }>;
+}

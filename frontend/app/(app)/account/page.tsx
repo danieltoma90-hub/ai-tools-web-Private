@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { changePasswordAction } from "@/app/actions/account";
+import ProviderDiagnostics from "@/components/ProviderDiagnostics";
 
 const ERRORS: Record<string, string> = {
   wrong_password: "Parola actuală nu este corectă.",
@@ -107,6 +108,8 @@ export default async function AccountPage({
           Salvează parola nouă
         </button>
       </form>
+
+      <ProviderDiagnostics />
     </div>
   );
 }
