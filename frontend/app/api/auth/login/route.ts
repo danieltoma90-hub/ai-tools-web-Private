@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { setSessionCookies } from "@/lib/session";
 
 export async function POST(request: NextRequest) {
   let email: string;
@@ -51,22 +52,13 @@ export async function POST(request: NextRequest) {
     }
 
     const json = await res.json();
-    const access_token: string = json.access_token;
-    const expires_at: number = json.expires_at;
-
-    const maxAge = expires_at
-      ? expires_at - Math.floor(Date.now() / 1000)
-      : 3600;
-
     const response = NextResponse.redirect(new URL("/dashboard", request.url), {
       status: 303,
     });
-    response.cookies.set("auth-token", access_token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      maxAge: Math.max(maxAge, 0),
-      path: "/",
+    setSessionCookies(response, {
+      access_token: json.access_token,
+      refresh_token: json.refresh_token,
+      expires_at: json.expires_at,
     });
     return response;
   } catch {

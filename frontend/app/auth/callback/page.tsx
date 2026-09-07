@@ -26,11 +26,15 @@ export default function AuthCallback() {
     fetch("/api/auth/set-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ access_token, expires_at }),
+      body: JSON.stringify({
+        access_token,
+        refresh_token: params.get("refresh_token") ?? undefined,
+        expires_at,
+      }),
     })
       .then((res) => {
         if (res.ok) {
-          window.location.href = "/minuta";
+          window.location.href = "/dashboard";
         } else {
           window.location.href = "/login?error=invalid_credentials";
         }

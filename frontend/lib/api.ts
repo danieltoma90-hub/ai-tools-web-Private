@@ -3,6 +3,12 @@ const PROXY = "/api/proxy";
 async function apiFetch(url: string, init?: RequestInit) {
   const res = await fetch(url, init);
   if (!res.ok) {
+    // Sesiunea a expirat și nici reînnoirea din proxy n-a reușit: singura
+    // ieșire e autentificarea din nou, nu un mesaj de eroare pe ecran.
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login?error=session_expired";
+      throw new Error("Sesiune expirată — te reautentifici.");
+    }
     let detail = "Eroare server";
     try {
       const text = await res.text();

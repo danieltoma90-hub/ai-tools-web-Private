@@ -3,6 +3,7 @@ import WarmBackend from "@/components/WarmBackend";
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_credentials: "Email sau parolă incorectă.",
   server_error: "Eroare de server. Încearcă din nou.",
+  session_expired: "Sesiunea a expirat. Autentifică-te din nou.",
 };
 
 export default async function LoginPage({

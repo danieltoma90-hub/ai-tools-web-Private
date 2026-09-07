@@ -32,13 +32,17 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/auth/");
 
   const token = request.cookies.get("auth-token")?.value;
-  const authenticated = hasValidSession(token);
+  // Un access token expirat NU mai înseamnă deconectare: cât timp există refresh
+  // token, proxy-ul obține unul nou la primul apel. Fără asta, utilizatorul era
+  // aruncat la login după o oră deși sesiunea putea continua.
+  const canRefresh = Boolean(request.cookies.get("refresh-token")?.value);
+  const authenticated = hasValidSession(token) || canRefresh;
 
   if (!authenticated && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
   if (authenticated && pathname === "/login") {
-    return NextResponse.redirect(new URL("/minuta", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
   return NextResponse.next();
 }
