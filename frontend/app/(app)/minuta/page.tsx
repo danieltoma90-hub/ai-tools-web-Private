@@ -5,6 +5,7 @@ import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import ResultPanel from "@/components/ResultPanel";
 import HistoryPanel from "@/components/HistoryPanel";
+import ContextStep from "@/components/ContextStep";
 import { postMinuta, pollMinutaJob, postMinutaFree } from "@/lib/api";
 
 type State = "idle" | "processing" | "done" | "error";
@@ -24,6 +25,8 @@ export default function MinutaPage() {
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState("");
   const [mode, setMode] = useState<Mode>("ai");
+  const [contextPath, setContextPath] = useState("");
+  const [contextLabel, setContextLabel] = useState("");
   const [freeLabel, setFreeLabel] = useState("Se inițializează...");
   const [result, setResult] = useState<{
     filename: string;
@@ -40,7 +43,7 @@ export default function MinutaPage() {
     cancelledRef.current = false;
 
     try {
-      const { job_id } = await postMinuta(file);
+      const { job_id } = await postMinuta(file, contextPath || undefined);
 
       while (true) {
         await new Promise((r) => setTimeout(r, 2000));
@@ -184,11 +187,32 @@ export default function MinutaPage() {
               </p>
             )}
 
-            <UploadZone
-              accept=".vtt,.docx"
-              label=".vtt sau .docx"
-              onFile={setFile}
-            />
+            {mode === "ai" && (
+              <ContextStep
+                value={contextPath}
+                onChange={(path, label) => {
+                  setContextPath(path);
+                  setContextLabel(label);
+                }}
+              />
+            )}
+
+            <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">
+              <h3 className="text-sm font-bold text-[#18257f]">
+                {mode === "ai" ? "Pasul 2 · Transcript ședință" : "Transcript ședință"}
+              </h3>
+              <UploadZone
+                accept=".vtt,.docx"
+                label=".vtt sau .docx"
+                onFile={setFile}
+              />
+              {mode === "ai" && contextPath && (
+                <p className="text-xs text-slate-500">
+                  Se va genera folosind contextul{" "}
+                  <span className="font-semibold text-[#18257f]">{contextLabel}</span>.
+                </p>
+              )}
+            </div>
             <button
               onClick={handleGenerate}
               disabled={!file}

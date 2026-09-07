@@ -2,6 +2,7 @@ import asyncio
 import base64
 import logging
 import os
+import sys
 import tempfile
 import traceback
 import uuid
@@ -11,15 +12,97 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import (
+    APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile,
+)
+
+from fastapi.responses import FileResponse
 
 from auth import verify_token
 from pipelines.minuta_pipeline import run_minuta_pipeline
 from pipelines.minuta_free_pipeline import estimate_free_job, run_minuta_free_pipeline
-from storage import upload_file
+from storage import download_document, list_files, upload_file
+
+SKILL_DIR = Path(__file__).parent.parent / "skills" / "minuta"
+CONTEXT_TEMPLATE = SKILL_DIR / "template" / "Context_Proiect_Template.docx"
 
 router = APIRouter()
 ALLOWED_EXTENSIONS = {".vtt", ".docx"}
+
+
+@router.get("/minuta/context-template")
+def download_context_template(user=Depends(verify_token)):
+    """Template-ul de Context Proiect, gata de completat."""
+    if not CONTEXT_TEMPLATE.exists():
+        raise HTTPException(status_code=500, detail="Template-ul de context lipsește pe server")
+    return FileResponse(
+        str(CONTEXT_TEMPLATE),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename="Context_Proiect_Template.docx",
+    )
+
+
+@router.get("/minuta/contexts")
+def list_contexts(user=Depends(verify_token)):
+    """Contextele salvate, pentru a fi reutilizate la ședințele următoare."""
+    files = list_files(tool="context")
+    return [
+        {
+            "name": f["name"],
+            "owner": f.get("owner", "—"),
+            "storage_path": f.get("storage_path", ""),
+            "created_at": f.get("created_at", ""),
+        }
+        for f in files
+    ]
+
+
+@router.post("/minuta/contexts")
+async def upload_context(
+    file: UploadFile = File(...),
+    user=Depends(verify_token),
+):
+    """Salvează un fișier de Context Proiect pentru reutilizare."""
+    filename_raw = file.filename or ""
+    if Path(filename_raw).suffix.lower() != ".docx":
+        raise HTTPException(status_code=422, detail="Contextul trebuie să fie un fișier .docx")
+
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+        tmp.write(await file.read())
+        tmp_path = Path(tmp.name)
+
+    try:
+        # Validare inainte de salvare: un formular necompletat nu e context.
+        sys.path.insert(0, str(SKILL_DIR / "scripts"))
+        from context_parser import parse_context
+
+        ctx = parse_context(tmp_path)
+        if ctx.is_empty():
+            raise HTTPException(
+                status_code=422,
+                detail="Fișierul de context nu conține nimic completat. "
+                       "Completați cel puțin un capitol din template și reîncărcați.",
+            )
+        user_email = getattr(user, "email", None) or "anonymous"
+        storage_path = upload_file(
+            tmp_path, tool="context", filename=Path(filename_raw).name, user_email=user_email
+        )
+        return {
+            "storage_path": storage_path,
+            "name": Path(filename_raw).name,
+            "summary": {
+                "participanti": len(ctx.participanti),
+                "glosar": len(ctx.glosar),
+                "decizii": len(ctx.decizii),
+                "actiuni_deschise": len(ctx.actiuni_deschise),
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Fișier de context invalid: {e}")
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 # In-memory job store — cleared on each Render restart/redeploy
 _jobs: dict[str, dict[str, Any]] = {}
@@ -31,9 +114,20 @@ async def _run_job(
     api_key: str,
     stem: str,
     timestamp: str,
+    context_storage_path: str = "",
 ) -> None:
+    context_path: Path | None = None
     try:
-        docx_path, preview_html = await run_minuta_pipeline(input_path, api_key)
+        if context_storage_path:
+            try:
+                context_path = download_document(context_storage_path)
+            except Exception as e:
+                # Contextul e un plus, nu o conditie: daca nu poate fi citit,
+                # minuta se genereaza fara el in loc sa esueze.
+                logger.warning("context %s indisponibil: %s", context_storage_path, e)
+        docx_path, preview_html = await run_minuta_pipeline(
+            input_path, api_key, context_path=context_path
+        )
         filename = f"Minuta_{stem}_{timestamp}.docx"
         user_email = _jobs[job_id].get("user_email", "anonymous")
         storage_path = upload_file(docx_path, tool="minuta", filename=filename, user_email=user_email)
@@ -54,12 +148,15 @@ async def _run_job(
         }
     finally:
         input_path.unlink(missing_ok=True)
+        if context_path is not None:
+            context_path.unlink(missing_ok=True)
 
 
 @router.post("/minuta")
 async def generate_minuta(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    context_path: str = Form(""),
     user=Depends(verify_token),
 ):
     """Pornește procesarea minutei în fundal și returnează un job_id imediat."""
@@ -81,7 +178,9 @@ async def generate_minuta(
 
     user_email = getattr(user, "email", None) or "anonymous"
     _jobs[job_id] = {"status": "processing", "user_email": user_email}
-    background_tasks.add_task(_run_job, job_id, input_path, api_key, stem, timestamp)
+    background_tasks.add_task(
+        _run_job, job_id, input_path, api_key, stem, timestamp, context_path
+    )
 
     return {"job_id": job_id}
 

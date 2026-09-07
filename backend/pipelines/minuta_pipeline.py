@@ -21,6 +21,7 @@ TEMPLATE_PATH = SKILL_DIR / "template" / "F05_minuta_template.docx"
 
 sys.path.insert(0, str(SKILL_DIR / "scripts"))
 from build_minuta import build_minuta
+from context_parser import parse_context
 
 
 def extract_vtt_text(vtt_path: Path) -> str:
@@ -41,15 +42,20 @@ def extract_docx_text(docx_path: Path) -> str:
     return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
 
 
-async def _call_claude(client: AsyncAnthropic, prompt_file: str, transcript: str) -> str:
+async def _call_claude(
+    client: AsyncAnthropic, prompt_file: str, transcript: str, context: str = ""
+) -> str:
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
+    # Contextul precede transcriptul: numele, rolurile si glosarul trebuie citite
+    # inainte de discutie, ca sa corecteze ce a stalcit transcrierea automata.
+    parts = [prompt]
+    if context:
+        parts.append(context)
+    parts.append(f"---TRANSCRIPT---\n{transcript}")
     response = await client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
-        messages=[{
-            "role": "user",
-            "content": f"{prompt}\n\n---TRANSCRIPT---\n{transcript}"
-        }]
+        messages=[{"role": "user", "content": "\n\n".join(parts)}],
     )
     return response.content[0].text
 
@@ -84,18 +90,24 @@ def _parse_json_from_response(text: str) -> dict | list:
     raise ValueError(f"Nu s-a putut parsa JSON din răspunsul Claude (primii 200 chars): {text[:200]}")
 
 
-async def _extract_metadata(client: AsyncAnthropic, transcript: str) -> dict:
-    raw = await _call_claude(client, "extract_meeting_metadata.md", transcript)
+async def _extract_metadata(client: AsyncAnthropic, transcript: str, context: str = "") -> dict:
+    raw = await _call_claude(client, "extract_meeting_metadata.md", transcript, context)
     return _parse_json_from_response(raw)
 
 
-async def _extract_sections(client: AsyncAnthropic, transcript: str) -> dict:
-    raw = await _call_claude(client, "extract_sections.md", transcript)
+async def _extract_sections(client: AsyncAnthropic, transcript: str, context: str = "") -> dict:
+    raw = await _call_claude(client, "extract_sections.md", transcript, context)
     return _parse_json_from_response(raw)
 
 
-async def _extract_action_items(client: AsyncAnthropic, transcript: str) -> list:
-    raw = await _call_claude(client, "extract_action_items.md", transcript)
+async def _extract_action_items(client: AsyncAnthropic, transcript: str, context: str = "") -> list:
+    raw = await _call_claude(client, "extract_action_items.md", transcript, context)
+    return _parse_json_from_response(raw)
+
+
+async def _extract_followup(client: AsyncAnthropic, transcript: str, context: str) -> dict:
+    """Stadiul actiunilor deschise din context, dupa aceasta sedinta."""
+    raw = await _call_claude(client, "extract_followup.md", transcript, context)
     return _parse_json_from_response(raw)
 
 
@@ -190,23 +202,67 @@ def _build_preview_html(data: dict) -> str:
 </body></html>"""
 
 
+def _followup_section(followup: dict | None) -> dict | None:
+    """Sectiunea „Stadiul actiunilor anterioare", ca tabel. None daca nu e cazul."""
+    if not isinstance(followup, dict):
+        return None
+    rows = []
+    for item in followup.get("stadiu_actiuni", []):
+        if not isinstance(item, dict) or not item.get("actiune"):
+            continue
+        detaliu = item.get("detaliu") or "—"
+        rows.append([
+            item.get("actiune", ""),
+            item.get("responsabil", "") or "—",
+            item.get("stare", "Nediscutată"),
+            detaliu,
+        ])
+    if not rows:
+        return None
+    return {
+        "titlu": "Stadiul acțiunilor anterioare",
+        "blocuri": [{
+            "type": "table",
+            "header": ["Acțiune", "Responsabil", "Stare", "Detaliu"],
+            "rows": rows,
+        }],
+    }
+
+
 async def run_minuta_pipeline(
-    transcript_path: Path, api_key: str
+    transcript_path: Path, api_key: str, context_path: Path | None = None
 ) -> tuple[Path, str]:
-    """Pipeline complet: transcript (.vtt sau .docx) → (docx_path, preview_html)."""
+    """Pipeline complet: transcript (.vtt sau .docx) → (docx_path, preview_html).
+
+    context_path: fisierul optional de Context Proiect (.docx). Cand e prezent,
+    numele/rolurile si glosarul din el corecteaza transcrierea, deciziile deja
+    luate nu mai sunt raportate ca noi, iar minuta primeste in plus sectiunea
+    „Stadiul actiunilor anterioare".
+    """
     if transcript_path.suffix.lower() == ".vtt":
         text = extract_vtt_text(transcript_path)
     else:
         text = extract_docx_text(transcript_path)
 
+    project_ctx = parse_context(context_path) if context_path else None
+    context_block = project_ctx.as_prompt_block() if project_ctx else ""
+
     client = AsyncAnthropic(api_key=api_key)
 
-    # Cele 3 extrageri rulează în paralel — reduce timpul de la ~90s la ~30s
-    meta_raw, sections, action_raw = await asyncio.gather(
-        _extract_metadata(client, text),
-        _extract_sections(client, text),
-        _extract_action_items(client, text),
-    )
+    # Extragerile rulează în paralel — reduce timpul de la ~90s la ~30s
+    tasks = [
+        _extract_metadata(client, text, context_block),
+        _extract_sections(client, text, context_block),
+        _extract_action_items(client, text, context_block),
+    ]
+    # A patra extragere doar daca exista actiuni deschise de urmarit
+    track_followup = bool(project_ctx and project_ctx.actiuni_deschise)
+    if track_followup:
+        tasks.append(_extract_followup(client, text, context_block))
+
+    results = await asyncio.gather(*tasks)
+    meta_raw, sections, action_raw = results[0], results[1], results[2]
+    followup = results[3] if track_followup else None
 
     # Claude returnează {"meta": {...}, "_observatii": [...]} — extragem doar interiorul
     meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
@@ -216,10 +272,17 @@ async def run_minuta_pipeline(
     # Claude returnează {"pasi_urmatori": [...]} — extragem lista
     action_items = action_raw.get("pasi_urmatori", action_raw) if isinstance(action_raw, dict) else action_raw
 
+    sectiuni = sections.get("sectiuni", [])
+    followup_section = _followup_section(followup)
+    if followup_section:
+        # Stadiul actiunilor vechi sta inaintea subiectelor noi: cititorul vrea
+        # intai sa stie ce s-a inchis din ce astepta.
+        sectiuni = [followup_section] + list(sectiuni)
+
     data = {
         "meta": meta,
         "context_si_scop": sections.get("context_si_scop"),
-        "sectiuni": sections.get("sectiuni", []),
+        "sectiuni": sectiuni,
         "pasi_urmatori": action_items if isinstance(action_items, list) else [],
         "include_signature": False,
     }

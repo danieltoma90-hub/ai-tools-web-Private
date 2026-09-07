@@ -9,7 +9,10 @@ from pathlib import Path
 from auth import get_supabase
 
 BUCKET = "documents"
-ALLOWED_TOOLS = {"minuta", "mockup", "scenarii"}
+# "context" tine fisierele de Context Proiect reutilizabile — nu sunt documente
+# generate, dar traiesc in acelasi bucket ca sa mosteneasca gratuit listarea,
+# semnarea si stergerea cu verificare de proprietar.
+ALLOWED_TOOLS = {"minuta", "mockup", "scenarii", "context"}
 UPLOADS_BUCKET = "uploads"
 UPLOAD_TOOLS_EXT = {"scenarii": {".docx"}, "mockup": {".docx", ".xlsx"}}
 UPLOAD_MAX_BYTES = 52_428_800  # 50MB — maximul planului free Supabase
@@ -40,6 +43,30 @@ def upload_file(local_path: Path, tool: str, filename: str, user_email: str = "a
     with open(local_path, "rb") as f:
         sb.storage.from_(BUCKET).upload(storage_path, f, {"upsert": "true"})
     return storage_path
+
+
+def download_document(storage_path: str) -> Path:
+    """Descarcă un obiect din bucket-ul 'documents' într-un fișier temporar.
+
+    Spre deosebire de `download_upload`, obiectul RĂMÂNE în storage: contextele
+    de proiect se refolosesc la fiecare ședință.
+    """
+    parts = storage_path.split("/")
+    if (
+        len(parts) < 2
+        or parts[0] not in ALLOWED_TOOLS
+        or any(p in ("", ".", "..") for p in parts)
+        or "\\" in storage_path
+    ):
+        raise ValueError(f"Cale invalidă: {storage_path!r}")
+
+    sb = get_supabase()
+    data = sb.storage.from_(BUCKET).download(storage_path)
+    suffix = Path(parts[-1]).suffix or ".docx"
+    fd, tmp_name = tempfile.mkstemp(suffix=suffix)
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+    return Path(tmp_name)
 
 
 def list_files(tool: str | None = None) -> list[dict]:

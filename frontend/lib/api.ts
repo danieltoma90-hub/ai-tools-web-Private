@@ -36,8 +36,69 @@ async function postFile(path: string, file: File) {
   return apiFetch(`${PROXY}/${path}`, { method: "POST", body: form });
 }
 
-export async function postMinuta(file: File): Promise<{ job_id: string }> {
-  return postFile("minuta", file) as Promise<{ job_id: string }>;
+export async function postMinuta(
+  file: File,
+  contextPath?: string
+): Promise<{ job_id: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  if (contextPath) form.append("context_path", contextPath);
+  return apiFetch(`${PROXY}/minuta`, { method: "POST", body: form }) as Promise<{
+    job_id: string;
+  }>;
+}
+
+export type SavedContext = {
+  name: string;
+  owner: string;
+  storage_path: string;
+  created_at: string;
+};
+
+export async function getContexts(): Promise<SavedContext[]> {
+  return apiFetch(`${PROXY}/minuta/contexts`) as Promise<SavedContext[]>;
+}
+
+export async function uploadContext(file: File): Promise<{
+  storage_path: string;
+  name: string;
+  summary: {
+    participanti: number;
+    glosar: number;
+    decizii: number;
+    actiuni_deschise: number;
+  };
+}> {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch(`${PROXY}/minuta/contexts`, {
+    method: "POST",
+    body: form,
+  }) as Promise<{
+    storage_path: string;
+    name: string;
+    summary: {
+      participanti: number;
+      glosar: number;
+      decizii: number;
+      actiuni_deschise: number;
+    };
+  }>;
+}
+
+/** Template-ul de context: descărcare prin proxy (păstrează autentificarea). */
+export async function downloadContextTemplate(): Promise<void> {
+  const res = await fetch(`${PROXY}/minuta/context-template`);
+  if (!res.ok) throw new Error("Nu s-a putut descărca template-ul.");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "Context_Proiect_Template.docx";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function pollMinutaJob(jobId: string): Promise<{

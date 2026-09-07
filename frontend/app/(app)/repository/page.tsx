@@ -18,11 +18,13 @@ const TOOL_ICONS: Record<string, string> = {
   minuta: "📝",
   mockup: "🎨",
   scenarii: "🧪",
+  context: "📋",
 };
 const TOOL_LABELS: Record<string, string> = {
   minuta: "Minută",
   mockup: "Mockup",
   scenarii: "Scenarii",
+  context: "Context",
 };
 
 const ALERT_THRESHOLD = 95; // % — alerta rosie + sugestii de curatenie
@@ -56,6 +58,11 @@ type Suggestion = { doc: Doc; reason: string };
 function cleanupSuggestions(docs: Doc[]): Suggestion[] {
   const suggestions: Suggestion[] = [];
   const suggested = new Set<string>();
+
+  // Contextele de proiect sunt fișiere de lucru, nu rezultate: unul vechi de
+  // luni de zile e în continuare cel folosit la fiecare ședință. Nu se propun
+  // niciodată la ștergere.
+  docs = docs.filter((d) => d.tool !== "context");
 
   const groups = new Map<string, Doc[]>();
   for (const d of docs) {
@@ -107,7 +114,7 @@ export default function RepositoryPage() {
   useEffect(() => {
     // filtru initial din URL (?tool=minuta) — folosit de butonul Istoric
     const toolParam = new URLSearchParams(window.location.search).get("tool");
-    if (toolParam && ["minuta", "mockup", "scenarii"].includes(toolParam)) {
+    if (toolParam && ["minuta", "mockup", "scenarii", "context"].includes(toolParam)) {
       setFilter(toolParam);
     }
     getDocuments()
@@ -168,7 +175,7 @@ export default function RepositoryPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {["toate", "minuta", "mockup", "scenarii"].map((f) => (
+          {["toate", "minuta", "mockup", "scenarii", "context"].map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
