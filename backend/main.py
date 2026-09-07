@@ -38,9 +38,30 @@ def health():
     try:
         get_supabase().storage.list_buckets()
         supabase_status = "ok"
+        detail = None
     except Exception as e:
         supabase_status = f"eroare: {type(e).__name__}"
-    return JSONResponse(
-        {"status": "ok", "supabase": supabase_status},
-        headers={"Cache-Control": "no-transform"},
-    )
+        # Fara Supabase, NICIUN utilizator nu se poate autentifica: verify_token
+        # esueaza si toata lumea e data afara imediat dupa login. Cauza tipica e
+        # o cheie rotita/revocata, iar mesajul brut ("StorageApiError") nu spune
+        # asta — de aceea endpoint-ul public, singurul accesibil cand nu te poti
+        # loga, o numeste explicit.
+        text = str(e).lower()
+        if "unregistered" in text or "not registered" in text or "invalid compact jws" in text:
+            detail = (
+                "SUPABASE_SERVICE_KEY nu este înregistrată pentru acest proiect "
+                "(rotită sau dintr-un alt proiect). Înlocuiește-o pe server cu "
+                "cheia secret curentă din Supabase → Settings → API Keys."
+            )
+        elif "jwt" in text or "unauthorized" in text or "401" in text:
+            detail = (
+                "SUPABASE_SERVICE_KEY este respinsă de Supabase. Verifică valoarea "
+                "de pe server (Settings → API Keys în Supabase)."
+            )
+        else:
+            detail = f"Supabase nu răspunde corect: {e}"
+
+    body = {"status": "ok", "supabase": supabase_status}
+    if detail:
+        body["detail"] = detail
+    return JSONResponse(body, headers={"Cache-Control": "no-transform"})
