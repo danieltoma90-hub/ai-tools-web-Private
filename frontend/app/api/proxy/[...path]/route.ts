@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   AUTH_COOKIE,
   REFRESH_COOKIE,
+  clearSessionCookies,
   refreshSession,
   setSessionCookies,
   type SupabaseSession,
@@ -56,6 +57,7 @@ async function proxy(
       ? await callBackend(token)
       : new Response(null, { status: 401 });
     let renewed: SupabaseSession | null = null;
+    let refreshFailed = false;
 
     // Sesiunea expiră după ~1 oră. În loc să arunce „Token invalid sau expirat"
     // în fața utilizatorului, schimbăm refresh token-ul pe unul nou și reluăm
@@ -64,6 +66,8 @@ async function proxy(
       renewed = await refreshSession(refreshToken);
       if (renewed) {
         res = await callBackend(renewed.access_token);
+      } else {
+        refreshFailed = true;
       }
     }
 
@@ -75,6 +79,11 @@ async function proxy(
       },
     });
     if (renewed) setSessionCookies(response, renewed);
+    // Refresh token respins de Supabase = sesiune moartă. Cookie-urile TREBUIE
+    // șterse aici: cât timp rămân, middleware-ul le vede prezente, crede că
+    // sesiunea e validă și trimite utilizatorul înapoi în aplicație — iar
+    // pagina cere din nou datele, ia 401 și o ia de la capăt (buclă de refresh).
+    if (refreshFailed) clearSessionCookies(response);
     return response;
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
