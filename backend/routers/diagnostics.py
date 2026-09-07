@@ -19,7 +19,9 @@ TIMEOUT = 30.0
 def _hint(key: str) -> str:
     if not key:
         return ""
-    return f"{key[:12]}…{key[-4:]} ({len(key)} caractere)"
+    # acelasi format ca in consola Anthropic (primele 16 + ultimele 4),
+    # ca sa se poata compara direct cu lista de chei
+    return f"{key[:16]}…{key[-4:]}"
 
 
 def _classify(status: int, body: dict) -> tuple[str, str]:
