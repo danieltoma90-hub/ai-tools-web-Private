@@ -46,17 +46,23 @@ Nu:
 
 ### Format `responsabil`
 
-- Default: numele grupului („Carmistin", „TotalSoft", „Anna Complex 1991")
-- Dacă în transcript se nominalizează clar o persoană („Andreea va trimite formula"),
-  pui numele persoanei: „Andreea Dragan"
-- Dacă responsabilul nu e clar, marchezi `"responsabil": "TBD"` și pui în `_observatii`
+- **Preferă persoana, nu doar organizația.** O acțiune atribuită unui om se execută;
+  una atribuită unei firme se pierde. Când din discuție reiese cine își asumă
+  („mă ocup eu de…", „Gusti verifică…"), scrii `Organizație (Nume Prenume)` —
+  ex: `TotalSoft (Gusti Lutas)`, `Microsin (Cristian Garbea)`
+- Doar dacă nu se nominalizează nimeni, lași numele grupului („TotalSoft", „Microsin")
+- Dacă responsabilul nu e clar deloc, marchezi `"responsabil": "TBD"` și pui în `_observatii`
 - **NU folosi „Toți" sau „Echipa"** — fie concretizezi, fie marchezi TBD
+- Excepție: o acțiune care chiar cere ambele părți se scrie `Ambele echipe`
 
 ### Format `actiune`
 
 - Începe cu verb la indicativ prezent persoana a III-a:
   „Confirmă...", „Pregătește...", „Trimite...", „Analizează...", „Verifică..."
-- Maxim 200 caractere
+- **Maxim 160 caractere — o singură propoziție.** O listă de acțiuni se citește
+  în diagonală înaintea următoarei ședințe; o frază de trei rânduri cu explicații
+  și paranteze nu se citește deloc. Contextul stă în secțiunile minutei, aici stă
+  doar ce are de făcut omul.
 - Termină cu punct
 - Include modulele/ecranele Charisma concrete (MRP, PASUL 1, Configurare Articole)
 - Pune între paranteze referințe la documente concrete:

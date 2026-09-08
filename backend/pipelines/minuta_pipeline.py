@@ -111,6 +111,12 @@ async def _extract_followup(client: AsyncAnthropic, transcript: str, context: st
     return _parse_json_from_response(raw)
 
 
+async def _extract_profile(client: AsyncAnthropic, transcript: str, context: str = "") -> dict:
+    """Profilul beneficiarului, cerintele lui explicite si punctele ramase deschise."""
+    raw = await _call_claude(client, "extract_profile_requirements.md", transcript, context)
+    return _parse_json_from_response(raw)
+
+
 def _block_to_html(block: dict) -> str:
     btype = block.get("type", "")
     if btype == "paragraph":
@@ -202,6 +208,54 @@ def _build_preview_html(data: dict) -> str:
 </body></html>"""
 
 
+def _profile_section(profile: dict | None) -> dict | None:
+    """„Profilul beneficiarului" — cine e clientul, ca tabel."""
+    if not isinstance(profile, dict):
+        return None
+    rows = [
+        [p.get("aspect", ""), p.get("detaliu", "")]
+        for p in profile.get("profil_beneficiar", [])
+        if isinstance(p, dict) and p.get("aspect") and p.get("detaliu")
+    ]
+    if not rows:
+        return None
+    return {
+        "titlu": "Profilul beneficiarului",
+        "blocuri": [{"type": "table_2col", "header": ["Aspect", "Detaliu"], "rows": rows}],
+    }
+
+
+def _requirements_section(profile: dict | None) -> dict | None:
+    """„Cerințe exprimate de beneficiar" — ce a cerut clientul, separat de rest."""
+    if not isinstance(profile, dict):
+        return None
+    rows = [
+        [c.get("zona", ""), c.get("cerinta", "")]
+        for c in profile.get("cerinte_beneficiar", [])
+        if isinstance(c, dict) and c.get("cerinta")
+    ]
+    if not rows:
+        return None
+    return {
+        "titlu": "Cerințe și așteptări exprimate de beneficiar",
+        "blocuri": [{"type": "table_2col", "header": ["Zonă", "Cerință exprimată"], "rows": rows}],
+    }
+
+
+def _open_points_section(profile: dict | None) -> dict | None:
+    """„Puncte rămase deschise" — ce NU s-a decis. Separat de pașii următori:
+    acolo stau sarcini atribuite, aici întrebări fără răspuns."""
+    if not isinstance(profile, dict):
+        return None
+    items = [p for p in profile.get("puncte_deschise", []) if isinstance(p, str) and p.strip()]
+    if not items:
+        return None
+    return {
+        "titlu": "Puncte rămase deschise",
+        "blocuri": [{"type": "bullets", "items": items}],
+    }
+
+
 def _followup_section(followup: dict | None) -> dict | None:
     """Sectiunea „Stadiul actiunilor anterioare", ca tabel. None daca nu e cazul."""
     if not isinstance(followup, dict):
@@ -254,30 +308,45 @@ async def run_minuta_pipeline(
         _extract_metadata(client, text, context_block),
         _extract_sections(client, text, context_block),
         _extract_action_items(client, text, context_block),
+        _extract_profile(client, text, context_block),
     ]
-    # A patra extragere doar daca exista actiuni deschise de urmarit
+    # A cincea extragere doar daca exista actiuni deschise de urmarit
     track_followup = bool(project_ctx and project_ctx.actiuni_deschise)
     if track_followup:
         tasks.append(_extract_followup(client, text, context_block))
 
     results = await asyncio.gather(*tasks)
-    meta_raw, sections, action_raw = results[0], results[1], results[2]
-    followup = results[3] if track_followup else None
+    meta_raw, sections, action_raw, profile = results[0], results[1], results[2], results[3]
+    followup = results[4] if track_followup else None
 
     # Claude returnează {"meta": {...}, "_observatii": [...]} — extragem doar interiorul
     meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
     # Codul de proiect = descrierea meeting-ului (nu un cod generat)
     if isinstance(meta, dict):
-        meta["cod_proiect"] = meta.get("subiect", "")
+        # Codul de proiect il stabileste modelul; il completam din subiect doar
+        # daca lipseste, ca antetul sa nu ramana gol.
+        if not meta.get("cod_proiect"):
+            meta["cod_proiect"] = meta.get("subiect", "")
     # Claude returnează {"pasi_urmatori": [...]} — extragem lista
     action_items = action_raw.get("pasi_urmatori", action_raw) if isinstance(action_raw, dict) else action_raw
 
-    sectiuni = sections.get("sectiuni", [])
+    # Ordinea de citire a minutei: cine e beneficiarul → ce s-a închis din trecut
+    # → ce s-a discutat acum → ce a cerut clientul → ce a rămas nerezolvat.
+    sectiuni = list(sections.get("sectiuni", []))
+
+    profil = _profile_section(profile)
+    cerinte = _requirements_section(profile)
+    deschise = _open_points_section(profile)
     followup_section = _followup_section(followup)
+
     if followup_section:
-        # Stadiul actiunilor vechi sta inaintea subiectelor noi: cititorul vrea
-        # intai sa stie ce s-a inchis din ce astepta.
-        sectiuni = [followup_section] + list(sectiuni)
+        sectiuni.insert(0, followup_section)
+    if profil:
+        sectiuni.insert(0, profil)
+    if cerinte:
+        sectiuni.append(cerinte)
+    if deschise:
+        sectiuni.append(deschise)
 
     data = {
         "meta": meta,

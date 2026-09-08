@@ -262,9 +262,23 @@ def _replace_all_placeholders(doc, mapping: dict[str, str]) -> None:
 # Elemente de conținut
 # ─────────────────────────────────────────────────────────────────────────
 
-def _add_section_heading(doc, number: int, title: str) -> None:
+def _styled_heading(doc, level: int):
+    """Paragraf cu stil real de Heading, ca documentul să fie navigabil în Word
+    (panoul de navigare, cuprins automat). Aspectul rămâne al nostru: stilul dă
+    doar structura, formatarea o impunem noi pe run."""
     p = doc.add_paragraph()
-    _keep_next(p)
+    try:
+        p.style = doc.styles[f"Heading {level}"]
+    except KeyError:
+        pass  # template fără stilul respectiv — rămâne paragraf simplu
+    fmt = p.paragraph_format
+    fmt.keep_with_next = True
+    fmt.left_indent = Pt(0)
+    return p
+
+
+def _add_section_heading(doc, number: int, title: str) -> None:
+    p = _styled_heading(doc, 1)
     _add_bottom_border(p, NAVY, "10", "4")
     p.paragraph_format.space_before = Pt(14)
     p.paragraph_format.space_after = Pt(7)
@@ -276,8 +290,7 @@ def _add_section_heading(doc, number: int, title: str) -> None:
 
 
 def _add_subheading(doc, text: str) -> None:
-    p = doc.add_paragraph()
-    _keep_next(p)
+    p = _styled_heading(doc, 2)
     p.paragraph_format.space_before = Pt(9)
     p.paragraph_format.space_after = Pt(5)
     run = p.add_run(text)

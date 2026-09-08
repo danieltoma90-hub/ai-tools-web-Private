@@ -447,7 +447,10 @@ async def run_minuta_free_pipeline(
 
     meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
     if isinstance(meta, dict):
-        meta["cod_proiect"] = meta.get("subiect", "")
+        # Codul de proiect il stabileste modelul; il completam din subiect doar
+        # daca lipseste, ca antetul sa nu ramana gol.
+        if not meta.get("cod_proiect"):
+            meta["cod_proiect"] = meta.get("subiect", "")
     action_items = final.get("pasi_urmatori", [])
 
     data = {

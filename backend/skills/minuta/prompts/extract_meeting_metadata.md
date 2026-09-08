@@ -43,19 +43,55 @@ Returnezi **doar** un obiect JSON cu structura exactă:
 ## Reguli
 
 ### Cod Proiect
-- Default: numele clientului fără sufixele legale (`Carmistin Group` → `Carmistin`)
-- Excepție: dacă în transcript apare un cod intern explicit (ex: `ERP_ANNA_PROD`, `PROJ_DAW_2025`), îl folosești pe acela
-- Dacă nu e clar, lasă numele clientului și adaugă în `_observatii`
+- Un identificator SCURT de proiect, maximum 40 de caractere — nu subiectul ședinței
+- Dacă în transcript apare un cod intern explicit (ex: `ERP_ANNA_PROD`, `PROJ_DAW_2025`), îl folosești pe acela
+- Altfel: faza + numele clientului fără sufixele legale (`Presales MICROSIN`, `Implementare Carmistin`)
+- **Nu copia niciodată textul de la `subiect` aici** — sunt câmpuri diferite: unul
+  identifică proiectul, celălalt descrie ședința
 
 ### Data
 - Caută în transcript timestamps, mențiuni explicite, sau metadata din header-ul fișierului
 - Format strict `DD.MM.YYYY` (cu puncte, nu slash-uri)
 - Dacă transcriptul are doar timestamps timeline (gen `00:01:23`), inferează data din metadata fișierului sau întreabă
 
+### Nume client — OBLIGATORIU
+
+Câmpul `nume_client` nu are voie să rămână gol. Îl deduci din:
+- denumirea firmei rostită în discuție („noi, la Microsin, lucrăm...")
+- numele din titlul înregistrării sau din adresele de email menționate
+- domeniul de activitate + participanți, dacă firma nu e numită explicit
+
+Dacă tot nu reiese, scrie `"nume_client": "TBD"` și pune motivul în `_observatii` —
+niciodată string gol.
+
+### Cine e clientul și cine e TotalSoft — CITEȘTE ÎNAINTE DE A GRUPA
+
+Greșeala cea mai costisitoare a acestui pas e inversarea celor două părți: minuta
+ajunge să prezinte consultantul ca beneficiar. Determină rolurile din CE SPUN
+oamenii, nu din ordinea în care apar:
+
+**Persoana e de la TotalSoft dacă:**
+- explică cum funcționează sistemul, ce se poate configura, ce presupune implementarea
+- pune întrebări de analiză („cum procedați acum?", „câte linii aveți?")
+- promite livrabile: configurări, specificații, dezvoltări, sesiuni de testare
+- a pornit înregistrarea / a convocat ședința
+
+**Persoana e de la client (beneficiar) dacă:**
+- descrie cum lucrează firma ei: fluxuri, echipamente, volume, proceduri interne
+- formulează cerințe și așteptări („avem nevoie ca sistemul să...")
+- răspunde la întrebările de analiză despre propria activitate
+
+Verifică-te singur înainte de a răspunde: persoana care descrie fabrica, procesele
+și cerințele este beneficiarul; persoana care descrie soluția este TotalSoft. Dacă
+concluzia ta le-ar inversa, ai greșit.
+
+Cheia grupului de client în `participanti` e denumirea reală a firmei (ex:
+`"Microsin"`), nu cuvântul „Client".
+
 ### Participanți
 - Numele sunt frecvent transcrise greșit de Teams (ex: „Adrea Drăgan" în loc de „Andreea Dragan")
 - Folosește toate variantele întâlnite în transcript ca să identifici cea mai probabilă
-- Grupează strict pe `<Client>` vs `TotalSoft`
+- Include TOATE persoanele care intervin, chiar dacă vorbesc puțin
 - Dacă o persoană apare doar la primul nume („Lavinia"), păstrează doar primul nume (nu inventa familia)
 - Numele cu inițiale: păstrează ca atare („Mihai L." → „Mihai L.")
 - **Adaugă în `_observatii`** o linie pentru fiecare nume cu confidence < 90%
