@@ -325,3 +325,46 @@ export async function getProviderDiagnostics(): Promise<{
     providers: ProviderStatus[];
   }>;
 }
+
+export type TrainingSummary = {
+  tip: string;
+  zile: number;
+  total_ore: number;
+  module: number;
+  particularitati: number;
+  excluse: string[];
+  supraincarcat: boolean;
+};
+
+export type TrainingJob = {
+  status: "processing" | "done" | "error";
+  step?: string; // "catalog" | "specificatie" | "planificare" | "documente"
+  filename?: string;
+  docx_b64?: string;
+  xlsx_filename?: string;
+  xlsx_b64?: string;
+  summary?: TrainingSummary;
+  storage_path?: string;
+  error?: string;
+};
+
+export async function postTrainingGenerate(params: {
+  tip: "core" | "productie";
+  zile: number;
+  client: string;
+  file?: File | null;
+}): Promise<{ job_id: string }> {
+  const form = new FormData();
+  form.append("tip", params.tip);
+  form.append("zile", String(params.zile));
+  form.append("client", params.client);
+  if (params.file) form.append("file", params.file);
+  return apiFetch(`${PROXY}/training/generate`, {
+    method: "POST",
+    body: form,
+  }) as Promise<{ job_id: string }>;
+}
+
+export async function getTrainingJob(jobId: string): Promise<TrainingJob> {
+  return apiFetch(`${PROXY}/training/job/${jobId}`) as Promise<TrainingJob>;
+}

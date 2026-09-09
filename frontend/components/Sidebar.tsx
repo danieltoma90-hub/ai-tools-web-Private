@@ -8,6 +8,7 @@ const items = [
   { href: "/minuta", icon: "📝", label: "Minută" },
   { href: "/mockup", icon: "🎨", label: "Mockup" },
   { href: "/scenarii", icon: "🧪", label: "Scenarii" },
+  { href: "/training", icon: "🎓", label: "Training" },
   { href: "/repository", icon: "📁", label: "Repository" },
 ];
 

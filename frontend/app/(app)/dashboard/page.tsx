@@ -29,12 +29,20 @@ const TOOLS = [
     title: "Scenarii",
     desc: "Specificație → catalog standard + cerințe specifice client, în Excel.",
   },
+  {
+    href: "/training",
+    tool: "training",
+    icon: "🎓",
+    title: "Training",
+    desc: "Agendă de școlarizare CORE sau Producție, distribuită pe zilele alese.",
+  },
 ];
 
 const TOOL_ICONS: Record<string, string> = {
   minuta: "📝",
   mockup: "🎨",
   scenarii: "🧪",
+  training: "🎓",
 };
 
 function formatDate(iso: string) {

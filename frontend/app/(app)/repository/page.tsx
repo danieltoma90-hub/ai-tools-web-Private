@@ -18,14 +18,18 @@ const TOOL_ICONS: Record<string, string> = {
   minuta: "📝",
   mockup: "🎨",
   scenarii: "🧪",
+  training: "🎓",
   context: "📋",
 };
 const TOOL_LABELS: Record<string, string> = {
   minuta: "Minută",
   mockup: "Mockup",
   scenarii: "Scenarii",
+  training: "Training",
   context: "Context",
 };
+// Ordinea butoanelor de filtrare; „toate” se adauga la afisare.
+const FILTRE = ["minuta", "mockup", "scenarii", "training", "context"];
 
 const ALERT_THRESHOLD = 95; // % — alerta rosie + sugestii de curatenie
 const WARN_THRESHOLD = 80; // % — bara devine portocalie
@@ -114,7 +118,7 @@ export default function RepositoryPage() {
   useEffect(() => {
     // filtru initial din URL (?tool=minuta) — folosit de butonul Istoric
     const toolParam = new URLSearchParams(window.location.search).get("tool");
-    if (toolParam && ["minuta", "mockup", "scenarii", "context"].includes(toolParam)) {
+    if (toolParam && FILTRE.includes(toolParam)) {
       setFilter(toolParam);
     }
     getDocuments()
@@ -175,7 +179,7 @@ export default function RepositoryPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {["toate", "minuta", "mockup", "scenarii", "context"].map((f) => (
+          {["toate", ...FILTRE].map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
