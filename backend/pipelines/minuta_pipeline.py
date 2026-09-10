@@ -283,8 +283,34 @@ def _followup_section(followup: dict | None) -> dict | None:
     }
 
 
+async def _cu_raportare(tasks: list, on_step) -> list:
+    """Ruleaza extragerile in paralel, raportand cate s-au terminat.
+
+    `asyncio.gather` pastreaza ordinea rezultatelor, dar nu spune nimic pana la
+    final. Aici numaram terminarile pe masura ce vin, ca bara de progres sa aiba
+    un semnal real, si tot returnam rezultatele in ordinea de intrare.
+    """
+    total = len(tasks)
+    if on_step:
+        on_step(f"extrageri:0/{total}")
+
+    async def _urmareste(index: int, coro):
+        rezultat = await coro
+        _urmareste.gata += 1
+        if on_step:
+            on_step(f"extrageri:{_urmareste.gata}/{total}")
+        return index, rezultat
+
+    _urmareste.gata = 0
+    perechi = await asyncio.gather(*(_urmareste(i, t) for i, t in enumerate(tasks)))
+    return [r for _, r in sorted(perechi, key=lambda p: p[0])]
+
+
 async def run_minuta_pipeline(
-    transcript_path: Path, api_key: str, context_path: Path | None = None
+    transcript_path: Path,
+    api_key: str,
+    context_path: Path | None = None,
+    on_step=None,
 ) -> tuple[Path, str]:
     """Pipeline complet: transcript (.vtt sau .docx) → (docx_path, preview_html).
 
@@ -315,7 +341,7 @@ async def run_minuta_pipeline(
     if track_followup:
         tasks.append(_extract_followup(client, text, context_block))
 
-    results = await asyncio.gather(*tasks)
+    results = await _cu_raportare(tasks, on_step)
     meta_raw, sections, action_raw, profile = results[0], results[1], results[2], results[3]
     followup = results[4] if track_followup else None
 
@@ -355,6 +381,9 @@ async def run_minuta_pipeline(
         "pasi_urmatori": action_items if isinstance(action_items, list) else [],
         "include_signature": False,
     }
+
+    if on_step:
+        on_step("building")
 
     with tempfile.NamedTemporaryFile(
         suffix=".json", delete=False, mode="w", encoding="utf-8"

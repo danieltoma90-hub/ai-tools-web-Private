@@ -14,6 +14,7 @@ import {
   type ScenariiSummary,
 } from "@/lib/api";
 import { isColdStartError, pollJob } from "@/lib/poll";
+import { ETAPE_SCENARII } from "@/lib/progres";
 
 type State = "idle" | "uploading" | "estimating" | "ready" | "processing" | "done" | "error";
 
@@ -35,6 +36,7 @@ export default function ScenariPage() {
   const [error, setError] = useState("");
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
   const [progressLabel, setProgressLabel] = useState("Se inițializează...");
+  const [step, setStep] = useState<string | null>(null);
   const [result, setResult] = useState<{
     filename: string;
     xlsxB64: string;
@@ -89,6 +91,7 @@ export default function ScenariPage() {
   async function handleGenerate(engine: "claude" | "groq") {
     if (!estimate) return;
     setState("processing");
+    setStep(null);
     setProgressLabel(
       engine === "claude" ? "Pornesc generarea cu Claude..." : "Pornesc generarea Free (Groq)..."
     );
@@ -99,7 +102,10 @@ export default function ScenariPage() {
 
       const job = await pollJob(() => getScenariiJob(job_id), {
         cancelled: () => cancelledRef.current,
-        onStep: (step) => setProgressLabel(stepLabel(step)),
+        onStep: (s) => {
+          setStep(s);
+          setProgressLabel(stepLabel(s));
+        },
       });
       if (!job) return;
 
@@ -204,7 +210,12 @@ export default function ScenariPage() {
         )}
 
         {state === "processing" && (
-          <ProcessingSpinner label={progressLabel} onCancel={renuntaLaAsteptare} />
+          <ProcessingSpinner
+            label={progressLabel}
+            onCancel={renuntaLaAsteptare}
+            etape={ETAPE_SCENARII}
+            step={step}
+          />
         )}
 
         {state === "done" && result && (

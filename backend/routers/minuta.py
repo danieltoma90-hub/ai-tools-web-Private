@@ -123,7 +123,8 @@ async def _run_job(
                 # minuta se genereaza fara el in loc sa esueze.
                 logger.warning("context %s indisponibil: %s", context_storage_path, e)
         docx_path, preview_html = await run_minuta_pipeline(
-            input_path, api_key, context_path=context_path
+            input_path, api_key, context_path=context_path,
+            on_step=lambda step: jobs.set_step(job_id, step),
         )
         filename = f"Minuta_{stem}_{timestamp}.docx"
         user_email = (jobs.get_job(job_id) or {}).get("user_email", "anonymous")

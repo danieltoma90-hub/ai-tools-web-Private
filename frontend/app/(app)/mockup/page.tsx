@@ -14,6 +14,7 @@ import {
   type EstimateResponse,
 } from "@/lib/api";
 import { isColdStartError, pollJob } from "@/lib/poll";
+import { ETAPE_MOCKUP } from "@/lib/progres";
 
 type State = "idle" | "uploading" | "estimating" | "ready" | "processing" | "done" | "error";
 
@@ -33,6 +34,7 @@ export default function MockupPage() {
   const [error, setError] = useState("");
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
   const [progressLabel, setProgressLabel] = useState("Se inițializează...");
+  const [step, setStep] = useState<string | null>(null);
   const [result, setResult] = useState<{
     filename: string;
     docxB64: string;
@@ -87,6 +89,7 @@ export default function MockupPage() {
   async function handleGenerate(useAi: boolean) {
     if (!estimate) return;
     setState("processing");
+    setStep(null);
     setProgressLabel(useAi ? "Pornesc generarea cu AI..." : "Generez documentația...");
     setError("");
     cancelledRef.current = false;
@@ -95,7 +98,10 @@ export default function MockupPage() {
 
       const job = await pollJob(() => getMockupJob(job_id), {
         cancelled: () => cancelledRef.current,
-        onStep: (step) => setProgressLabel(stepLabel(step)),
+        onStep: (s) => {
+          setStep(s);
+          setProgressLabel(stepLabel(s));
+        },
       });
       if (!job) return;
 
@@ -169,7 +175,12 @@ export default function MockupPage() {
         )}
 
         {state === "processing" && (
-          <ProcessingSpinner label={progressLabel} onCancel={renuntaLaAsteptare} />
+          <ProcessingSpinner
+            label={progressLabel}
+            onCancel={renuntaLaAsteptare}
+            etape={ETAPE_MOCKUP}
+            step={step}
+          />
         )}
 
         {state === "done" && result && (

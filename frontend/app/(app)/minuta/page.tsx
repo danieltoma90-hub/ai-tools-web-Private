@@ -13,9 +13,17 @@ import {
   postMinutaFree,
 } from "@/lib/api";
 import { isColdStartError, pollJob } from "@/lib/poll";
+import { ETAPE_MINUTA_AI, ETAPE_MINUTA_FREE } from "@/lib/progres";
 
 type State = "idle" | "processing" | "done" | "error";
 type Mode = "ai" | "free";
+
+function aiStepLabel(step: string): string {
+  const e = step.match(/^extrageri:(\d+)\/(\d+)$/);
+  if (e) return `Analizez transcriptul — ${e[1]} din ${e[2]} extrageri gata...`;
+  if (step === "building") return "Se generează documentul Word...";
+  return "Se procesează...";
+}
 
 function freeStepLabel(step: string): string {
   if (step === "metadata") return "Extrag metadatele întâlnirii...";
@@ -34,6 +42,8 @@ export default function MinutaPage() {
   const [contextPath, setContextPath] = useState("");
   const [contextLabel, setContextLabel] = useState("");
   const [freeLabel, setFreeLabel] = useState("Se inițializează...");
+  const [aiLabel, setAiLabel] = useState("Se inițializează...");
+  const [step, setStep] = useState<string | null>(null);
   const [result, setResult] = useState<{
     filename: string;
     docxB64: string;
@@ -59,12 +69,15 @@ export default function MinutaPage() {
   async function handleGenerateAI() {
     if (!file) return;
     setState("processing");
+    setAiLabel("Încarc transcriptul...");
+    setStep(null);
     setError("");
     cancelledRef.current = false;
 
     try {
       const storagePath = await incarca(file);
       if (cancelledRef.current) return;
+      setAiLabel("Pornesc analiza...");
       const { job_id } = await postMinuta(
         storagePath,
         file.name,
@@ -73,6 +86,10 @@ export default function MinutaPage() {
 
       const job = await pollJob(() => pollMinutaJob(job_id), {
         cancelled: () => cancelledRef.current,
+        onStep: (s) => {
+          setStep(s);
+          setAiLabel(aiStepLabel(s));
+        },
       });
       if (!job) return;
 
@@ -94,6 +111,7 @@ export default function MinutaPage() {
     if (!file) return;
     setState("processing");
     setFreeLabel("Se inițializează...");
+    setStep(null);
     setError("");
     cancelledRef.current = false;
 
@@ -124,7 +142,10 @@ export default function MinutaPage() {
 
       const job = await pollJob(() => pollMinutaJob(job_id), {
         cancelled: () => cancelledRef.current,
-        onStep: (step) => setFreeLabel(freeStepLabel(step)),
+        onStep: (s) => {
+          setStep(s);
+          setFreeLabel(freeStepLabel(s));
+        },
       });
       if (!job) return;
 
@@ -243,8 +264,10 @@ export default function MinutaPage() {
 
         {state === "processing" && (
           <ProcessingSpinner
-            label={mode === "free" ? freeLabel : undefined}
+            label={mode === "free" ? freeLabel : aiLabel}
             onCancel={renuntaLaAsteptare}
+            etape={mode === "free" ? ETAPE_MINUTA_FREE : ETAPE_MINUTA_AI}
+            step={step}
           />
         )}
 

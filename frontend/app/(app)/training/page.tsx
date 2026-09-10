@@ -11,6 +11,7 @@ import {
   type TrainingSummary,
 } from "@/lib/api";
 import { isColdStartError, pollJob } from "@/lib/poll";
+import { ETAPE_TRAINING } from "@/lib/progres";
 
 type State = "idle" | "processing" | "done" | "error";
 type Tip = "core" | "productie";
@@ -46,6 +47,7 @@ export default function TrainingPage() {
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState("");
   const [progress, setProgress] = useState("Se inițializează...");
+  const [step, setStep] = useState<string | null>(null);
   const [result, setResult] = useState<{
     docxName: string;
     docxB64: string;
@@ -69,6 +71,7 @@ export default function TrainingPage() {
     }
     setState("processing");
     setProgress(file ? "Încarc specificația..." : "Generez programul standard...");
+    setStep(null);
     setError("");
     cancelledRef.current = false;
 
@@ -94,7 +97,10 @@ export default function TrainingPage() {
 
       const job = await pollJob(() => getTrainingJob(job_id), {
         cancelled: () => cancelledRef.current,
-        onStep: (step) => setProgress(stepLabel(step)),
+        onStep: (s) => {
+          setStep(s);
+          setProgress(stepLabel(s));
+        },
       });
       if (!job) return;
 
@@ -244,7 +250,12 @@ export default function TrainingPage() {
         )}
 
         {state === "processing" && (
-          <ProcessingSpinner label={progress} onCancel={renuntaLaAsteptare} />
+          <ProcessingSpinner
+            label={progress}
+            onCancel={renuntaLaAsteptare}
+            etape={ETAPE_TRAINING}
+            step={step}
+          />
         )}
 
         {state === "done" && result && (
