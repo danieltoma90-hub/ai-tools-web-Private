@@ -183,7 +183,7 @@ function postGenerate(path: string, estimateId: string, useAi: boolean) {
 
 export async function uploadSourceFile(
   file: File,
-  tool: "scenarii" | "mockup"
+  tool: "scenarii" | "mockup" | "training"
 ): Promise<{ storage_path: string }> {
   const sign = (await apiFetch(`${PROXY}/uploads/sign`, {
     method: "POST",
@@ -360,13 +360,13 @@ export async function postTrainingGenerate(params: {
   tip: "core" | "productie";
   zile: number;
   client: string;
-  file?: File | null;
+  storagePath?: string;
 }): Promise<{ job_id: string }> {
   const form = new FormData();
   form.append("tip", params.tip);
   form.append("zile", String(params.zile));
   form.append("client", params.client);
-  if (params.file) form.append("file", params.file);
+  if (params.storagePath) form.append("storage_path", params.storagePath);
   return apiFetch(`${PROXY}/training/generate`, {
     method: "POST",
     body: form,

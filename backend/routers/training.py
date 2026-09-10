@@ -11,7 +11,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 import jobs
 from auth import verify_token
 from pipelines.training_pipeline import estimate_training_job, run_training_pipeline
-from storage import upload_file
+from storage import download_upload, upload_file
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -100,14 +100,30 @@ async def generate_training(
     tip: str = Form("core"),
     zile: int = Form(3),
     client: str = Form(""),
+    storage_path: str = Form(""),
     file: UploadFile | None = File(None),
     user=Depends(verify_token),
 ):
-    """Generează agenda. Specificația e opțională la CORE, obligatorie la Producție."""
+    """Generează agenda. Specificația e opțională la CORE, obligatorie la Producție.
+
+    Specificația vine ca `storage_path` (încărcată direct în Supabase, ocolind
+    limita de corp a proxy-ului) sau, pentru compatibilitate, ca fișier în corpul
+    cererii.
+    """
     _valideaza(tip, zile)
 
     spec_path: Path | None = None
-    if file is not None and file.filename:
+    if storage_path:
+        try:
+            spec_path = download_upload(storage_path)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except Exception:
+            raise HTTPException(
+                status_code=422,
+                detail="Specificația încărcată nu mai este disponibilă. Reîncarc-o și reia.",
+            )
+    elif file is not None and file.filename:
         if Path(file.filename).suffix.lower() != ".docx":
             raise HTTPException(status_code=422, detail="Specificația trebuie să fie .docx")
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:

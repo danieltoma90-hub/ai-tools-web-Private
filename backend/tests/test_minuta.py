@@ -52,18 +52,18 @@ async def test_minuta_endpoint_returns_job_id(client):
 @pytest.mark.asyncio
 async def test_minuta_job_status_done(client, tmp_path):
     """GET /minuta/job/{id} returnează rezultatul când job-ul e done."""
-    from routers.minuta import _jobs
+    import jobs
     fake_docx = tmp_path / "out.docx"
     Document().save(str(fake_docx))
 
     job_id = "test-job-123"
-    _jobs[job_id] = {
-        "status": "done",
-        "filename": "Minuta_test.docx",
-        "docx_b64": "AAAA",
-        "preview_html": "<html>preview</html>",
-        "storage_path": "minuta/test.docx",
-    }
+    jobs.finish(
+        job_id,
+        filename="Minuta_test.docx",
+        docx_b64="AAAA",
+        preview_html="<html>preview</html>",
+        storage_path="minuta/test.docx",
+    )
 
     app.dependency_overrides[verify_token] = lambda: {"id": "user1"}
     try:
@@ -73,7 +73,8 @@ async def test_minuta_job_status_done(client, tmp_path):
         )
     finally:
         app.dependency_overrides.clear()
-        _jobs.pop(job_id, None)
+        jobs._jobs.pop(job_id, None)
+        jobs._job_meta.pop(job_id, None)
 
     assert response.status_code == 200
     body = response.json()

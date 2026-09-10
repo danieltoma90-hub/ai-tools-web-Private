@@ -7,6 +7,7 @@ import ResultPanel from "@/components/ResultPanel";
 import HistoryPanel from "@/components/HistoryPanel";
 import ContextStep from "@/components/ContextStep";
 import { postMinuta, pollMinutaJob, postMinutaFree } from "@/lib/api";
+import { isColdStartError, pollJob } from "@/lib/poll";
 
 type State = "idle" | "processing" | "done" | "error";
 type Mode = "ai" | "free";
@@ -45,28 +46,18 @@ export default function MinutaPage() {
     try {
       const { job_id } = await postMinuta(file, contextPath || undefined);
 
-      while (true) {
-        await new Promise((r) => setTimeout(r, 2000));
-        if (cancelledRef.current) return;
+      const job = await pollJob(() => pollMinutaJob(job_id), {
+        cancelled: () => cancelledRef.current,
+      });
+      if (!job) return;
 
-        const job = await pollMinutaJob(job_id);
-        if (cancelledRef.current) return;
-
-        if (job.status === "done") {
-          setResult({
-            filename: job.filename!,
-            docxB64: job.docx_b64!,
-            previewHtml: job.preview_html!,
-          });
-          setState("done");
-          setHistoryKey((k) => k + 1);
-          return;
-        }
-
-        if (job.status === "error") {
-          throw new Error(job.error || "Eroare în procesarea minutei");
-        }
-      }
+      setResult({
+        filename: job.filename!,
+        docxB64: job.docx_b64!,
+        previewHtml: job.preview_html!,
+      });
+      setState("done");
+      setHistoryKey((k) => k + 1);
     } catch (err: unknown) {
       if (cancelledRef.current) return;
       setError(err instanceof Error ? err.message : "Eroare necunoscută");
@@ -89,7 +80,7 @@ export default function MinutaPage() {
       } catch (initErr) {
         // Render free tier se adoarme dupa inactivitate — retry automat dupa 5s
         const msg = initErr instanceof Error ? initErr.message : "";
-        if (msg.includes("timp util") || msg.includes("unreachable") || msg.includes("502") || msg.includes("504")) {
+        if (isColdStartError(msg)) {
           setFreeLabel("Server pornit, se retransmite automat...");
           await new Promise((r) => setTimeout(r, 5000));
           if (cancelledRef.current) return;
@@ -102,32 +93,19 @@ export default function MinutaPage() {
         setFreeLabel(`Procesare pornită — durează aproximativ ${est_minutes} minute...`);
       }
 
-      while (true) {
-        await new Promise((r) => setTimeout(r, 2000));
-        if (cancelledRef.current) return;
+      const job = await pollJob(() => pollMinutaJob(job_id), {
+        cancelled: () => cancelledRef.current,
+        onStep: (step) => setFreeLabel(freeStepLabel(step)),
+      });
+      if (!job) return;
 
-        const job = await pollMinutaJob(job_id);
-        if (cancelledRef.current) return;
-
-        if (job.step) {
-          setFreeLabel(freeStepLabel(job.step));
-        }
-
-        if (job.status === "done") {
-          setResult({
-            filename: job.filename!,
-            docxB64: job.docx_b64!,
-            previewHtml: job.preview_html!,
-          });
-          setState("done");
-          setHistoryKey((k) => k + 1);
-          return;
-        }
-
-        if (job.status === "error") {
-          throw new Error(job.error || "Eroare în procesarea minutei Free");
-        }
-      }
+      setResult({
+        filename: job.filename!,
+        docxB64: job.docx_b64!,
+        previewHtml: job.preview_html!,
+      });
+      setState("done");
+      setHistoryKey((k) => k + 1);
     } catch (err: unknown) {
       if (cancelledRef.current) return;
       setError(err instanceof Error ? err.message : "Eroare necunoscută");
@@ -147,6 +125,12 @@ export default function MinutaPage() {
     setError("");
   }
 
+  /** Oprește doar urmărirea din pagină — jobul rulează mai departe pe server. */
+  function renuntaLaAsteptare() {
+    cancelledRef.current = true;
+    setState("idle");
+  }
+
   return (
     <div className="flex h-screen">
       <div className="flex-1 p-6 overflow-auto">
@@ -154,6 +138,7 @@ export default function MinutaPage() {
           icon="📝"
           title="Minută Întâlnire"
           description="Transcript Teams (.vtt sau .docx) → Format F.05"
+          tool="minuta"
         />
 
         {state === "idle" && (
@@ -230,6 +215,7 @@ export default function MinutaPage() {
         {state === "processing" && (
           <ProcessingSpinner
             label={mode === "free" ? freeLabel : undefined}
+            onCancel={renuntaLaAsteptare}
           />
         )}
 

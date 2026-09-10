@@ -5,10 +5,12 @@ import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import HistoryPanel from "@/components/HistoryPanel";
 import {
+  uploadSourceFile,
   postTrainingGenerate,
   getTrainingJob,
   type TrainingSummary,
 } from "@/lib/api";
+import { isColdStartError, pollJob } from "@/lib/poll";
 
 type State = "idle" | "processing" | "done" | "error";
 type Tip = "core" | "productie";
@@ -66,46 +68,45 @@ export default function TrainingPage() {
       return;
     }
     setState("processing");
-    setProgress(file ? "Pornesc generarea..." : "Generez programul standard...");
+    setProgress(file ? "Încarc specificația..." : "Generez programul standard...");
     setError("");
     cancelledRef.current = false;
 
     try {
-      const { job_id } = await postTrainingGenerate({ tip, zile, client, file });
-
-      let failures = 0;
-      while (true) {
-        await new Promise((r) => setTimeout(r, 2000));
-        if (cancelledRef.current) return;
-
-        let job;
+      let storagePath: string | undefined;
+      if (file) {
         try {
-          job = await getTrainingJob(job_id);
-          failures = 0;
-        } catch (e) {
-          failures += 1;
-          if (failures >= 3) throw e;
-          continue;
+          ({ storage_path: storagePath } = await uploadSourceFile(file, "training"));
+        } catch (initErr) {
+          // Render free tier adoarme — retry automat după 5s
+          const msg = initErr instanceof Error ? initErr.message : "";
+          if (!isColdStartError(msg)) throw initErr;
+          setProgress("Server pornit, se retransmite automat...");
+          await new Promise((r) => setTimeout(r, 5000));
+          if (cancelledRef.current) return;
+          ({ storage_path: storagePath } = await uploadSourceFile(file, "training"));
         }
         if (cancelledRef.current) return;
-        if (job.step) setProgress(stepLabel(job.step));
-
-        if (job.status === "done") {
-          setResult({
-            docxName: job.filename!,
-            docxB64: job.docx_b64!,
-            xlsxName: job.xlsx_filename!,
-            xlsxB64: job.xlsx_b64!,
-            summary: job.summary ?? null,
-          });
-          setState("done");
-          setHistoryKey((k) => k + 1);
-          return;
-        }
-        if (job.status === "error") {
-          throw new Error(job.error || "Eroare la generarea agendei");
-        }
+        setProgress("Pornesc generarea...");
       }
+
+      const { job_id } = await postTrainingGenerate({ tip, zile, client, storagePath });
+
+      const job = await pollJob(() => getTrainingJob(job_id), {
+        cancelled: () => cancelledRef.current,
+        onStep: (step) => setProgress(stepLabel(step)),
+      });
+      if (!job) return;
+
+      setResult({
+        docxName: job.filename!,
+        docxB64: job.docx_b64!,
+        xlsxName: job.xlsx_filename!,
+        xlsxB64: job.xlsx_b64!,
+        summary: job.summary ?? null,
+      });
+      setState("done");
+      setHistoryKey((k) => k + 1);
     } catch (err: unknown) {
       if (cancelledRef.current) return;
       setError(err instanceof Error ? err.message : "Eroare necunoscută");
@@ -121,6 +122,12 @@ export default function TrainingPage() {
     setError("");
   }
 
+  /** Oprește doar urmărirea din pagină — jobul rulează mai departe pe server. */
+  function renuntaLaAsteptare() {
+    cancelledRef.current = true;
+    setState("idle");
+  }
+
   return (
     <div className="flex h-screen">
       <div className="flex-1 p-6 overflow-auto">
@@ -128,6 +135,7 @@ export default function TrainingPage() {
           icon="🎓"
           title="Agenda Training"
           description="Program de școlarizare utilizatori → agendă Word + plan Excel cu participanți"
+          tool="training"
         />
 
         {state === "idle" && (
@@ -235,7 +243,9 @@ export default function TrainingPage() {
           </div>
         )}
 
-        {state === "processing" && <ProcessingSpinner label={progress} />}
+        {state === "processing" && (
+          <ProcessingSpinner label={progress} onCancel={renuntaLaAsteptare} />
+        )}
 
         {state === "done" && result && (
           <div className="flex flex-col gap-4">

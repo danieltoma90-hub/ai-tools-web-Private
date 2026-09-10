@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Rutele de training si contractul lor de validare."""
 import io
+from unittest.mock import patch
 
 from docx import Document
 
@@ -141,6 +142,51 @@ async def test_specificatie_fara_cheie_api_returns_500(client, monkeypatch):
         app.dependency_overrides.clear()
     assert response.status_code == 500
     assert "ANTHROPIC_API_KEY" in response.json()["detail"]
+
+
+async def test_specificatia_vine_din_storage(client, monkeypatch, tmp_path):
+    """Traseul normal: fisierul urcat direct in Supabase, nu prin proxy."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    spec = tmp_path / "spec.docx"
+    spec.write_bytes(_spec_bytes())
+    _auth()
+    try:
+        with patch("routers.training.download_upload", return_value=spec) as descarcat:
+            response = await client.post(
+                "/api/training/generate",
+                data={
+                    "tip": "productie",
+                    "zile": "3",
+                    "client": "ACME",
+                    "storage_path": "training/abc.docx",
+                },
+                headers={"Authorization": "Bearer fake"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    descarcat.assert_called_once_with("training/abc.docx")
+
+
+async def test_specificatie_disparuta_din_storage_returns_422(client, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    _auth()
+    try:
+        with patch("routers.training.download_upload", side_effect=Exception("not found")):
+            response = await client.post(
+                "/api/training/generate",
+                data={
+                    "tip": "productie",
+                    "zile": "3",
+                    "client": "ACME",
+                    "storage_path": "training/lipsa.docx",
+                },
+                headers={"Authorization": "Bearer fake"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+    assert "Reîncarc" in response.json()["detail"]
 
 
 async def test_job_inexistent_returns_404(client):

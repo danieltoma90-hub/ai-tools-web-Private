@@ -13,6 +13,7 @@ import {
   type EstimateResponse,
   type ScenariiSummary,
 } from "@/lib/api";
+import { isColdStartError, pollJob } from "@/lib/poll";
 
 type State = "idle" | "uploading" | "estimating" | "ready" | "processing" | "done" | "error";
 
@@ -26,15 +27,6 @@ function stepLabel(step: string): string {
   if (step === "deps") return "Stabilesc dependențele și planul de execuție...";
   if (step === "building") return "Generez documentul Excel...";
   return "Se procesează...";
-}
-
-function isColdStartError(msg: string): boolean {
-  return (
-    msg.includes("timp util") ||
-    msg.includes("unreachable") ||
-    msg.includes("502") ||
-    msg.includes("504")
-  );
 }
 
 export default function ScenariPage() {
@@ -105,40 +97,20 @@ export default function ScenariPage() {
     try {
       const { job_id } = await postScenariiGenerate(estimate.estimate_id, engine);
 
-      let pollFailures = 0;
-      while (true) {
-        await new Promise((r) => setTimeout(r, 2000));
-        if (cancelledRef.current) return;
+      const job = await pollJob(() => getScenariiJob(job_id), {
+        cancelled: () => cancelledRef.current,
+        onStep: (step) => setProgressLabel(stepLabel(step)),
+      });
+      if (!job) return;
 
-        let job;
-        try {
-          job = await getScenariiJob(job_id);
-          pollFailures = 0;
-        } catch (pollErr) {
-          // Jobul continuă pe server — tolerăm până la 3 eșecuri consecutive de polling
-          pollFailures += 1;
-          if (pollFailures >= 3) throw pollErr;
-          continue;
-        }
-        if (cancelledRef.current) return;
-
-        if (job.step) setProgressLabel(stepLabel(job.step));
-
-        if (job.status === "done") {
-          setResult({
-            filename: job.filename!,
-            xlsxB64: job.xlsx_b64!,
-            summary: job.summary ?? null,
-            engine: job.engine ?? engine,
-          });
-          setState("done");
-          setHistoryKey((k) => k + 1);
-          return;
-        }
-        if (job.status === "error") {
-          throw new Error(job.error || "Eroare în generarea scenariilor");
-        }
-      }
+      setResult({
+        filename: job.filename!,
+        xlsxB64: job.xlsx_b64!,
+        summary: job.summary ?? null,
+        engine: job.engine ?? engine,
+      });
+      setState("done");
+      setHistoryKey((k) => k + 1);
     } catch (err: unknown) {
       if (cancelledRef.current) return;
       setError(err instanceof Error ? err.message : "Eroare necunoscută");
@@ -155,6 +127,12 @@ export default function ScenariPage() {
     setError("");
   }
 
+  /** Oprește doar urmărirea din pagină — jobul rulează mai departe pe server. */
+  function renuntaLaAsteptare() {
+    cancelledRef.current = true;
+    setState(estimate ? "ready" : "idle");
+  }
+
   return (
     <div className="flex h-screen">
       <div className="flex-1 p-6 overflow-auto">
@@ -162,6 +140,7 @@ export default function ScenariPage() {
           icon="🧪"
           title="Scenarii Testare"
           description="Specificație (.docx) → Excel: catalog standard + cerințe specifice client"
+          tool="scenarii"
         />
 
         {state === "idle" && (
@@ -224,7 +203,9 @@ export default function ScenariPage() {
           </div>
         )}
 
-        {state === "processing" && <ProcessingSpinner label={progressLabel} />}
+        {state === "processing" && (
+          <ProcessingSpinner label={progressLabel} onCancel={renuntaLaAsteptare} />
+        )}
 
         {state === "done" && result && (
           <div className="flex flex-col gap-4">

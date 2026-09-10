@@ -18,6 +18,7 @@ from fastapi import (
 
 from fastapi.responses import FileResponse
 
+import jobs
 from auth import verify_token
 from pipelines.minuta_pipeline import run_minuta_pipeline
 from pipelines.minuta_free_pipeline import estimate_free_job, run_minuta_free_pipeline
@@ -104,10 +105,6 @@ async def upload_context(
     finally:
         tmp_path.unlink(missing_ok=True)
 
-# In-memory job store — cleared on each Render restart/redeploy
-_jobs: dict[str, dict[str, Any]] = {}
-
-
 async def _run_job(
     job_id: str,
     input_path: Path,
@@ -129,23 +126,20 @@ async def _run_job(
             input_path, api_key, context_path=context_path
         )
         filename = f"Minuta_{stem}_{timestamp}.docx"
-        user_email = _jobs[job_id].get("user_email", "anonymous")
+        user_email = (jobs.get_job(job_id) or {}).get("user_email", "anonymous")
         storage_path = upload_file(docx_path, tool="minuta", filename=filename, user_email=user_email)
         with open(docx_path, "rb") as f:
             docx_b64 = base64.b64encode(f.read()).decode()
-        _jobs[job_id] = {
-            "status": "done",
-            "filename": filename,
-            "docx_b64": docx_b64,
-            "preview_html": preview_html,
-            "storage_path": storage_path,
-        }
+        jobs.finish(
+            job_id,
+            filename=filename,
+            docx_b64=docx_b64,
+            preview_html=preview_html,
+            storage_path=storage_path,
+        )
         docx_path.unlink(missing_ok=True)
     except Exception as e:
-        _jobs[job_id] = {
-            "status": "error",
-            "error": str(e) or type(e).__name__,
-        }
+        jobs.fail(job_id, str(e) or type(e).__name__)
     finally:
         input_path.unlink(missing_ok=True)
         if context_path is not None:
@@ -172,12 +166,11 @@ async def generate_minuta(
         tmp.write(await file.read())
         input_path = Path(tmp.name)
 
-    job_id = str(uuid.uuid4())
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     stem = Path(file.filename).stem
 
     user_email = getattr(user, "email", None) or "anonymous"
-    _jobs[job_id] = {"status": "processing", "user_email": user_email}
+    job_id = jobs.create_job(user_email)
     background_tasks.add_task(
         _run_job, job_id, input_path, api_key, stem, timestamp, context_path
     )
@@ -188,7 +181,7 @@ async def generate_minuta(
 @router.get("/minuta/job/{job_id}")
 async def get_minuta_job(job_id: str, user=Depends(verify_token)):
     """Returnează statusul unui job de generare minută."""
-    job = _jobs.get(job_id)
+    job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job negăsit sau expirat")
     return job
@@ -202,28 +195,25 @@ async def _run_free_job(
     timestamp: str,
 ) -> None:
     async def _on_step(step: str) -> None:
-        _jobs[job_id]["step"] = step
+        jobs.set_step(job_id, step)
 
     try:
         docx_path, preview_html = await run_minuta_free_pipeline(input_path, api_key, on_step=_on_step)
         filename = f"Minuta_{stem}_{timestamp}.docx"
-        user_email = _jobs[job_id].get("user_email", "anonymous")
+        user_email = (jobs.get_job(job_id) or {}).get("user_email", "anonymous")
         storage_path = upload_file(docx_path, tool="minuta", filename=filename, user_email=user_email)
         with open(docx_path, "rb") as f:
             docx_b64 = base64.b64encode(f.read()).decode()
-        _jobs[job_id] = {
-            "status": "done",
-            "filename": filename,
-            "docx_b64": docx_b64,
-            "preview_html": preview_html,
-            "storage_path": storage_path,
-        }
+        jobs.finish(
+            job_id,
+            filename=filename,
+            docx_b64=docx_b64,
+            preview_html=preview_html,
+            storage_path=storage_path,
+        )
         docx_path.unlink(missing_ok=True)
     except Exception as e:
-        _jobs[job_id] = {
-            "status": "error",
-            "error": str(e) or type(e).__name__,
-        }
+        jobs.fail(job_id, str(e) or type(e).__name__)
     finally:
         input_path.unlink(missing_ok=True)
 
@@ -263,12 +253,11 @@ async def generate_minuta_free(
                 ),
             )
 
-        job_id = str(uuid.uuid4())
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         stem = Path(filename_raw).stem
         user_email = getattr(user, "email", None) or "anonymous"
 
-        _jobs[job_id] = {"status": "processing", "user_email": user_email}
+        job_id = jobs.create_job(user_email)
         background_tasks.add_task(_run_free_job, job_id, input_path, api_key, stem, timestamp)
         return {
             "job_id": job_id,

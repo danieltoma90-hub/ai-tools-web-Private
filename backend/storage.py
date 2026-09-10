@@ -14,7 +14,11 @@ BUCKET = "documents"
 # semnarea si stergerea cu verificare de proprietar.
 ALLOWED_TOOLS = {"minuta", "mockup", "scenarii", "context", "training"}
 UPLOADS_BUCKET = "uploads"
-UPLOAD_TOOLS_EXT = {"scenarii": {".docx"}, "mockup": {".docx", ".xlsx"}}
+UPLOAD_TOOLS_EXT = {
+    "scenarii": {".docx"},
+    "mockup": {".docx", ".xlsx"},
+    "training": {".docx"},
+}
 UPLOAD_MAX_BYTES = 52_428_800  # 50MB — maximul planului free Supabase
 
 
