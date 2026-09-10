@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from auth import verify_token
-from storage import list_files, get_signed_urls, get_storage_usage, delete_file
+from storage import ALLOWED_TOOLS, list_files, get_signed_urls, get_storage_usage, delete_file
 
 router = APIRouter()
 
@@ -53,8 +53,24 @@ def dashboard_summary(user=Depends(verify_token)):
 
 
 @router.get("/documents")
-def get_documents(tool: str | None = None, user=Depends(verify_token)):
+def get_documents(
+    tool: str | None = None,
+    limit: int | None = None,
+    user=Depends(verify_token),
+):
+    """Documentele generate, cel mai recent primul.
+
+    `limit` taie lista INAINTE de semnare: panoul „Recent" cere 5 fisiere, iar
+    semnarea celorlalte cateva sute ar fi munca aruncata.
+    """
+    if tool is not None and tool not in ALLOWED_TOOLS:
+        raise HTTPException(status_code=422, detail=f"Tool necunoscut: {tool}")
+    if limit is not None and limit < 1:
+        raise HTTPException(status_code=422, detail="limit trebuie să fie cel puțin 1")
+
     files = list_files(tool=tool)
+    if limit is not None:
+        files = files[:limit]
     paths = [f.get("storage_path", "") for f in files]
     try:
         urls = get_signed_urls(paths)

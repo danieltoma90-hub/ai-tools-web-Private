@@ -325,7 +325,7 @@ export default function TrainingPage() {
         )}
       </div>
 
-      <HistoryPanel refreshKey={historyKey} />
+      <HistoryPanel tool="training" refreshKey={historyKey} />
     </div>
   );
 }

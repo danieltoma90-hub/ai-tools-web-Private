@@ -1,13 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getDocuments } from "@/lib/api";
-
-type Doc = {
-  name: string;
-  created_at: string;
-  size: number;
-  download_url: string;
-};
+import { getRecentDocuments, type Doc } from "@/lib/api";
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -19,14 +12,22 @@ function formatDate(iso: string) {
   });
 }
 
-export default function HistoryPanel({ refreshKey }: { refreshKey: number }) {
+export default function HistoryPanel({
+  tool,
+  refreshKey,
+}: {
+  tool: string;
+  refreshKey: number;
+}) {
   const [docs, setDocs] = useState<Doc[]>([]);
 
   useEffect(() => {
-    getDocuments()
-      .then((d) => setDocs(d.slice(0, 5)))
+    // Doar documentele tool-ului curent, doar cate incap in panou: altfel
+    // fiecare intrare pe pagina ar lista si semna tot depozitul ca sa afiseze 5.
+    getRecentDocuments(tool, 5)
+      .then(setDocs)
       .catch(() => {});
-  }, [refreshKey]);
+  }, [tool, refreshKey]);
 
   return (
     <aside className="w-[120px] shrink-0 border-l border-slate-200 bg-slate-50 p-3 overflow-y-auto">

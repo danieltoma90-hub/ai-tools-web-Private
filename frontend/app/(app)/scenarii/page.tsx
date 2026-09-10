@@ -282,7 +282,7 @@ export default function ScenariPage() {
         )}
       </div>
 
-      <HistoryPanel refreshKey={historyKey} />
+      <HistoryPanel tool="scenarii" refreshKey={historyKey} />
     </div>
   );
 }

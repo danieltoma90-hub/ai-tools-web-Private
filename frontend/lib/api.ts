@@ -252,19 +252,19 @@ export async function getMockupJob(jobId: string): Promise<MockupJob> {
   return apiFetch(`${PROXY}/mockup/job/${jobId}`) as Promise<MockupJob>;
 }
 
-export async function getDocuments(tool?: string) {
+export type Doc = {
+  name: string;
+  tool: string;
+  owner: string;
+  storage_path: string;
+  created_at: string;
+  size: number;
+  download_url: string;
+};
+
+export async function getDocuments(tool?: string): Promise<Doc[]> {
   const url = tool ? `${PROXY}/documents?tool=${tool}` : `${PROXY}/documents`;
-  return apiFetch(url) as Promise<
-    {
-      name: string;
-      tool: string;
-      owner: string;
-      storage_path: string;
-      created_at: string;
-      size: number;
-      download_url: string;
-    }[]
-  >;
+  return apiFetch(url) as Promise<Doc[]>;
 }
 
 export async function deleteDocument(storagePath: string) {
@@ -298,6 +298,14 @@ export type DashboardSummary = {
     download_url: string;
   }[];
 };
+
+export async function getRecentDocuments(
+  tool: string,
+  limit = 5
+): Promise<Doc[]> {
+  const q = new URLSearchParams({ tool, limit: String(limit) });
+  return apiFetch(`${PROXY}/documents?${q}`) as Promise<Doc[]>;
+}
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   return apiFetch(`${PROXY}/dashboard/summary`) as Promise<DashboardSummary>;

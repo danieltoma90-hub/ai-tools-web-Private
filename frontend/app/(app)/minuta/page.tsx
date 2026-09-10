@@ -255,7 +255,7 @@ export default function MinutaPage() {
         )}
       </div>
 
-      <HistoryPanel refreshKey={historyKey} />
+      <HistoryPanel tool="minuta" refreshKey={historyKey} />
     </div>
   );
 }

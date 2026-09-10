@@ -226,7 +226,7 @@ export default function MockupPage() {
         )}
       </div>
 
-      <HistoryPanel refreshKey={historyKey} />
+      <HistoryPanel tool="mockup" refreshKey={historyKey} />
     </div>
   );
 }
