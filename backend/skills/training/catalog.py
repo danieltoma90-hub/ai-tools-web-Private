@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Cataloagele standard de training: CORE si Productie.
+"""Catalogul standard de training CORE.
 
 Orele sunt EFORTUL DE REFERINTA pentru acoperirea completa a modulului, la
 ritm normal. Planificatorul le scaleaza dupa numarul de zile cerut (vezi
@@ -219,114 +219,12 @@ CORE = [
     },
 ]
 
-# Trainingul de Productie presupune CORE-ul deja parcurs (sau in curs): aici
-# stau doar modulele specifice fluxului de fabricatie.
-PRODUCTIE = [
-    {
-        "nr": 1,
-        "nume": "Nomenclatoare de producție",
-        "ore": 2.5,
-        "audienta": A_PLAN,
-        "esential": True,
-        "grupe": [
-            ("Articole și trasabilitate", [
-                "Articole de tip materie primă, semifabricat, produs finit",
-                "Proprietăți de urmărire: lot, data de expirare (BBD), serie",
-                "Unități de măsură și conversii specifice producției",
-                "Codificarea loturilor interne și legătura cu lotul furnizorului",
-            ]),
-            ("Structuri tehnologice", [
-                "Rețete / machete de fabricație (BOM): componente, cantități, pierderi tehnologice",
-                "Operații și faze tehnologice",
-                "Resurse: utilaje, echipamente, centre de lucru",
-                "Gestiuni și celule arondate secțiilor de producție",
-            ]),
-        ],
-    },
-    {
-        "nr": 2,
-        "nume": "Comenzi și ordine de fabricație",
-        "ore": 2.5,
-        "audienta": A_PLAN,
-        "esential": True,
-        "grupe": [
-            ("Lansarea în producție", [
-                "Comandă internă de producție: creare, validare, stări",
-                "Generare ordine de fabricație din comandă",
-                "Alocarea materialelor și verificarea disponibilului de stoc",
-                "Modificarea machetei pe o comandă nelansată",
-            ]),
-            ("Planificare și programare", [
-                "Necesarul de materiale pentru comenzile lansate",
-                "Programarea pe resurse și pe intervale de timp",
-                "Urmărirea stadiului comenzilor în lucru",
-            ]),
-        ],
-    },
-    {
-        "nr": 3,
-        "nume": "Raportarea producției",
-        "ore": 3.0,
-        "audienta": A_PROD,
-        "esential": True,
-        "grupe": [
-            ("Consumuri și predări", [
-                "Bon de consum din ordinul de fabricație",
-                "Notă de predare produse finite și semifabricate",
-                "Raportarea cantităților realizate pe faze tehnologice",
-                "Înregistrarea pierderilor tehnologice și a neconformităților",
-            ]),
-            ("Raportare la locul execuției", [
-                "Notă de cântar: preluarea greutății din cântarul electronic",
-                "Raportarea pe dispozitive mobile în secție",
-                "Identificarea operatorului și drepturile pe rol",
-                "Înregistrarea timpilor de start/stop pe operație",
-            ]),
-        ],
-    },
-    {
-        "nr": 4,
-        "nume": "Trasabilitate și calitate",
-        "ore": 2.0,
-        "audienta": A_CALITATE,
-        "esential": False,
-        "grupe": [
-            ("Trasabilitate pe lot", [
-                "Urmărirea lotului de la materia primă la produsul finit (MP → PF)",
-                "Urmărirea inversă, de la produsul livrat la materia primă (PF → MP)",
-                "Gestiunea datei de expirare (BBD) pe tot fluxul",
-                "Rapoarte de trasabilitate",
-            ]),
-            ("Control de calitate", [
-                "Carantina loturilor și eliberarea pe baza rezultatelor",
-                "Blocarea și deblocarea loturilor neconforme",
-                "Contraprobe și probe de referință",
-            ]),
-        ],
-    },
-    {
-        "nr": 5,
-        "nume": "Costuri de producție",
-        "ore": 2.0,
-        "audienta": A_CONTA,
-        "esential": False,
-        "grupe": [
-            ("Calculul costului", [
-                "Costul standard vs. costul efectiv pe comandă",
-                "Repartizarea costurilor de manoperă și regie",
-                "Costul produselor rezultate din descompunere (randamente pe piese)",
-                "Diferențe de cost și analiza abaterilor",
-            ]),
-            ("Închiderea producției", [
-                "Închiderea ordinelor de fabricație",
-                "Preluarea în contabilitate a producției realizate",
-                "Rapoarte de cost și de randament",
-            ]),
-        ],
-    },
-]
-
-CATALOGS = {"core": CORE, "productie": PRODUCTIE}
+# Doar CORE are catalog. Productia NU are unul si nu trebuie sa capete: fiecare
+# implementare are alte entitati tehnologice, alte retete si alt mod de
+# raportare, iar un „standard de productie" scris aici ar ajunge predat unui
+# client care nu il are. Agenda de productie se ridica din specificatie —
+# vezi skills/training/spec_build.py.
+CATALOGS = {"core": CORE}
 
 LABELS = {
     "core": "Charisma ERP CORE",
@@ -336,7 +234,7 @@ LABELS = {
 
 def get_catalog(tip: str) -> list[dict]:
     if tip not in CATALOGS:
-        raise ValueError(f"Tip de training necunoscut: {tip!r}")
+        raise ValueError(f"Nu există catalog standard pentru: {tip!r}")
     # copie adanca superficiala: planificatorul modifica orele, catalogul ramane intact
     return [dict(m, grupe=list(m["grupe"])) for m in CATALOGS[tip]]
 

@@ -166,8 +166,8 @@ export default function TrainingPage() {
 
             <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 leading-relaxed">
               {tip === "core"
-                ? "Modulele standard Charisma CORE: General, Depozit, Achiziții, Vânzări, Financiar, Mijloace Fixe, Contabilitate. Fără specificație se generează programul standard comprimat pe numărul de zile ales; cu specificație se adaugă și particularitățile clientului."
-                : "Modulele de producție: nomenclatoare și rețete, comenzi de fabricație, raportarea producției, trasabilitate și calitate, costuri. Specificația de producție este obligatorie — din ea se extrag fluxurile specifice clientului."}
+                ? "Există un program standard Charisma CORE: General, Depozit, Achiziții, Vânzări, Financiar, Mijloace Fixe, Contabilitate. Fără specificație se generează standardul comprimat pe numărul de zile ales; cu specificație, peste standard se adaugă particularitățile clientului."
+                : "Nu există un program standard de producție — fiecare implementare are alte entități tehnologice, alte rețete, alt mod de raportare. Agenda se construiește integral din specificația încărcată: intră doar ce scrie în document, nimic altceva."}
             </p>
 
             {/* Perioada + client */}
@@ -222,7 +222,7 @@ export default function TrainingPage() {
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed">
                 {specNecesara
-                  ? "Din specificația de producție se extrag fluxurile și cerințele specifice, care se adaugă modulelor de training."
+                  ? "Din ea se ridică modulele, conținutul și efortul — inclusiv căile din meniu și detaliile clientului (entități tehnologice, gestiuni, procente de pierderi), acolo unde documentul le dă."
                   : "Dacă o încarci, particularitățile clientului se adaugă la programul standard, marcate distinct în agendă."}
               </p>
               <UploadZone accept=".docx" label=".docx" onFile={setFile} />
@@ -270,25 +270,58 @@ export default function TrainingPage() {
                     </p>
                     <p className="text-[11px] text-slate-500">module</p>
                   </div>
-                  <div
-                    className={`border rounded-lg p-3 text-center ${
-                      result.summary.particularitati > 0
-                        ? "bg-[#fff9c4] border-amber-200"
-                        : "bg-white border-[#e2e5f0]"
-                    }`}
-                  >
-                    <p
-                      className={`text-xl font-bold ${
+                  {result.summary.tip === "productie" ? (
+                    <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
+                      <p className="text-xl font-bold text-[#18257f]">
+                        {String(result.summary.ore_referinta ?? 0).replace(".", ",")}h
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        cerute de specificație
+                      </p>
+                    </div>
+                  ) : (
+                    <div
+                      className={`border rounded-lg p-3 text-center ${
                         result.summary.particularitati > 0
-                          ? "text-amber-700"
-                          : "text-slate-300"
+                          ? "bg-[#fff9c4] border-amber-200"
+                          : "bg-white border-[#e2e5f0]"
                       }`}
                     >
-                      {result.summary.particularitati}
-                    </p>
-                    <p className="text-[11px] text-slate-500">particularități client</p>
-                  </div>
+                      <p
+                        className={`text-xl font-bold ${
+                          result.summary.particularitati > 0
+                            ? "text-amber-700"
+                            : "text-slate-300"
+                        }`}
+                      >
+                        {result.summary.particularitati}
+                      </p>
+                      <p className="text-[11px] text-slate-500">particularități client</p>
+                    </div>
+                  )}
                 </div>
+
+                {result.summary.tip === "productie" &&
+                  result.summary.ore_referinta != null &&
+                  Math.abs(result.summary.ore_referinta - result.summary.total_ore) >
+                    0.01 && (
+                    <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                      Specificația cere{" "}
+                      <strong>
+                        {String(result.summary.ore_referinta).replace(".", ",")}h
+                      </strong>
+                      , iar {result.summary.zile}{" "}
+                      {result.summary.zile === 1 ? "zi oferă" : "zile oferă"}{" "}
+                      <strong>
+                        {String(result.summary.total_ore).replace(".", ",")}h
+                      </strong>
+                      . Conținutul a fost{" "}
+                      {result.summary.ore_referinta > result.summary.total_ore
+                        ? "comprimat"
+                        : "lărgit"}{" "}
+                      proporțional — ajustează durata dacă vrei alt ritm.
+                    </p>
+                  )}
 
                 {result.summary.avertisment && (
                   <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Rutele de training si contractul lor de validare."""
 import io
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from docx import Document
 
@@ -53,6 +53,22 @@ async def test_estimate_o_zi_este_comprimat(client):
     finally:
         app.dependency_overrides.clear()
     assert response.json()["comprimat"] is True
+
+
+async def test_estimate_productie_nu_are_continut_de_referinta(client):
+    """Nu există standard de producție: cât training iese se știe abia din spec."""
+    _auth()
+    try:
+        response = await client.get(
+            "/api/training/estimate?tip=productie&zile=3",
+            headers={"Authorization": "Bearer fake"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    data = response.json()
+    assert data["ore_referinta"] is None
+    assert data["comprimat"] is False
+    assert data["specificatie_obligatorie"] is True
 
 
 async def test_tip_necunoscut_returns_422(client):
@@ -151,7 +167,9 @@ async def test_specificatia_vine_din_storage(client, monkeypatch, tmp_path):
     spec.write_bytes(_spec_bytes())
     _auth()
     try:
-        with patch("routers.training.download_upload", return_value=spec) as descarcat:
+        # jobul din fundal ar chema Claude cu o cheie de test — nu e subiectul aici
+        with patch("routers.training.download_upload", return_value=spec) as descarcat, \
+             patch("routers.training.run_training_pipeline", new_callable=AsyncMock):
             response = await client.post(
                 "/api/training/generate",
                 data={

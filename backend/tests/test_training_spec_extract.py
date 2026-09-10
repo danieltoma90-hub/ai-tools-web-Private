@@ -6,7 +6,17 @@ from skills.training.catalog import get_catalog
 from skills.training.spec_extract import _parse_json, potriveste_modul
 
 CORE = [m["nume"] for m in get_catalog("core")]
-PRODUCTIE = [m["nume"] for m in get_catalog("productie")]
+
+# Denumiri de module așa cum le poate produce AI-ul citind o specificație de
+# producție. Nu există catalog standard de producție — potrivirea trebuie să
+# funcționeze pe orice set de denumiri, nu doar pe unul cunoscut dinainte.
+PRODUCTIE = [
+    "Nomenclatoare de producție",
+    "Comenzi și ordine de fabricație",
+    "Raportarea producției",
+    "Trasabilitate și calitate",
+    "Costuri de producție",
+]
 
 
 def test_json_curat():
@@ -70,29 +80,30 @@ def test_potrivire_nume_productie(propus, asteptat):
 def test_atasarea_foloseste_aceeasi_potrivire_ca_extragerea():
     """Ultima poartă înainte de document nu are voie să fie mai proastă.
 
-    Cazul real (specificația Solaris): „Trasabilitate" și „Costuri" ajungeau
-    toate pe primul modul, iar Nomenclatoare umplea o zi întreagă.
+    Înainte compara la literă și, la orice abatere, trimitea particularitatea
+    pe primul modul — care ieșea umflat, iar restul rămâneau goale.
     """
     from skills.training.spec_extract import ataseaza_la_module
 
     module = ataseaza_la_module(
-        get_catalog("productie"),
+        get_catalog("core"),
         [
-            {"modul": "Trasabilitate", "titlu": "Loturi", "detaliu": "", "cod": ""},
-            {"modul": "Costuri", "titlu": "Cost pe entitate", "detaliu": "", "cod": ""},
-            {"modul": "Comenzi de fabricație", "titlu": "Lansare cu istoric",
+            {"modul": "Depozit", "titlu": "Notă de cântar", "detaliu": "", "cod": ""},
+            {"modul": "Mijloace fixe", "titlu": "Amortizare accelerată",
+             "detaliu": "", "cod": ""},
+            {"modul": "Contabilitate", "titlu": "Note contabile proprii",
              "detaliu": "", "cod": ""},
         ],
     )
     unde = {
-        m["nume"]: m["grupe"][-1][1]
+        m["nume"]: list(m["grupe"][-1][1])
         for m in module
         if m["grupe"][-1][0] == "Particularități client"
     }
-    assert list(unde["Trasabilitate și calitate"]) == ["Loturi"]
-    assert list(unde["Costuri de producție"]) == ["Cost pe entitate"]
-    assert list(unde["Comenzi și ordine de fabricație"]) == ["Lansare cu istoric"]
-    assert "Nomenclatoare de producție" not in unde
+    assert unde["Modul Depozit"] == ["Notă de cântar"]
+    assert unde["Modul Mijloace Fixe"] == ["Amortizare accelerată"]
+    assert unde["Modul Contabilitate"] == ["Note contabile proprii"]
+    assert "Modul General (Informații Generale)" not in unde
 
 
 def test_nume_complet_strain_cade_pe_primul_modul():

@@ -17,12 +17,34 @@ def _total(plan: dict) -> float:
     return round(sum(m["ore"] for z in plan["zile"] for m in z["module"]), 2)
 
 
+def _module_din_specificatie() -> list[dict]:
+    """Cum arată modulele venite dintr-o specificație de producție.
+
+    Planificatorul nu mai primește doar catalogul CORE: la Producție conținutul
+    e ridicat din documentul clientului, cu orice denumiri, orice ore și niciun
+    modul protejat de comprimare.
+    """
+    ore = [4.0, 1.5, 3.0, 0.5, 2.5, 6.0, 1.0]
+    return [
+        {
+            "nr": i + 1,
+            "nume": f"Modul din specificație {i + 1}",
+            "ore": o,
+            "audienta": "Operatori producție",
+            "esential": False,
+            "grupe": [("Conținut", ["Subiect"])],
+        }
+        for i, o in enumerate(ore)
+    ]
+
+
 @pytest.mark.parametrize("zile", [1, 2, 3, 4, 5, 10])
 def test_nicio_zi_nu_depaseste_programul(zile):
-    for tip in ("core", "productie"):
-        plan = construieste_plan(get_catalog(tip), zile)
+    seturi = {"core": get_catalog("core"), "specificatie": _module_din_specificatie()}
+    for eticheta, module in seturi.items():
+        plan = construieste_plan(module, zile)
         for z in plan["zile"]:
-            assert z["ore"] <= ORE_PE_ZI + 0.01, f"{tip} {zile} zile: {z}"
+            assert z["ore"] <= ORE_PE_ZI + 0.01, f"{eticheta} {zile} zile: {z}"
         assert plan["supraincarcat"] is False
 
 

@@ -358,6 +358,8 @@ export type TrainingSummary = {
   particularitati: number;
   excluse: string[];
   supraincarcat: boolean;
+  /** Efortul cerut de conținut înainte de distribuirea pe zilele alese. */
+  ore_referinta?: number;
   /** Setat când specificația n-a putut fi citită, dar agenda standard s-a generat. */
   avertisment?: string;
 };

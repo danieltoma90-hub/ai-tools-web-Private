@@ -99,6 +99,16 @@ def build_word(plan: dict, meta: dict, path: Path) -> Path:
     r.font.size = Pt(10)
     r.font.color.rgb = RGBColor.from_string(GREY_TEXT)
 
+    # La Productie nu exista program standard: cine citeste agenda trebuie sa
+    # stie ca tot ce urmeaza vine din documentul clientului.
+    if meta.get("sursa"):
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = p.add_run(meta["sursa"])
+        r.italic = True
+        r.font.size = Pt(9)
+        r.font.color.rgb = RGBColor.from_string(GREY_TEXT)
+
     # Tabel de efort — raspunde direct la „cat alocam fiecarui modul"
     doc.add_paragraph()
     _heading(doc, "Efort estimat pe module", 13, NAVY, level=1)
