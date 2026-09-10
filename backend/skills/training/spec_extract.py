@@ -60,15 +60,85 @@ Reguli:
 
 
 def _parse_json(text: str) -> dict:
+    """JSON-ul din răspuns, chiar dacă vine cu explicații în jur sau ciobit.
+
+    Un răspuns tăiat la mijloc n-are voie să arunce toată extragerea: ultimul
+    pas repară JSON-ul malformat, ca în pipeline-ul de minută.
+    """
     m = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
     candidate = m.group(1) if m else text
     try:
         return json.loads(candidate)
     except json.JSONDecodeError:
-        m2 = re.search(r"\{[\s\S]*\}", candidate)
-        if m2:
-            return json.loads(m2.group(0))
-        raise
+        pass
+
+    bloc = re.search(r"\{[\s\S]*\}", candidate)
+    if bloc:
+        try:
+            return json.loads(bloc.group(0))
+        except json.JSONDecodeError:
+            pass
+
+    try:
+        from json_repair import repair_json
+    except ImportError:
+        raise ValueError(f"Răspuns care nu conține JSON: {text[:200]}")
+
+    reparat = repair_json(bloc.group(0) if bloc else candidate)
+    if reparat and reparat.strip() not in ("", "null", "{}"):
+        return json.loads(reparat)
+    raise ValueError(f"Răspuns care nu conține JSON: {text[:200]}")
+
+
+_DIACRITICE = str.maketrans("ăâîșşțţ", "aaisstt")
+_CUVINTE_GOALE = {"modul", "de", "si", "informatii", "generale"}
+
+
+def _cuvinte(nume: str) -> frozenset[str]:
+    curat = nume.lower().translate(_DIACRITICE)
+    return frozenset(
+        c for c in re.findall(r"[a-z]+", curat)
+        if c not in _CUVINTE_GOALE and len(c) > 2
+    )
+
+
+def _nediscriminante(module_nume: list[str]) -> frozenset[str]:
+    """Cuvintele care apar în jumătate din denumiri nu deosebesc nimic.
+
+    „Producție" e în trei din cele cinci module de Producție: dacă l-am lua în
+    calcul, „Costuri" ar semăna la fel de bine cu oricare dintre ele.
+    """
+    numarate: dict[str, int] = {}
+    for nume in module_nume:
+        for c in _cuvinte(nume):
+            numarate[c] = numarate.get(c, 0) + 1
+    prag = max(2, len(module_nume) // 2)
+    return frozenset(c for c, n in numarate.items() if n >= prag)
+
+
+def potriveste_modul(propus: str, module_nume: list[str]) -> str:
+    """Numele de modul din catalog care corespunde celui propus de AI.
+
+    „Nomenclatoare producție" și „Nomenclatoare de producție" sunt același modul.
+    Fără potrivirea asta, orice abatere de o literă ar trimite particularitatea
+    pe primul modul din catalog și agenda ar ieși amestecată.
+
+    Când nimic nu seamănă, particularitatea merge pe primul modul — acolo unde
+    ambele cataloage țin partea generală, de configurare — pentru că o
+    particularitate pusă alături e recuperabilă, una pierdută nu.
+    """
+    if propus in module_nume:
+        return propus
+
+    surplus = _nediscriminante(module_nume)
+    tinta = _cuvinte(propus) - surplus
+    if tinta:
+        scoruri = [(len(_cuvinte(n) - surplus & tinta), n) for n in module_nume]
+        scor, nume = max(scoruri, key=lambda x: x[0])
+        if scor > 0:
+            return nume
+
+    return module_nume[0]
 
 
 async def extrage_particularitati(
@@ -90,7 +160,9 @@ async def extrage_particularitati(
     client = AsyncAnthropic(api_key=api_key)
     resp = await client.messages.create(
         model=MODEL,
-        max_tokens=4096,
+        # 25 de particularitati cu detaliu incap in ~2500 de tokeni; lasam
+        # marja dubla, ca raspunsul sa nu se taie la mijlocul JSON-ului.
+        max_tokens=8192,
         messages=[{
             "role": "user",
             "content": f"{_prompt(module_nume)}\n\n---SPECIFICAȚIE CLIENT---\n{text}",
@@ -99,15 +171,11 @@ async def extrage_particularitati(
     data = _parse_json(resp.content[0].text)
     items = data.get("particularitati", [])
 
-    valide = set(module_nume)
     out = []
     for it in items:
         if not isinstance(it, dict) or not it.get("titlu"):
             continue
-        modul = it.get("modul", "")
-        if modul not in valide:
-            # AI-ul a inventat un modul: il punem pe primul, ca sa nu pierdem informatia
-            modul = module_nume[0]
+        modul = potriveste_modul(it.get("modul", ""), module_nume)
         out.append({
             "modul": modul,
             "titlu": it["titlu"].strip(),
@@ -126,13 +194,13 @@ def ataseaza_la_module(module: list[dict], particularitati: list[dict]) -> list[
     if not particularitati:
         return module
 
-    # Ultima poarta inainte de document: un nume care nu exista in catalog ar
-    # face particularitatea sa dispara in tacere, asa ca o mutam pe primul modul.
-    nume_valide = {m["nume"] for m in module}
+    # Ultima poarta inainte de document. Foloseste aceeasi potrivire ca la
+    # extragere: un nume aproximativ („Trasabilitate" pentru „Trasabilitate si
+    # calitate") trebuie sa ajunga la modulul lui, nu pe primul din catalog.
+    nume = [m["nume"] for m in module]
     pe_modul: dict[str, list[dict]] = {}
     for p in particularitati:
-        modul = p["modul"] if p.get("modul") in nume_valide else module[0]["nume"]
-        pe_modul.setdefault(modul, []).append(p)
+        pe_modul.setdefault(potriveste_modul(p.get("modul", ""), nume), []).append(p)
 
     for m in module:
         proprii = pe_modul.get(m["nume"], [])
