@@ -22,7 +22,7 @@ import jobs
 from auth import verify_token
 from pipelines.minuta_pipeline import run_minuta_pipeline
 from pipelines.minuta_free_pipeline import estimate_free_job, run_minuta_free_pipeline
-from storage import download_document, list_files, upload_file
+from storage import download_document, download_upload, list_files, upload_file
 
 SKILL_DIR = Path(__file__).parent.parent / "skills" / "minuta"
 CONTEXT_TEMPLATE = SKILL_DIR / "template" / "Context_Proiect_Template.docx"
@@ -146,28 +146,62 @@ async def _run_job(
             context_path.unlink(missing_ok=True)
 
 
+async def _preia_fisierul(
+    storage_path: str, filename: str, file: UploadFile | None
+) -> tuple[Path, str]:
+    """Fișierul de procesat, ca (cale locală, nume original).
+
+    Traseul normal: fișierul e urcat de browser direct în Supabase și aici vine
+    doar `storage_path` — corpul cererii rămâne mic, sub limita de 4,5MB a
+    funcțiilor Vercel prin care trece proxy-ul. Varianta cu fișier în corp e
+    păstrată pentru compatibilitate.
+    """
+    if storage_path:
+        nume = filename or Path(storage_path).name
+        if Path(nume).suffix.lower() not in ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .vtt sau .docx")
+        try:
+            return download_upload(storage_path), nume
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except Exception:
+            raise HTTPException(
+                status_code=422,
+                detail="Fișierul încărcat nu mai este disponibil. Reîncarcă-l și reia.",
+            )
+
+    if file is None or not file.filename:
+        raise HTTPException(status_code=422, detail="Lipsește fișierul de procesat")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Fișierul trebuie să fie .vtt sau .docx (primit: '{file.filename}')",
+        )
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        tmp.write(await file.read())
+        return Path(tmp.name), file.filename
+
+
 @router.post("/minuta")
 async def generate_minuta(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    storage_path: str = Form(""),
+    filename: str = Form(""),
     context_path: str = Form(""),
     user=Depends(verify_token),
 ):
     """Pornește procesarea minutei în fundal și returnează un job_id imediat."""
-    ext = Path(file.filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .vtt sau .docx")
+    input_path, nume = await _preia_fisierul(storage_path, filename, file)
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
+        input_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY lipsă pe server")
 
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        tmp.write(await file.read())
-        input_path = Path(tmp.name)
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    stem = Path(file.filename).stem
+    stem = Path(nume).stem
 
     user_email = getattr(user, "email", None) or "anonymous"
     job_id = jobs.create_job(user_email)
@@ -221,24 +255,19 @@ async def _run_free_job(
 @router.post("/minuta-free")
 async def generate_minuta_free(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    storage_path: str = Form(""),
+    filename: str = Form(""),
     user=Depends(verify_token),
 ):
     """Pornește generarea minutei free (Groq/Llama) în fundal și returnează job_id."""
     try:
-        filename_raw = file.filename or ""
-        ext = Path(filename_raw).suffix.lower() if filename_raw else ""
-        if ext not in ALLOWED_EXTENSIONS:
-            raise HTTPException(status_code=422, detail=f"Fișierul trebuie să fie .vtt sau .docx (primit: '{filename_raw}')")
+        input_path, filename_raw = await _preia_fisierul(storage_path, filename, file)
 
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
+            input_path.unlink(missing_ok=True)
             raise HTTPException(status_code=500, detail="GROQ_API_KEY lipsă pe server")
-
-        content = await file.read()
-        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-            tmp.write(content)
-            input_path = Path(tmp.name)
 
         # Pre-check: fisierul incape in bugetul zilnic gratuit Groq?
         est = estimate_free_job(input_path)

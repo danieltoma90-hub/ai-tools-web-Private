@@ -18,6 +18,7 @@ UPLOAD_TOOLS_EXT = {
     "scenarii": {".docx"},
     "mockup": {".docx", ".xlsx"},
     "training": {".docx"},
+    "minuta": {".vtt", ".docx"},
 }
 UPLOAD_MAX_BYTES = 52_428_800  # 50MB — maximul planului free Supabase
 

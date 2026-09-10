@@ -6,7 +6,12 @@ import ProcessingSpinner from "@/components/ProcessingSpinner";
 import ResultPanel from "@/components/ResultPanel";
 import HistoryPanel from "@/components/HistoryPanel";
 import ContextStep from "@/components/ContextStep";
-import { postMinuta, pollMinutaJob, postMinutaFree } from "@/lib/api";
+import {
+  uploadSourceFile,
+  postMinuta,
+  pollMinutaJob,
+  postMinutaFree,
+} from "@/lib/api";
 import { isColdStartError, pollJob } from "@/lib/poll";
 
 type State = "idle" | "processing" | "done" | "error";
@@ -37,6 +42,20 @@ export default function MinutaPage() {
   const [historyKey, setHistoryKey] = useState(0);
   const cancelledRef = useRef(false);
 
+  /** Urcă transcriptul direct în storage, cu o reîncercare dacă serverul dormea. */
+  async function incarca(f: File): Promise<string> {
+    try {
+      const { storage_path } = await uploadSourceFile(f, "minuta");
+      return storage_path;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (!isColdStartError(msg)) throw err;
+      await new Promise((r) => setTimeout(r, 5000));
+      const { storage_path } = await uploadSourceFile(f, "minuta");
+      return storage_path;
+    }
+  }
+
   async function handleGenerateAI() {
     if (!file) return;
     setState("processing");
@@ -44,7 +63,13 @@ export default function MinutaPage() {
     cancelledRef.current = false;
 
     try {
-      const { job_id } = await postMinuta(file, contextPath || undefined);
+      const storagePath = await incarca(file);
+      if (cancelledRef.current) return;
+      const { job_id } = await postMinuta(
+        storagePath,
+        file.name,
+        contextPath || undefined
+      );
 
       const job = await pollJob(() => pollMinutaJob(job_id), {
         cancelled: () => cancelledRef.current,
@@ -73,10 +98,14 @@ export default function MinutaPage() {
     cancelledRef.current = false;
 
     try {
+      setFreeLabel("Încarc transcriptul...");
+      const storagePath = await incarca(file);
+      if (cancelledRef.current) return;
+
       let job_id: string;
       let est_minutes: number | undefined;
       try {
-        ({ job_id, est_minutes } = await postMinutaFree(file));
+        ({ job_id, est_minutes } = await postMinutaFree(storagePath, file.name));
       } catch (initErr) {
         // Render free tier se adoarme dupa inactivitate — retry automat dupa 5s
         const msg = initErr instanceof Error ? initErr.message : "";
@@ -84,7 +113,7 @@ export default function MinutaPage() {
           setFreeLabel("Server pornit, se retransmite automat...");
           await new Promise((r) => setTimeout(r, 5000));
           if (cancelledRef.current) return;
-          ({ job_id, est_minutes } = await postMinutaFree(file));
+          ({ job_id, est_minutes } = await postMinutaFree(storagePath, file.name));
         } else {
           throw initErr;
         }

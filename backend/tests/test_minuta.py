@@ -50,6 +50,75 @@ async def test_minuta_endpoint_returns_job_id(client):
 
 
 @pytest.mark.asyncio
+async def test_minuta_preia_fisierul_din_storage(client, tmp_path):
+    """Traseul normal: transcriptul urcat direct în Supabase, nu prin proxy.
+
+    Corpul cererii rămâne mic, deci nu mai poate lovi limita de 4,5MB a
+    funcțiilor Vercel prin care trece proxy-ul.
+    """
+    transcript = tmp_path / "abc.vtt"
+    transcript.write_bytes(b"WEBVTT\n\n")
+    app.dependency_overrides[verify_token] = lambda: {"id": "u1", "email": "t@t.com"}
+    try:
+        with patch("routers.minuta._run_job", new_callable=AsyncMock) as rulat, \
+             patch("routers.minuta.download_upload", return_value=transcript) as descarcat:
+            response = await client.post(
+                "/api/minuta",
+                data={"storage_path": "minuta/abc.vtt", "filename": "Sedinta Godac.vtt"},
+                headers={"Authorization": "Bearer fake"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    descarcat.assert_called_once_with("minuta/abc.vtt")
+    # numele documentului final vine din numele original, nu din cel din storage
+    assert rulat.call_args[0][3] == "Sedinta Godac"
+
+
+@pytest.mark.asyncio
+async def test_minuta_din_storage_cu_extensie_gresita_returns_422(client):
+    app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
+    try:
+        response = await client.post(
+            "/api/minuta",
+            data={"storage_path": "minuta/abc.pdf", "filename": "raport.pdf"},
+            headers={"Authorization": "Bearer fake"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_minuta_fara_fisier_returns_422(client):
+    app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
+    try:
+        response = await client.post(
+            "/api/minuta", data={}, headers={"Authorization": "Bearer fake"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_minuta_din_storage_disparut_returns_422(client):
+    app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
+    try:
+        with patch("routers.minuta.download_upload", side_effect=Exception("not found")):
+            response = await client.post(
+                "/api/minuta",
+                data={"storage_path": "minuta/lipsa.vtt", "filename": "x.vtt"},
+                headers={"Authorization": "Bearer fake"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+    assert "Reîncarcă" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_minuta_job_status_done(client, tmp_path):
     """GET /minuta/job/{id} returnează rezultatul când job-ul e done."""
     import jobs

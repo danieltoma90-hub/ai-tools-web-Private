@@ -9,6 +9,14 @@ async function apiFetch(url: string, init?: RequestInit) {
       window.location.href = "/login?error=session_expired";
       throw new Error("Sesiune expirată — te reautentifici.");
     }
+    // Vercel oprește cererile peste 4,5MB cu o pagină proprie, al cărei text
+    // („FUNCTION_PAYLOAD_TOO_LARGE") nu spune nimic utilizatorului.
+    if (res.status === 413) {
+      throw new Error(
+        "Fișierul este prea mare pentru a fi trimis astfel. Reîncarcă pagina " +
+          "(Ctrl+Shift+R) și reia — versiunea nouă urcă fișierul direct în storage."
+      );
+    }
     let detail = "Eroare server";
     try {
       const text = await res.text();
@@ -37,11 +45,13 @@ async function postFile(path: string, file: File) {
 }
 
 export async function postMinuta(
-  file: File,
+  storagePath: string,
+  filename: string,
   contextPath?: string
 ): Promise<{ job_id: string }> {
   const form = new FormData();
-  form.append("file", file);
+  form.append("storage_path", storagePath);
+  form.append("filename", filename);
   if (contextPath) form.append("context_path", contextPath);
   return apiFetch(`${PROXY}/minuta`, { method: "POST", body: form }) as Promise<{
     job_id: string;
@@ -121,12 +131,18 @@ export async function pollMinutaJob(jobId: string): Promise<{
   }>;
 }
 
-export async function postMinutaFree(file: File): Promise<{
+export async function postMinutaFree(
+  storagePath: string,
+  filename: string
+): Promise<{
   job_id: string;
   est_minutes?: number;
   chunks?: number;
 }> {
-  return postFile("minuta-free", file) as Promise<{
+  const form = new FormData();
+  form.append("storage_path", storagePath);
+  form.append("filename", filename);
+  return apiFetch(`${PROXY}/minuta-free`, { method: "POST", body: form }) as Promise<{
     job_id: string;
     est_minutes?: number;
     chunks?: number;
@@ -183,7 +199,7 @@ function postGenerate(path: string, estimateId: string, useAi: boolean) {
 
 export async function uploadSourceFile(
   file: File,
-  tool: "scenarii" | "mockup" | "training"
+  tool: "scenarii" | "mockup" | "training" | "minuta"
 ): Promise<{ storage_path: string }> {
   const sign = (await apiFetch(`${PROXY}/uploads/sign`, {
     method: "POST",

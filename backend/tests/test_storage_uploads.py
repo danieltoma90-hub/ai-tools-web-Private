@@ -36,7 +36,9 @@ def test_create_upload_url_returns_signed_parts():
 
 def test_create_upload_url_rejects_bad_tool_and_ext():
     with pytest.raises(ValueError):
-        storage.create_upload_url("minuta", "a.docx")  # minuta nu foloseste fluxul
+        storage.create_upload_url("inexistent", "a.docx")
+    with pytest.raises(ValueError):
+        storage.create_upload_url("minuta", "a.pdf")  # minuta: doar .vtt si .docx
     with pytest.raises(ValueError):
         storage.create_upload_url("scenarii", "a.pdf")
     with pytest.raises(ValueError):
