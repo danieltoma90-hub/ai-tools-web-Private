@@ -290,6 +290,13 @@ export default function TrainingPage() {
                   </div>
                 </div>
 
+                {result.summary.avertisment && (
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <strong>Agenda conține doar programul standard.</strong>{" "}
+                    {result.summary.avertisment}
+                  </p>
+                )}
+
                 {result.summary.excluse.length > 0 && (
                   <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                     <strong>Nu încape la această durată:</strong>{" "}

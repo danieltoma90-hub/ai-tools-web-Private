@@ -74,8 +74,11 @@ def _parse_json(text: str) -> dict:
 async def extrage_particularitati(
     spec_path: Path, module_nume: list[str], api_key: str
 ) -> list[dict]:
-    """Un singur apel Claude. La eroare returneaza lista goala — programul
-    standard ramane valid, doar nu e imbogatit."""
+    """Un singur apel Claude, care intoarce particularitatile gasite.
+
+    Erorile de provider urca la apelant: el stie daca specificatia e obligatorie
+    (Productie) sau doar un plus (CORE) si decide daca opreste sau avertizeaza.
+    """
     from anthropic import AsyncAnthropic
 
     text = extract_docx_text(spec_path)

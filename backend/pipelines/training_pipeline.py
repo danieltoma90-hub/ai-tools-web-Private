@@ -12,6 +12,7 @@ import os
 import tempfile
 from pathlib import Path
 
+from ai_errors import mesaj_eroare_ai
 from skills.training import builders
 from skills.training.catalog import LABELS, get_catalog, ore_referinta
 from skills.training.scheduler import ORE_PE_ZI, construieste_plan
@@ -51,6 +52,7 @@ async def run_training_pipeline(
     module = get_catalog(tip)
 
     particularitati: list[dict] = []
+    avertisment = ""
     if spec_path is not None and api_key:
         if on_step:
             on_step("specificatie")
@@ -59,10 +61,16 @@ async def run_training_pipeline(
                 spec_path, [m["nume"] for m in module], api_key
             )
             module = ataseaza_la_module(module, particularitati)
-        except Exception:
-            # Specificatia e un plus: daca extragerea esueaza, programul
-            # standard ramane valid si se genereaza fara particularitati.
+        except Exception as e:
+            motiv = mesaj_eroare_ai(e)
+            if tip == "productie":
+                # La Productie specificatia e chiar rostul trainingului. O agenda
+                # standard livrata ca reusita ar ascunde exact ce trebuia sa aduca.
+                raise RuntimeError(f"Nu am putut citi specificația: {motiv}") from e
+            # La CORE programul standard ramane valid si fara particularitati,
+            # dar utilizatorul trebuie sa afle ca lipsesc si de ce.
             particularitati = []
+            avertisment = f"Particularitățile clientului nu au putut fi extrase — {motiv}"
 
     if on_step:
         on_step("planificare")
@@ -92,5 +100,6 @@ async def run_training_pipeline(
         "particularitati": len(particularitati),
         "excluse": [m["nume"] for m in plan["excluse"]],
         "supraincarcat": plan["supraincarcat"],
+        "avertisment": avertisment,
     }
     return docx_path, xlsx_path, sumar

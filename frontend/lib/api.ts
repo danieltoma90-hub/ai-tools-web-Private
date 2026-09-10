@@ -358,6 +358,8 @@ export type TrainingSummary = {
   particularitati: number;
   excluse: string[];
   supraincarcat: boolean;
+  /** Setat când specificația n-a putut fi citită, dar agenda standard s-a generat. */
+  avertisment?: string;
 };
 
 export type TrainingJob = {
