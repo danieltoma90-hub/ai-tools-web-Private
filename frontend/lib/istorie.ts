@@ -4,19 +4,40 @@
  * Nu scriem noi istorie: datele vin de la sursă, nu din memoria cuiva. Un
  * singur apel pe zi și pe sesiune, ținut în sessionStorage. Dacă serviciul nu
  * răspunde, secțiunea pur și simplu nu apare — nu blochează nimic.
+ *
+ * Din lista zilei păstrăm doar evenimentele care au mutat ceva la scara lumii,
+ * bune sau rele: tratate, revoluții, descoperiri, catastrofe. Fără nașteri,
+ * fără decese, fără sport, fără fapt divers. Selecția se face pe cuvinte-cheie
+ * ponderate — e o aproximare, nu o judecată, și se mai strecoară prin ea și
+ * evenimente mărunte.
  */
 export type EvenimentIstoric = { an: number; text: string };
 
 const BAZA = "https://en.wikipedia.org/api/rest_v1/feed/onthisday/selected";
 
-// „Selected" e o listă curatoriată, dar rămâne istorie — iar istoria e plină de
-// războaie. Filtrul scoate intrările explicit macabre; nu poate judeca tonul
-// unui text, deci nu promitem un ecran numai cu vești bune.
-const CUVINTE_GRELE =
-  /\b(massacre|genocide|atrocit|beheaded|executed|slaughter|lynch|shot dead|shot and killed|murder|assassinat|rammed|detonat|suicide|torture)/i;
+// Afară: nașteri, decese, sport, divertisment, fapt divers, accidente.
+const EXCLUSE =
+  /\b(was born|were born|\bb\.\s*\d{4}|died|death of|funeral|football|soccer|baseball|basketball|cricket|olympic|championship|tournament|scored|album|single|song|film|television|episode|comic|video game|nightclub|robbery|kidnapp|asteroid|comet|frigate|police raid|boarded and captured|flight \d|airliner|airlines|aircraft crashed|plane crashed|derailed)/i;
+
+// Semne că evenimentul a schimbat lumea, nu doar ziua.
+const PUTERNICE =
+  /\b(world war|treaty of|peace treaty|armistice|declared independence|independence from|constitution|revolution|abolish|emancipat|universal suffrage|civil rights|apartheid|holocaust|genocide|first human|first person to|first successful|first flight|moon|spacecraft|space station|orbit the earth|vaccine|pandemic|smallpox|penicillin|atomic bomb|nuclear weapon|hydrogen bomb|united nations|european union|nato|league of nations|world wide web|the internet|printing press|partition of|dissolution of|fall of|collapse of)/gi;
+
+const MEDII =
+  /\b(treaty|surrender|liberated|annexed|occupation|coup|overthrew|founded|established|ratified|signed into law|proclaimed|elected president|dictator|regime|discovered|invented|patented|launched|satellite|reactor|earthquake|tsunami|eruption|famine|epidemic|terrorist attack|massacre|civil war|republic of|kingdom of)/gi;
+
+const PRAG = 2;
+const MAX_EVENIMENTE = 8;
+
+function scor(text: string): number {
+  if (EXCLUSE.test(text)) return -1;
+  const unice = (re: RegExp) =>
+    new Set(Array.from(text.matchAll(re), (m) => m[0].toLowerCase())).size;
+  return unice(PUTERNICE) * 2 + unice(MEDII);
+}
 
 function cheie(luna: number, zi: number): string {
-  return `onthisday-en-${luna}-${zi}`;
+  return `onthisday-en-${luna}-${zi}-v2`;
 }
 
 export async function evenimenteleZilei(
@@ -43,18 +64,25 @@ export async function evenimenteleZilei(
       headers: { Accept: "application/json" },
     });
     if (!res.ok) return [];
-    const data = (await res.json()) as {
+    const payload = (await res.json()) as {
       selected?: { year?: number; text?: string }[];
     };
 
-    const toate = (data.selected ?? [])
+    const cotate = (payload.selected ?? [])
       .filter((e) => typeof e.text === "string" && typeof e.year === "number")
-      .map((e) => ({ an: e.year as number, text: (e.text as string).trim() }));
+      .map((e) => {
+        const text = (e.text as string).trim();
+        return { an: e.year as number, text, scor: scor(text) };
+      })
+      .sort((a, b) => b.scor - a.scor);
 
-    const blande = toate.filter((e) => !CUVINTE_GRELE.test(e.text));
-    // Dacă filtrul ar goli lista, e mai bine să arătăm istoria așa cum e
-    // decât să pretindem că ziua n-a avut nimic.
-    const rezultat = blande.length >= 3 ? blande : toate;
+    // Zilele slabe există: mai bine coborâm pragul decât să nu arătăm nimic.
+    let alese = cotate.filter((e) => e.scor >= PRAG);
+    if (alese.length < 3) alese = cotate.filter((e) => e.scor >= 1);
+
+    const rezultat = alese
+      .slice(0, MAX_EVENIMENTE)
+      .map(({ an, text }) => ({ an, text }));
 
     try {
       sessionStorage.setItem(cheie(luna, zi), JSON.stringify(rezultat));
