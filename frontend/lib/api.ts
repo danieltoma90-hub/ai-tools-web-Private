@@ -393,6 +393,18 @@ export async function postTrainingGenerate(params: {
   }) as Promise<{ job_id: string }>;
 }
 
+export async function getIstoriaZilei(): Promise<{
+  luna: number;
+  zi: number;
+  evenimente: { an: number; text: string }[];
+}> {
+  return apiFetch(`${PROXY}/istorie/zi`) as Promise<{
+    luna: number;
+    zi: number;
+    evenimente: { an: number; text: string }[];
+  }>;
+}
+
 export async function getTrainingJob(jobId: string): Promise<TrainingJob> {
   return apiFetch(`${PROXY}/training/job/${jobId}`) as Promise<TrainingJob>;
 }

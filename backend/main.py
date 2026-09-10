@@ -4,7 +4,9 @@ from fastapi.responses import JSONResponse
 import os
 from dotenv import load_dotenv
 from auth import get_supabase
-from routers import minuta, mockup, scenarii, documents, uploads, diagnostics, training
+from routers import (
+    minuta, mockup, scenarii, documents, uploads, diagnostics, training, istorie,
+)
 
 load_dotenv()
 
@@ -25,6 +27,7 @@ app.include_router(documents.router, prefix="/api")
 app.include_router(uploads.router, prefix="/api")
 app.include_router(diagnostics.router, prefix="/api")
 app.include_router(training.router, prefix="/api")
+app.include_router(istorie.router, prefix="/api")
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])

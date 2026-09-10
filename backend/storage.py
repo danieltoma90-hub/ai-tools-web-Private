@@ -188,6 +188,43 @@ def delete_file(storage_path: str) -> None:
     sb.storage.from_(BUCKET).remove([storage_path])
 
 
+# Bucket separat pentru rezultate calculate o data si refolosite mereu. Nu sta
+# in 'documents': acolo ajung documentele utilizatorilor, listate in Repository.
+CACHE_BUCKET = "cache"
+_cache_bucket_ready = False
+
+
+def ensure_cache_bucket() -> None:
+    global _cache_bucket_ready
+    if _cache_bucket_ready:
+        return
+    sb = get_supabase()
+    existing = {getattr(b, "name", None) or getattr(b, "id", "") for b in sb.storage.list_buckets()}
+    if CACHE_BUCKET not in existing:
+        sb.storage.create_bucket(CACHE_BUCKET, options={"public": False})
+    _cache_bucket_ready = True
+
+
+def cache_citeste(cale: str) -> bytes | None:
+    """Continutul din cache, sau None daca nu exista. Nu ridica exceptii."""
+    try:
+        ensure_cache_bucket()
+        return get_supabase().storage.from_(CACHE_BUCKET).download(cale)
+    except Exception:
+        return None
+
+
+def cache_scrie(cale: str, continut: bytes) -> None:
+    """Salveaza in cache. Esecul nu opreste nimic — se recalculeaza data viitoare."""
+    try:
+        ensure_cache_bucket()
+        get_supabase().storage.from_(CACHE_BUCKET).upload(
+            cale, continut, {"upsert": "true", "content-type": "application/json"}
+        )
+    except Exception:
+        pass
+
+
 _uploads_bucket_ready = False
 
 
