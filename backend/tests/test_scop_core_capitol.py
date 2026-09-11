@@ -8,13 +8,18 @@ document șterse — vezi `test_fixture_gazda_produce_buline_reale_cu_numpr`
 pentru dovada că nu e doar un `Document()` gol. Păstrează `styles.xml`,
 `numbering.xml`, tema și `sectPr` reale, deci `Heading 1`/`Heading 2` rezolvă
 și `stil._numid_pentru_buline` are o definiție de numerotare reală de la care
-să învețe — nu doar stilurile implicite din python-docx. Nu e documentul real
-de la client: acela trăiește în alt repo (`d:\\AI_Claude`) și nu trebuie să fie
-o dependență a suitei de teste a acestui repo.
+să învețe — nu doar stilurile implicite din python-docx. Fără nicio imagine
+în pachet (`word/media/` absent, `.rels` fără nicio relație orfană — vezi
+`test_fixture_gazda_nu_contine_nicio_imagine`): cele trei imagini originale
+(logo + poză de stoc) nu erau referite din corp și n-aveau niciun motiv
+genuin să rămână într-un fixture de test. Nu e documentul real de la client:
+acela trăiește în alt repo (`d:\\AI_Claude`) și nu trebuie să fie o
+dependență a suitei de teste a acestui repo.
 """
 from __future__ import annotations
 
 import pathlib
+import zipfile
 
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
@@ -193,3 +198,25 @@ def test_fixture_gazda_produce_buline_reale_cu_numpr():
     liste = [p for p in doc.paragraphs if p.style is not None and p.style.name == "List Paragraph"]
     assert liste, "secțiunea 'contabilitate' trebuie să producă paragrafe cu bulină"
     assert all(stil._numid_din_paragraf(p) is not None for p in liste)
+
+
+def test_fixture_gazda_nu_contine_nicio_imagine():
+    """`GAZDA` a purtat trei imagini ale clientului (logo + poză de stoc,
+    373 KB) până când au fost eliminate: corpul nu le mai referea deloc (au
+    rămas orfane în pachet — vezi antet/subsol golite), deci n-aveau niciun
+    motiv genuin să rămână. Tot ce-i trebuie lui `stil.py` — `styles.xml`,
+    `numbering.xml`, tema, `sectPr` și cele 21 de paragrafe „List Paragraph” —
+    nu depinde de nicio parte din `word/media/`. Acest test blochează zgomotos
+    o viitoare regenerare a fixture-ului care ar reintroduce imagini de-ale
+    clientului în pachet."""
+    with zipfile.ZipFile(GAZDA) as z:
+        nume = z.namelist()
+        parti_media = [n for n in nume if n.startswith("word/media/")]
+        assert not parti_media, f"fixture-ul nu trebuie să conțină imagini: {parti_media}"
+
+        for n in nume:
+            if n.endswith(".rels"):
+                continut = z.read(n).decode("utf-8").lower()
+                assert "media/image" not in continut, (
+                    f"{n} conține o relație orfană către o imagine ștearsă"
+                )
