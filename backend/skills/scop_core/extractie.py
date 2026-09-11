@@ -36,6 +36,7 @@ import json
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 from docx import Document
 
@@ -121,10 +122,16 @@ def _construieste_prompt() -> str:
     )
 
 
-def parse_json_block(text: str) -> dict:
-    """JSON-ul din răspunsul modelului, chiar dacă vine încadrat în ```json``` \
-    sau cu text în jur. Un răspuns care nu conține JSON valid ridică
-    `ValueError` cu mesaj clar — routerul îl poate arăta direct utilizatorului."""
+def parse_json_block(text: str) -> Any:
+    """Valoarea JSON din răspunsul modelului, chiar dacă vine încadrat în
+    ```json``` sau cu text în jur. Un răspuns care nu conține JSON valid
+    ridică `ValueError` cu mesaj clar — routerul îl poate arăta direct
+    utilizatorului.
+
+    Întoarce exact ce a parsat `json.loads` — nu neapărat un `dict`: un
+    model poate răspunde sintactic valid cu `null`, cu o listă sau cu un
+    număr la nivelul de bază. Apelantul (`propune_elemente`) verifică forma
+    imediat după apel."""
     match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
     candidate = match.group(1) if match else text
     try:
@@ -198,7 +205,19 @@ def _valideaza_elemente(bruti, coduri_valide: set[str]) -> list[dict]:
         fluxuri_raw = it.get("fluxuri_legate")
         if not isinstance(fluxuri_raw, list):
             fluxuri_raw = []
-        fluxuri_legate = [c for c in fluxuri_raw if isinstance(c, str) and c in coduri_valide]
+        # doar strip — fără case-folding: "MF1" și "M1" sunt coduri distincte,
+        # ale unor secțiuni diferite, iar a le trata la fel ar fi un pas spre
+        # ghicit, lucru pe care acest modul nu îl face niciodată. Un spațiu
+        # parazit (" V2 ") e zgomot de formatare de la un model gratuit și
+        # se recuperează; o literă mică ("v2") nu se potrivește cu niciun cod
+        # real și se aruncă, la fel ca un cod inexistent.
+        fluxuri_legate = []
+        for c in fluxuri_raw:
+            if not isinstance(c, str):
+                continue
+            cod = c.strip()
+            if cod in coduri_valide:
+                fluxuri_legate.append(cod)
 
         rezultat.append({
             "titlu": titlu,
@@ -233,6 +252,12 @@ async def propune_elemente(docx_path: Path, engine: str = "groq") -> list[dict]:
         raw = await _call_groq(prompt, text)
 
     data = parse_json_block(raw)
+    if not isinstance(data, dict):
+        raise ValueError(
+            "Răspunsul modelului e JSON valid, dar nu are forma așteptată "
+            f"(un obiect cu cheia \"elemente\") — a întors în schimb un "
+            f"{type(data).__name__}: {raw[:300]!r}"
+        )
     bruti = data.get("elemente")
     if not isinstance(bruti, list):
         bruti = []

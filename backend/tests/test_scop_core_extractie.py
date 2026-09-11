@@ -84,6 +84,21 @@ async def test_cod_de_flux_inexistent_se_filtreaza(tmp_path, monkeypatch):
     assert rezultat[0]["fluxuri_legate"] == ["V2"]
 
 
+async def test_cod_cu_spatii_parazite_e_recuperat_dar_minuscule_tot_se_arunca(tmp_path, monkeypatch):
+    """Zgomot de formatare de la un model gratuit (spații în plus în jurul
+    codului) nu trebuie să piardă un flux legat valid — dar nu facem
+    case-folding: "MF1" și "M1" sunt coduri distincte, ale unor secțiuni
+    diferite, iar a le confunda ar fi un pas spre ghicit."""
+    payload = json.dumps({"elemente": [
+        {"titlu": "X", "text": "Y", "plasare": "vanzari", "fluxuri_legate": [" V2 ", "v2"]},
+    ]})
+    _simuleaza(monkeypatch, payload)
+
+    rezultat = await extractie.propune_elemente(_docx(tmp_path))
+
+    assert rezultat[0]["fluxuri_legate"] == ["V2"]
+
+
 async def test_element_fara_titlu_se_arunca(tmp_path, monkeypatch):
     payload = json.dumps({"elemente": [
         {"titlu": "", "text": "Text valid.", "plasare": "propriu", "fluxuri_legate": []},
@@ -110,6 +125,41 @@ async def test_element_fara_text_se_arunca(tmp_path, monkeypatch):
 
 async def test_json_invalid_ridica_value_error(tmp_path, monkeypatch):
     _simuleaza(monkeypatch, "Ne pare rău, nu pot ajuta cu asta.")
+
+    with pytest.raises(ValueError):
+        await extractie.propune_elemente(_docx(tmp_path))
+
+
+async def test_raspuns_json_null_ridica_value_error(tmp_path, monkeypatch):
+    """`null` e JSON sintactic valid — `parse_json_block` îl întoarce ca
+    `None`, fără să ridice excepție. Fără verificarea de tip imediat după,
+    `None.get("elemente")` ar pica cu `AttributeError` necontrolat, nu cu
+    mesajul românesc pe care routerul îl poate arăta."""
+    _simuleaza(monkeypatch, "null")
+
+    with pytest.raises(ValueError):
+        await extractie.propune_elemente(_docx(tmp_path))
+
+
+async def test_raspuns_json_lista_bruta_ridica_value_error(tmp_path, monkeypatch):
+    """O listă JSON la nivelul de bază (fără obiectul cu cheia "elemente")
+    e tot sintactic validă — trebuie tratată ca formă greșită, nu ca o
+    excepție brută de tip `AttributeError`."""
+    _simuleaza(monkeypatch, json.dumps(["a", "b", "c"]))
+
+    with pytest.raises(ValueError):
+        await extractie.propune_elemente(_docx(tmp_path))
+
+
+async def test_raspuns_json_numar_brut_ridica_value_error(tmp_path, monkeypatch):
+    _simuleaza(monkeypatch, "42")
+
+    with pytest.raises(ValueError):
+        await extractie.propune_elemente(_docx(tmp_path))
+
+
+async def test_raspuns_json_sir_brut_ridica_value_error(tmp_path, monkeypatch):
+    _simuleaza(monkeypatch, json.dumps("doar un șir, nu un obiect"))
 
     with pytest.raises(ValueError):
         await extractie.propune_elemente(_docx(tmp_path))
