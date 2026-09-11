@@ -1,23 +1,41 @@
 # -*- coding: utf-8 -*-
 """Teste pentru elementele suplimentare din capitolul CORE (Task 2).
 
-`GAZDA` e un document minimal, generat cu python-docx implicit (fără nicio
-personalizare), și comis în acest repo — nu documentul real de la client, care
-trăiește într-un alt repo (`d:\\AI_Claude`) și nu trebuie să fie o dependență a
-suitei de teste a acestui repo. Un `Document()` gol are deja stilurile de care
-`stil.py`/`capitol.py` au nevoie (Heading 1-9, "Table Grid", "List Paragraph"),
-deci ajunge pentru tot ce testează acest fișier: poziția și numerotarea
-elementelor, nu fidelitatea vizuală față de o gazdă reală (asta e verificată
-separat, cu gazda reală, în testele portate din skill-ul CLI).
+`GAZDA` e derivat dintr-o gazdă reală (Turkish Doner Steakhouse), cu corpul
+redus la strict paragrafele „List Paragraph” cu `w:numPr` (anonimizate, fără
+niciun text de-al clientului), antet/subsol golite și proprietățile de
+document șterse — vezi `test_fixture_gazda_produce_buline_reale_cu_numpr`
+pentru dovada că nu e doar un `Document()` gol. Păstrează `styles.xml`,
+`numbering.xml`, tema și `sectPr` reale, deci `Heading 1`/`Heading 2` rezolvă
+și `stil._numid_pentru_buline` are o definiție de numerotare reală de la care
+să învețe — nu doar stilurile implicite din python-docx. Nu e documentul real
+de la client: acela trăiește în alt repo (`d:\\AI_Claude`) și nu trebuie să fie
+o dependență a suitei de teste a acestui repo.
 """
 from __future__ import annotations
 
 import pathlib
 
+from docx.oxml.ns import qn
+from docx.text.paragraph import Paragraph
+
 from skills.scop_core import capitol, stil
 from skills.scop_core.charisma_core import SECTIUNI
 
-GAZDA = pathlib.Path(__file__).resolve().parent / "fixtures" / "gazda_minima.docx"
+GAZDA = pathlib.Path(__file__).resolve().parent / "fixtures" / "gazda_reala_anonimizata.docx"
+
+
+def _corp_in_ordine(doc):
+    """Corpul documentului în ordinea reală de apariție, paragrafe și tabele
+    amestecate — spre deosebire de `doc.paragraphs`, care omite tabelele cu
+    totul și nu poate proba nicio regulă relativă la poziția unui tabel."""
+    rezultat = []
+    for copil in doc.element.body:
+        if copil.tag == qn("w:p"):
+            rezultat.append(("p", Paragraph(copil, doc).text))
+        elif copil.tag == qn("w:tbl"):
+            rezultat.append(("tbl", None))
+    return rezultat
 
 
 def test_element_ca_subcapitol_apare_sub_sectiunea_ceruta():
@@ -138,3 +156,40 @@ def test_element_fara_fluxuri_legate_nu_scrie_nicio_fraza_de_corelare():
     capitol.construieste(doc_fara, capitol.alege_sectiuni(None, ["vanzari"]), numar=5, elemente=[el_fara])
     capitol.construieste(doc_cu, capitol.alege_sectiuni(None, ["vanzari"]), numar=5, elemente=[el_cu])
     assert [p.text for p in doc_fara.paragraphs] == [p.text for p in doc_cu.paragraphs]
+
+
+def test_element_ca_subcapitol_apare_dupa_tabelul_de_fluxuri_al_sectiunii():
+    """Regula din brief: elementul plasat sub o secțiune apare DUPĂ tabelul ei
+    de fluxuri — nu doar undeva după titlul secțiunii. `Scop`, `Beneficii` și
+    tabelul se randează primele. Testele de mai sus verifică doar poziția
+    relativă la titlul secțiunii (`texte.index(...) > texte.index(...)`), care
+    ar trece și pentru o implementare greșită ce ar scrie elementul imediat
+    după titlu, înaintea tabelului — `doc.paragraphs` nici nu conține tabelul,
+    deci nu poate proba asta. Aici verificăm ordinea reală a corpului
+    (`_corp_in_ordine`), unde tabelul apare ca element `w:tbl` distinct."""
+    doc = stil.document_din_gazda(GAZDA)
+    el = capitol.Element(titlu="Aprobare comenzi pe niveluri", text="Text.", plasare="achizitii")
+    capitol.construieste(doc, capitol.alege_sectiuni(None, ["contabilitate", "achizitii"]),
+                         numar=5, elemente=[el])
+    corp = _corp_in_ordine(doc)
+    idx_titlu = next(i for i, (tip, txt) in enumerate(corp) if tip == "p" and txt == "5.2. Modulul Achiziții")
+    idx_tabel = next(i for i, (tip, _) in enumerate(corp) if tip == "tbl" and i > idx_titlu)
+    idx_element = next(i for i, (tip, txt) in enumerate(corp)
+                        if tip == "p" and txt == "5.2.1. Aprobare comenzi pe niveluri")
+    assert idx_element > idx_tabel
+
+
+def test_fixture_gazda_produce_buline_reale_cu_numpr():
+    """Dovadă că `GAZDA` e reprezentativă pentru ce are nevoie `stil.py`, nu
+    doar un `.docx` gol: un capitol cu o secțiune care are `detaliere` (deci
+    cheamă `stil.bullets`) trebuie să producă paragrafe „List Paragraph” cu
+    `w:numPr` real, nu bulete fără glif. `stil._numid_pentru_buline` învață
+    numId-ul redeschizând gazda de pe disc (`doc._cale_gazda`), nu din corpul
+    golit în memorie — dacă fixture-ul ar fi înlocuit vreodată cu unul fără
+    paragrafe „List Paragraph” reale în fișier, acest test trebuie să pice
+    zgomotos, nu tăcut."""
+    doc = stil.document_din_gazda(GAZDA)
+    capitol.construieste(doc, capitol.alege_sectiuni(None, ["contabilitate"]), numar=5)
+    liste = [p for p in doc.paragraphs if p.style is not None and p.style.name == "List Paragraph"]
+    assert liste, "secțiunea 'contabilitate' trebuie să producă paragrafe cu bulină"
+    assert all(stil._numid_din_paragraf(p) is not None for p in liste)

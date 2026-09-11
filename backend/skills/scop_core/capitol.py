@@ -9,13 +9,15 @@ from .charisma_core import SECTIUNI, Sectiune
 
 TITLU_CAPITOL = "Soluția ofertată — Charisma ERP CORE"
 
-# Numărul de secțiuni canonice CORE (vezi SECTIUNI) — folosit ca prag fix de
-# numerotare pentru elementele cu secțiune proprie ("<numar>.<10+k>"), nu
-# lungimea efectivă a listei `sectiuni` primite de `construieste`. Rămâne fix
-# indiferent câte secțiuni a selectat utilizatorul cu --fara/--doar, ca
-# numerotarea unui element propriu să nu depindă de filtrul aplicat secțiunilor
-# standard.
-NUMAR_SECTIUNI_CANONICE = 10
+# Numărul de secțiuni canonice CORE — folosit ca prag fix de numerotare pentru
+# elementele cu secțiune proprie ("<numar>.<10+k>"), nu lungimea efectivă a
+# listei `sectiuni` primite de `construieste`. Rămâne fix indiferent câte
+# secțiuni a selectat utilizatorul cu --fara/--doar, ca numerotarea unui
+# element propriu să nu depindă de filtrul aplicat secțiunilor standard.
+# Derivat din `len(SECTIUNI)`, nu ținut ca literal hand-sync-uit: o a 11-a
+# secțiune canonică legitimă ar coliza tăcut cu primul element "propriu"
+# (ambele "5.11.") dacă pragul ar rămâne fix la 10 din greșeală.
+NUMAR_SECTIUNI_CANONICE = len(SECTIUNI)
 
 
 @dataclass(frozen=True)
