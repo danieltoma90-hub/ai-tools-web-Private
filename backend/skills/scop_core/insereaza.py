@@ -128,14 +128,25 @@ def _repara_puncte_de_confirmat(doc) -> None:
 
 def insereaza_capitol(cale_gazda, sectiuni, numar: int = 5, nivel: int = 1,
                       client: str = "[NUME CLIENT]",
-                      elemente: list[capitol.Element] | None = None):
+                      elemente: list[capitol.Element] | None = None,
+                      delimitari: list[capitol.Delimitare] | None = None,
+                      curata_antet_subsol: bool = False):
     """Întoarce un Document nou = gazda cu capitolul inserat și capitolele renumerotate.
 
-    Capitolul inserat include și elementele suplimentare (`elemente`), plasate
-    exact ca în `capitol.construieste`: fiecare fie ca sub-capitol sub secțiunea
-    lui, fie ca secțiune proprie la finalul capitolului — vezi docstring-ul
-    acelei funcții pentru regulile complete de plasare și numerotare.
-    `elemente=None` (implicit) și `elemente=[]` produc exact același rezultat.
+    Capitolul inserat include și elementele suplimentare (`elemente`) și
+    „Delimitările de scop” (`delimitari`), plasate exact ca în
+    `capitol.construieste`: fiecare element fie ca sub-capitol sub secțiunea
+    lui, fie ca secțiune proprie la finalul capitolului, iar delimitările ca
+    ultimul sub-capitol — vezi docstring-ul acelei funcții pentru regulile
+    complete de plasare și numerotare. `elemente=None`/`[]` și
+    `delimitari=None`/`[]` produc exact același rezultat ca omiterea lor.
+
+    `curata_antet_subsol=True` golește textul antetului și subsolului
+    GAZDEI ÎNTORASE (documentul complet, cu capitolul inserat) — vezi
+    `stil.curata_antet_subsol` — pentru cazul în care gazda a fost
+    reutilizată ca șablon de stil pentru un alt client decât cel din antet/
+    subsol. Implicit `False`: antetul/subsolul gazdei rămân neatinse, cazul
+    obișnuit fiind același client.
 
     ATENȚIE — cuprinsul cache-uit rămâne neactualizat: Word păstrează un
     Cuprins real (câmp TOC) ca un bloc `w:sdt` cu paragrafe cache-uite pentru
@@ -166,13 +177,16 @@ def insereaza_capitol(cale_gazda, sectiuni, numar: int = 5, nivel: int = 1,
     # capitolul, construit separat pe stilurile aceleiași gazde
     temp = stil.document_din_gazda(cale)
     capitol.construieste(temp, sectiuni, numar=numar, nivel=nivel, client=client,
-                         elemente=elemente)
+                         elemente=elemente, delimitari=delimitari)
 
     ancora = _gaseste_ancora(gazda, numar + 1)
     for element in list(temp.element.body):
         if element.tag.endswith("}sectPr"):
             continue
         ancora.addprevious(copy.deepcopy(element))
+
+    if curata_antet_subsol:
+        stil.curata_antet_subsol(gazda)
 
     return gazda
 

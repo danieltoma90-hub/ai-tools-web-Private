@@ -22,6 +22,12 @@ o aplică deja părții AI a fluxului — vezi `_element_din_dict`.
 construiește și capitolul separat — cele două fișiere întoarse de acest
 pipeline (capitolul standalone și, dacă e cerută, gazda cu capitolul inserat)
 conțin identic aceleași elemente suplimentare, plasate la fel.
+
+`delimitari` (intrările „Delimitări de scop”) urmează exact același drum ca
+`elemente`: dicturi brute din browser, validate tolerant (`_delimitare_din_dict`)
+și duse identic pe ambele căi. `curata_antet_subsol` golește antetul/subsolul
+moștenite din gazdă pe ambele căi, pentru cazul unei gazde reutilizate ca
+șablon de stil pentru alt client — vezi `stil.curata_antet_subsol`.
 """
 from __future__ import annotations
 
@@ -144,11 +150,56 @@ def _elemente_din_dicturi(brute: object) -> tuple[list[capitol.Element], int]:
     return valide, respinse
 
 
+def _delimitare_din_dict(brut: object) -> capitol.Delimitare | None:
+    """Convertește un singur dict brut (din browser) într-un `capitol.Delimitare`.
+
+    Aceeași filosofie tolerantă ca `_element_din_dict`: doar `dict`-uri sunt
+    acceptate, iar `element`/`precizare` lipsă, goale după strip sau de alt
+    tip decât `str` fac intrarea inutilizabilă — un rând din tabelul
+    „Element | Precizare” fără unul din cele două câmpuri nu are ce însemna,
+    și nu se completează tăcut cu text de rezervă inventat aici.
+    """
+    if not isinstance(brut, dict):
+        return None
+
+    element_brut = brut.get("element")
+    element = element_brut.strip() if isinstance(element_brut, str) else ""
+    precizare_brut = brut.get("precizare")
+    precizare = precizare_brut.strip() if isinstance(precizare_brut, str) else ""
+    if not element or not precizare:
+        return None
+
+    return capitol.Delimitare(element=element, precizare=precizare)
+
+
+def _delimitari_din_dicturi(brute: object) -> tuple[list[capitol.Delimitare], int]:
+    """Convertește lista de dicturi brute de delimitări; întoarce (valide, respinse).
+
+    O `delimitari` care nu e deloc listă (None, obiect greșit trimis) e
+    tratată ca listă goală — fără nicio excepție ridicată către router,
+    exact ca la `_elemente_din_dicturi`.
+    """
+    if not isinstance(brute, list):
+        return [], 0
+
+    valide: list[capitol.Delimitare] = []
+    respinse = 0
+    for brut in brute:
+        d = _delimitare_din_dict(brut)
+        if d is None:
+            respinse += 1
+        else:
+            valide.append(d)
+    return valide, respinse
+
+
 async def run_scop_core_pipeline(
     gazda_path: Path,
     client: str,
     elemente: list[dict],
     insereaza_in_gazda: bool,
+    delimitari: list[dict] | None = None,
+    curata_antet_subsol: bool = False,
     on_step=None,
 ) -> tuple[Path, Path | None, dict]:
     """Construiește capitolul CORE și, opțional, copia gazdă+capitol.
@@ -164,13 +215,27 @@ async def run_scop_core_pipeline(
     cât și `insereaza.insereaza_capitol` lucrează pe un `Document` încărcat în
     memorie (`stil.document_din_gazda`/`Document(gazda_path)` intern) — abia
     rezultatul se salvează, sub o cale nouă, temporară.
+
+    `delimitari` — intrările „Delimitări de scop” (dicturi brute din browser,
+    convertite tolerant prin `_delimitari_din_dicturi`, în oglindă cu
+    `elemente`), duse la fel spre `capitol.construieste`/`insereaza_capitol`
+    și randate ca ultimul sub-capitol pe ambele căi.
+
+    `curata_antet_subsol` — golește antetul/subsolul moștenite din gazdă (vezi
+    `stil.curata_antet_subsol`), pentru cazul unei gazde reutilizate ca șablon
+    de stil pentru alt client. Implicit `False`. Când e `False` ȘI clientul a
+    fost completat efectiv (nu placeholder-ul implicit), sumarul semnalează
+    dacă numele lui nu apare deloc în antetul/subsolul găsit — vezi
+    `antet_subsol_avertisment` mai jos.
     """
     if on_step:
         on_step("parsing")
 
     sectiuni = capitol.alege_sectiuni()
-    client_nume = client or CLIENT_IMPLICIT
+    client_declarat = (client or "").strip()
+    client_nume = client_declarat or CLIENT_IMPLICIT
     elemente_valide, elemente_respinse = _elemente_din_dicturi(elemente)
+    delimitari_valide, delimitari_respinse = _delimitari_din_dicturi(delimitari)
 
     chei_sectiuni = {s.cheie for s in sectiuni}
     elemente_pe_sectiune = sum(1 for el in elemente_valide if el.plasare in chei_sectiuni)
@@ -182,11 +247,34 @@ async def run_scop_core_pipeline(
     capitol_path = _mktemp_path(".docx")
     try:
         doc = stil.document_din_gazda(gazda_path)
-        capitol.construieste(doc, sectiuni, client=client_nume, elemente=elemente_valide)
+        antet_text, subsol_text = stil.texte_antet_subsol(doc)
+        if curata_antet_subsol:
+            stil.curata_antet_subsol(doc)
+        capitol.construieste(doc, sectiuni, client=client_nume, elemente=elemente_valide,
+                             delimitari=delimitari_valide)
         doc.save(str(capitol_path))
     except Exception:
         capitol_path.unlink(missing_ok=True)
         raise
+
+    # Mismatch de client în antetul/subsolul moștenit din gazdă — doar dacă
+    # utilizatorul chiar a completat un client (altfel comparăm cu placeholder-ul
+    # implicit, care evident n-apare niciodată) ȘI n-a cerut deja curățarea lor
+    # (caz în care mismatch-ul e deja rezolvat, nu mai e nimic de semnalat).
+    antet_subsol_avertisment = ""
+    if not curata_antet_subsol and client_declarat and (antet_text or subsol_text):
+        text_gasit = f"{antet_text}\n{subsol_text}".lower()
+        if client_declarat.lower() not in text_gasit:
+            bucati = []
+            if subsol_text:
+                bucati.append(f"subsol: „{subsol_text}”")
+            if antet_text:
+                bucati.append(f"antet: „{antet_text}”")
+            antet_subsol_avertisment = (
+                f"Numele clientului („{client_declarat}”) nu apare în antetul/subsolul moștenit "
+                "din documentul gazdă — verifică dacă documentul a fost creat pentru alt client "
+                "înainte să-l trimiți. Text găsit — " + "; ".join(bucati) + "."
+            )
 
     gazda_path_out: Path | None = None
     avertismente: list[str] = []
@@ -194,6 +282,11 @@ async def run_scop_core_pipeline(
         avertismente.append(
             f"{elemente_respinse} element(e) suplimentar(e) primite din browser nu au putut fi "
             "folosite (titlu sau text lipsă) și au fost ignorate."
+        )
+    if delimitari_respinse:
+        avertismente.append(
+            f"{delimitari_respinse} intrare(intrări) de „Delimitări de scop” primite din browser "
+            "nu au putut fi folosite (element sau precizare lipsă) și au fost ignorate."
         )
 
     if insereaza_in_gazda:
@@ -203,6 +296,7 @@ async def run_scop_core_pipeline(
         try:
             gazda_cu_capitol = insereaza.insereaza_capitol(
                 gazda_path, sectiuni, client=client_nume, elemente=elemente_valide,
+                delimitari=delimitari_valide, curata_antet_subsol=curata_antet_subsol,
             )
             gazda_cu_capitol.save(str(candidat))
             gazda_path_out = candidat
@@ -229,7 +323,12 @@ async def run_scop_core_pipeline(
         "elemente_pe_sectiune": elemente_pe_sectiune,
         "elemente_proprii": elemente_proprii,
         "elemente_respinse": elemente_respinse,
+        "delimitari_primite": len(delimitari) if isinstance(delimitari, list) else 0,
+        "delimitari_plasate": len(delimitari_valide),
+        "delimitari_respinse": delimitari_respinse,
         "gazda_inserata": gazda_path_out is not None,
+        "antet_subsol_curatat": curata_antet_subsol,
+        "antet_subsol_avertisment": antet_subsol_avertisment,
         "avertisment": " ".join(avertismente),
     }
     return capitol_path, gazda_path_out, sumar

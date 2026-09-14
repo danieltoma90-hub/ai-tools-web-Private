@@ -17,6 +17,7 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, RGBColor
 
 ANTET_TABEL = ("Cod", "Flux", "Ce presupune")
+ANTET_TABEL_DELIMITARI = ("Element", "Precizare")
 CULOARE_ANTET = "1F3864"     # aceeași cu Heading 1 al gazdei
 
 
@@ -110,6 +111,108 @@ def document_din_gazda(cale_gazda):
             body.remove(child)
     _elimina_imagini_orfane(doc)
     return doc
+
+
+def _text_container(container) -> str:
+    """Tot textul vizibil dintr-un antet/subsol (`container` = `section.header`
+    sau `section.footer`): paragrafele lui și, la fel de important, celulele
+    oricăror tabele — gazda reală (Turkish Doner Steakhouse) ține numele
+    clientului într-un tabel din subsol („Turkish Doner Steakhouse S.R.L. |
+    Charisma ERP | v1.0”), nu într-un paragraf simplu; o citire care s-ar opri
+    la `container.paragraphs` n-ar găsi niciodată acel text.
+    """
+    bucati = [p.text.strip() for p in container.paragraphs if p.text.strip()]
+    for tabel in container.tables:
+        for row in tabel.rows:
+            for cell in row.cells:
+                if cell.text.strip():
+                    bucati.append(cell.text.strip())
+    return "\n".join(bucati)
+
+
+def texte_antet_subsol(doc) -> tuple[str, str]:
+    """Întoarce `(text_antet, text_subsol)` — tot textul vizibil din antetele,
+    respectiv subsolurile documentului, pe toate secțiunile lui.
+
+    Folosit pentru detectarea mismatch-ului de client (vezi
+    `pipelines.scop_core_pipeline`): antetul/subsolul sunt moștenite de la
+    documentul gazdă (vezi `document_din_gazda`), corecte doar când gazda și
+    clientul curent sunt aceiași — altfel poartă mai departe numele altui
+    client. O secțiune legată de cea precedentă (`is_linked_to_previous`) nu
+    are propriul antet/subsol — ar duplica textul secțiunii de la care
+    moștenește, deci se sare.
+    """
+    antet, subsol = [], []
+    for sectiune in doc.sections:
+        if not sectiune.header.is_linked_to_previous:
+            t = _text_container(sectiune.header)
+            if t:
+                antet.append(t)
+        if not sectiune.footer.is_linked_to_previous:
+            t = _text_container(sectiune.footer)
+            if t:
+                subsol.append(t)
+    return "\n".join(antet), "\n".join(subsol)
+
+
+def _goleste_paragrafele(paragrafe) -> None:
+    """Golește textul vizibil (`.text`) al fiecărui run din `paragrafe`.
+
+    Un run fără text vizibil (de ex. unul care poartă doar un `w:drawing` —
+    un logo — sau doar cod de câmp `w:fldChar`/`w:instrText`) rămâne neatins:
+    `run.text = ""` pe un asemenea run i-ar șterge conținutul non-text
+    (`CT_R.clear_content` scoate orice copil în afară de `w:rPr`), pierzând
+    logo-ul fără niciun motiv legat de numele clientului. Rezultatul cache-uit
+    al unui câmp (ex. numărul de pagină din PAGE/NUMPAGES) chiar are text
+    vizibil și se golește ca oricare alt run — exact ca la Cuprinsul din
+    `insereaza.py`, Word îl recalculează la reîmprospătare (F9), nu e o
+    corupere.
+    """
+    for p in paragrafe:
+        for run in p.runs:
+            if run.text:
+                run.text = ""
+
+
+def _goleste_container(container) -> None:
+    """Golește textul vizibil dintr-un antet/subsol: paragrafele lui direct
+    și, pe rând, paragrafele din fiecare celulă a oricăror tabele — nu se
+    șterge niciun paragraf, celulă, tabel sau relație, doar textul din runuri.
+    """
+    _goleste_paragrafele(container.paragraphs)
+    for tabel in container.tables:
+        for row in tabel.rows:
+            for cell in row.cells:
+                _goleste_paragrafele(cell.paragraphs)
+
+
+def curata_antet_subsol(doc) -> None:
+    """Golește textul vizibil din antetul și subsolul fiecărei secțiuni.
+
+    Opțiune explicită a utilizatorului (vezi routerul `/scop-core/genereaza`)
+    pentru cazul în care documentul gazdă a fost reutilizat ca șablon de stil
+    pentru un alt client — vezi docstring-ul `document_din_gazda`: antetul și
+    subsolul se moștenesc mereu de acolo, corect doar când gazda și clientul
+    curent coincid.
+
+    Nu se șterge nicio parte OPC și nicio relație (`headerReference`/
+    `footerReference` din `sectPr`, `.rels`-urile antetului/subsolului) —
+    doar textul vizibil al runurilor existente. Ștergerea unor PĂRȚI cât timp
+    RELAȚIILE către ele rămân în picioare produce exact fișierul stricat pe
+    care Word refuză să-l deschidă fără reparare; golirea în loc (păstrând
+    paragrafele, tabelele, stilurile și relațiile) nu are cum să ajungă acolo.
+
+    O secțiune legată de cea precedentă (`is_linked_to_previous`) nu are
+    propria parte de antet/subsol — a o atinge ar forța crearea uneia noi,
+    distinctă de a secțiunii de la care moștenește (exact opusul dorit); se
+    sare, la fel ca în `texte_antet_subsol`, iar antetul/subsolul REAL, al
+    secțiunii de la care moștenește, tot se golește când ajungem la ea.
+    """
+    for sectiune in doc.sections:
+        if not sectiune.header.is_linked_to_previous:
+            _goleste_container(sectiune.header)
+        if not sectiune.footer.is_linked_to_previous:
+            _goleste_container(sectiune.footer)
 
 
 def heading(doc, text: str, nivel: int) -> None:
@@ -313,6 +416,44 @@ def tabel_fluxuri(doc, fluxuri):
         row.cells[0].width = Cm(1.6)
         row.cells[1].width = Cm(5.4)
         row.cells[2].width = Cm(9.6)
+
+    doc.add_paragraph()
+    return t
+
+
+def tabel_delimitari(doc, delimitari):
+    """Tabel de delimitări de scop pe 2 coloane, un rând per intrare.
+
+    Antetul „Element | Precizare” nu e inventat aici: e cel pe care
+    documentul gazdă real (Turkish Doner Steakhouse, capitolul „6.
+    Delimitari de scop”) îl folosește deja pentru exact același conținut —
+    ce anume rămâne în afara scopului ofertat. Stilul (bordură, antet
+    umbrit) e în oglindă cu `tabel_fluxuri`, ca cele două tabele ale
+    capitolului să arate la fel.
+    """
+    t = doc.add_table(rows=1, cols=2)
+    try:
+        t.style = "Table Grid"
+    except KeyError:
+        _borduri_grila(t)
+    t.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+    for celula, titlu in zip(t.rows[0].cells, ANTET_TABEL_DELIMITARI):
+        celula.text = ""
+        run = celula.paragraphs[0].add_run(titlu)
+        run.bold = True
+        run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        _umbreste(celula, CULOARE_ANTET)
+
+    for d in delimitari:
+        celule = t.add_row().cells
+        celule[0].text = d.element
+        celule[0].paragraphs[0].runs[0].bold = True
+        celule[1].text = d.precizare
+
+    for row in t.rows:
+        row.cells[0].width = Cm(4.5)
+        row.cells[1].width = Cm(12.1)
 
     doc.add_paragraph()
     return t

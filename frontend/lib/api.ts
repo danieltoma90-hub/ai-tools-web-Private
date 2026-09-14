@@ -422,6 +422,13 @@ export type ScopCoreElement = {
   fluxuri_legate: string[];
 };
 
+/** O intrare din „Delimitări de scop” — ce anume NU intră în scopul ofertat.
+ * Randată ca tabel „Element | Precizare”, ultimul sub-capitol al capitolului. */
+export type ScopCoreDelimitare = {
+  element: string;
+  precizare: string;
+};
+
 export async function postScopCorePropune(
   storagePath: string,
   filename: string
@@ -438,7 +445,9 @@ export async function postScopCoreGenereaza(params: {
   gazdaFilename: string;
   client: string;
   elemente: ScopCoreElement[];
+  delimitari: ScopCoreDelimitare[];
   insereaza: boolean;
+  curataAntetSubsol: boolean;
 }): Promise<{ job_id: string }> {
   return apiFetch(`${PROXY}/scop-core/genereaza`, {
     method: "POST",
@@ -448,7 +457,9 @@ export async function postScopCoreGenereaza(params: {
       gazda_filename: params.gazdaFilename,
       client: params.client,
       elemente: params.elemente,
+      delimitari: params.delimitari,
       insereaza: params.insereaza,
+      curata_antet_subsol: params.curataAntetSubsol,
     }),
   }) as Promise<{ job_id: string }>;
 }
@@ -461,7 +472,15 @@ export type ScopCoreSummary = {
   elemente_pe_sectiune: number;
   elemente_proprii: number;
   elemente_respinse: number;
+  delimitari_primite: number;
+  delimitari_plasate: number;
+  delimitari_respinse: number;
   gazda_inserata: boolean;
+  antet_subsol_curatat: boolean;
+  /** Mesaj (poate fi gol) dacă numele clientului nu apare în antetul/subsolul
+   * moștenit din gazdă — include textul găsit, ca utilizatorul să-l vadă
+   * înainte de a trimite documentul. */
+  antet_subsol_avertisment: string;
   /** Mesaj (poate fi gol) despre elemente respinse sau eșecul inserării. */
   avertisment: string;
 };

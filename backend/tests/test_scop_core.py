@@ -276,7 +276,8 @@ async def test_genereaza_upload_lipsa_da_422(client):
 async def test_genereaza_cu_elemente_goale_functioneaza_fara_propune(client):
     gazda = _docx_tempfile()
 
-    async def fals_pipeline(gazda_path, client, elemente, insereaza_in_gazda, on_step=None):
+    async def fals_pipeline(gazda_path, client, elemente, insereaza_in_gazda,
+                            delimitari=None, curata_antet_subsol=False, on_step=None):
         assert elemente == []
         capitol_path = _docx_tempfile(("Capitol CORE",))
         return capitol_path, None, {
@@ -306,10 +307,85 @@ async def test_genereaza_cu_elemente_goale_functioneaza_fara_propune(client):
     assert job["cuprins_avertisment"] is None
 
 
+async def test_genereaza_forwardeaza_delimitari_si_curata_antet_subsol_catre_pipeline(client):
+    """`delimitari` și `curata_antet_subsol` din corpul cererii trebuie să
+    ajungă neschimbate la `run_scop_core_pipeline` — routerul nu le validează
+    el însuși, doar le trece mai departe (aceeași filosofie ca la `elemente`)."""
+    gazda = _docx_tempfile()
+    primit: dict = {}
+
+    async def fals_pipeline(gazda_path, client, elemente, insereaza_in_gazda,
+                            delimitari=None, curata_antet_subsol=False, on_step=None):
+        primit["delimitari"] = delimitari
+        primit["curata_antet_subsol"] = curata_antet_subsol
+        capitol_path = _docx_tempfile(("Capitol CORE",))
+        return capitol_path, None, {
+            "sectiuni": 10, "fluxuri": 47, "elemente_primite": 0, "elemente_plasate": 0,
+            "elemente_pe_sectiune": 0, "elemente_proprii": 0, "elemente_respinse": 0,
+            "delimitari_primite": 1, "delimitari_plasate": 1, "delimitari_respinse": 0,
+            "gazda_inserata": False, "antet_subsol_curatat": True, "antet_subsol_avertisment": "",
+            "avertisment": "",
+        }
+
+    delimitari = [{"element": "Migrarea istoricului", "precizare": "Nu face obiectul acestui scop."}]
+    with patch("routers.scop_core.download_upload", return_value=gazda), \
+         patch("routers.scop_core.run_scop_core_pipeline", side_effect=fals_pipeline), \
+         patch("routers.scop_core.upload_file", return_value="scop-core/u1/capitol.docx"):
+        gen_res = await client.post(
+            "/api/scop-core/genereaza",
+            json={"gazda_storage_path": "scop-core/g.docx", "gazda_filename": "gazda.docx",
+                  "client": "ACME", "elemente": [], "delimitari": delimitari,
+                  "insereaza": False, "curata_antet_subsol": True},
+            headers=AUTH,
+        )
+    assert gen_res.status_code == 200
+    job_id = gen_res.json()["job_id"]
+    await client.get(f"/api/scop-core/job/{job_id}", headers=AUTH)
+
+    assert primit["delimitari"] == delimitari
+    assert primit["curata_antet_subsol"] is True
+
+
+async def test_genereaza_fara_delimitari_si_curata_antet_subsol_foloseste_implicit(client):
+    """Corpul cererii poate omite complet `delimitari`/`curata_antet_subsol` —
+    modelul Pydantic are valori implicite (`[]`/`False`), la fel ca `elemente`/
+    `insereaza` deja acoperite mai sus."""
+    gazda = _docx_tempfile()
+    primit: dict = {}
+
+    async def fals_pipeline(gazda_path, client, elemente, insereaza_in_gazda,
+                            delimitari=None, curata_antet_subsol=False, on_step=None):
+        primit["delimitari"] = delimitari
+        primit["curata_antet_subsol"] = curata_antet_subsol
+        capitol_path = _docx_tempfile(("Capitol CORE",))
+        return capitol_path, None, {
+            "sectiuni": 10, "fluxuri": 47, "elemente_primite": 0, "elemente_plasate": 0,
+            "elemente_pe_sectiune": 0, "elemente_proprii": 0, "elemente_respinse": 0,
+            "gazda_inserata": False, "avertisment": "",
+        }
+
+    with patch("routers.scop_core.download_upload", return_value=gazda), \
+         patch("routers.scop_core.run_scop_core_pipeline", side_effect=fals_pipeline), \
+         patch("routers.scop_core.upload_file", return_value="scop-core/u1/capitol.docx"):
+        gen_res = await client.post(
+            "/api/scop-core/genereaza",
+            json={"gazda_storage_path": "scop-core/g.docx", "gazda_filename": "gazda.docx",
+                  "client": "ACME", "elemente": [], "insereaza": False},
+            headers=AUTH,
+        )
+    assert gen_res.status_code == 200
+    job_id = gen_res.json()["job_id"]
+    await client.get(f"/api/scop-core/job/{job_id}", headers=AUTH)
+
+    assert primit["delimitari"] == []
+    assert primit["curata_antet_subsol"] is False
+
+
 async def test_genereaza_cu_insereaza_true_produce_doua_artefacte(client):
     gazda = _docx_tempfile()
 
-    async def fals_pipeline(gazda_path, client, elemente, insereaza_in_gazda, on_step=None):
+    async def fals_pipeline(gazda_path, client, elemente, insereaza_in_gazda,
+                            delimitari=None, curata_antet_subsol=False, on_step=None):
         assert insereaza_in_gazda is True
         capitol_path = _docx_tempfile(("Capitol CORE",))
         gazda_out = _docx_tempfile(("Gazda cu capitol",))
@@ -354,7 +430,8 @@ async def test_genereaza_esec_la_inserare_nu_are_avertisment_cuprins(client):
     nu exista un document cu Cuprins invechit de semnalat."""
     gazda = _docx_tempfile()
 
-    async def fals_pipeline(gazda_path, client, elemente, insereaza_in_gazda, on_step=None):
+    async def fals_pipeline(gazda_path, client, elemente, insereaza_in_gazda,
+                            delimitari=None, curata_antet_subsol=False, on_step=None):
         capitol_path = _docx_tempfile(("Capitol CORE",))
         return capitol_path, None, {
             "sectiuni": 10, "fluxuri": 47, "elemente_primite": 0, "elemente_plasate": 0,

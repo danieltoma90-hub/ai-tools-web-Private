@@ -10,6 +10,7 @@ import {
   postScopCoreGenereaza,
   getScopCoreJob,
   type ScopCoreElement,
+  type ScopCoreDelimitare,
   type ScopCoreSummary,
 } from "@/lib/api";
 import { isColdStartError, pollJob } from "@/lib/poll";
@@ -17,6 +18,7 @@ import { isColdStartError, pollJob } from "@/lib/poll";
 type State = "idle" | "processing" | "done" | "error";
 type AnalizaState = "none" | "loading" | "done" | "error";
 type ElementUI = ScopCoreElement & { id: string };
+type DelimitareUI = ScopCoreDelimitare & { id: string };
 
 // Limita bucket-ului Supabase (plan free)
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -68,7 +70,9 @@ export default function ScopCorePage() {
   const [analiza, setAnaliza] = useState<AnalizaState>("none");
   const [analizaError, setAnalizaError] = useState("");
   const [elemente, setElemente] = useState<ElementUI[]>([]);
+  const [delimitari, setDelimitari] = useState<DelimitareUI[]>([]);
   const [insereaza, setInsereaza] = useState(false);
+  const [curataAntetSubsol, setCurataAntetSubsol] = useState(false);
 
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState("");
@@ -143,6 +147,18 @@ export default function ScopCorePage() {
     setElemente((els) => els.filter((el) => el.id !== id));
   }
 
+  function adaugaDelimitare() {
+    setDelimitari((ds) => [...ds, { id: idNou(), element: "", precizare: "" }]);
+  }
+
+  function actualizeazaDelimitare(id: string, patch: Partial<DelimitareUI>) {
+    setDelimitari((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+  }
+
+  function stergeDelimitare(id: string) {
+    setDelimitari((ds) => ds.filter((d) => d.id !== id));
+  }
+
   const potGenera = gazdaFile !== null && analiza !== "loading";
 
   async function handleGenerate() {
@@ -180,13 +196,18 @@ export default function ScopCorePage() {
         plasare,
         fluxuri_legate,
       }));
+      const delimitariPayload: ScopCoreDelimitare[] = delimitari
+        .map(({ element, precizare }) => ({ element: element.trim(), precizare: precizare.trim() }))
+        .filter((d) => d.element && d.precizare);
 
       const { job_id } = await postScopCoreGenereaza({
         gazdaStoragePath,
         gazdaFilename: gazdaFile.name,
         client,
         elemente: payload,
+        delimitari: delimitariPayload,
         insereaza,
+        curataAntetSubsol,
       });
 
       const job = await pollJob(() => getScopCoreJob(job_id), {
@@ -220,7 +241,9 @@ export default function ScopCorePage() {
     setClient("");
     setGazdaFile(null);
     stergeSupliment();
+    setDelimitari([]);
     setInsereaza(false);
+    setCurataAntetSubsol(false);
     setResult(null);
     setState("idle");
     setError("");
@@ -269,6 +292,25 @@ export default function ScopCorePage() {
                 CORE.
               </p>
               <UploadZone accept=".docx" label="documentul gazdă (.docx)" onFile={setGazdaFile} />
+
+              <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={curataAntetSubsol}
+                  onChange={(e) => setCurataAntetSubsol(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-[#18257f]"
+                />
+                <span className="text-xs text-slate-600 leading-relaxed">
+                  <span className="font-semibold text-[#18257f]">
+                    Curăță antetul și subsolul moștenite din gazdă
+                  </span>
+                  <span className="block text-slate-500 mt-0.5">
+                    Bifează dacă documentul gazdă e doar un șablon de stil, de la alt client —
+                    altfel antetul/subsolul lui (care poate numi acel client) ajunge neschimbat
+                    în documentul generat. Nebifat implicit: cazul obișnuit e același client.
+                  </span>
+                </span>
+              </label>
             </div>
 
             <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-2">
@@ -402,6 +444,57 @@ export default function ScopCorePage() {
               </div>
             )}
 
+            <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[#18257f]">
+                  Delimitări de scop{" "}
+                  <span className="font-normal text-slate-400">(opțional)</span>
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed mt-1">
+                  Ce anume NU intră în scopul ofertat — apare ca ultimul sub-capitol, sub formă de
+                  tabel. Fără nicio intrare, sub-capitolul nu apare deloc în document.
+                </p>
+              </div>
+
+              {delimitari.map((d) => (
+                <div
+                  key={d.id}
+                  className="border border-slate-200 rounded-lg p-3 flex flex-col gap-2"
+                >
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="text"
+                      value={d.element}
+                      onChange={(e) => actualizeazaDelimitare(d.id, { element: e.target.value })}
+                      placeholder="Element (ex. Migrarea datelor istorice)"
+                      className="flex-1 border border-slate-300 rounded-lg px-2 py-1.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#18257f]"
+                    />
+                    <button
+                      onClick={() => stergeDelimitare(d.id)}
+                      className="shrink-0 text-xs text-slate-400 hover:text-red-600 px-2 py-1.5"
+                      title="Șterge această delimitare"
+                    >
+                      ✕ Șterge
+                    </button>
+                  </div>
+                  <textarea
+                    value={d.precizare}
+                    onChange={(e) => actualizeazaDelimitare(d.id, { precizare: e.target.value })}
+                    rows={2}
+                    placeholder="Precizare (ex. Nu face obiectul acestui scop; se estimează separat.)"
+                    className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#18257f]"
+                  />
+                </div>
+              ))}
+
+              <button
+                onClick={adaugaDelimitare}
+                className="self-start text-xs font-semibold text-[#18257f] underline"
+              >
+                + Adaugă o delimitare
+              </button>
+            </div>
+
             <label className="flex items-start gap-2.5 bg-white border border-[#e2e5f0] rounded-xl p-4 cursor-pointer">
               <input
                 type="checkbox"
@@ -497,6 +590,13 @@ export default function ScopCorePage() {
               <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 text-sm text-amber-900 flex gap-3">
                 <span className="text-xl shrink-0">⚠️</span>
                 <p className="leading-relaxed">{result.cuprinsAvertisment}</p>
+              </div>
+            )}
+
+            {!!result.summary?.antet_subsol_avertisment && (
+              <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 text-sm text-amber-900 flex gap-3">
+                <span className="text-xl shrink-0">⚠️</span>
+                <p className="leading-relaxed">{result.summary.antet_subsol_avertisment}</p>
               </div>
             )}
 

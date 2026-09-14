@@ -23,7 +23,7 @@ import pathlib
 
 from docx import Document
 
-from skills.scop_core import capitol, insereaza
+from skills.scop_core import capitol, insereaza, stil
 
 GAZDA = pathlib.Path(__file__).resolve().parent / "fixtures" / "gazda_reala_anonimizata.docx"
 
@@ -48,6 +48,20 @@ def _gazda_cu_paragraf(tmp_path, text: str, nume_fisier: str) -> pathlib.Path:
     doc = Document(str(GAZDA))
     doc.add_paragraph(text)
     cale = tmp_path / nume_fisier
+    doc.save(str(cale))
+    return cale
+
+
+def _gazda_cu_antet_subsol(tmp_path, antet_text: str, subsol_text: str) -> pathlib.Path:
+    """`GAZDA` cu antetul/subsolul (goale în fixture) populate cu text real —
+    simulează gazda reală (Turkish Doner Steakhouse), care numește clientul
+    exact acolo, ca să poată fi verificate detectarea mismatch-ului și
+    golirea lor (`curata_antet_subsol`)."""
+    doc = Document(str(GAZDA))
+    s = doc.sections[0]
+    s.header.paragraphs[0].add_run(antet_text)
+    s.footer.paragraphs[0].add_run(subsol_text)
+    cale = tmp_path / "gazda_cu_antet_subsol.docx"
     doc.save(str(cale))
     return cale
 
@@ -163,6 +177,68 @@ def test_fara_elemente_insereaza_capitol_iese_exact_ca_inainte():
     # nicio urmă de secțiune proprie suplimentară (5.11+) — doar cele zece standard
     h2 = [t for stil_nume, t in _titluri(fara_parametru) if stil_nume == "Heading 2"]
     assert h2[-1] == "5.10. Migrarea și inițializarea datelor"
+
+
+def test_fara_delimitari_insereaza_capitol_iese_exact_ca_inainte():
+    """Aceeași regulă de echivalență ca la `elemente`, verificată separat
+    pentru parametrul nou `delimitari`."""
+    fara_parametru = insereaza.insereaza_capitol(GAZDA, capitol.alege_sectiuni(), client="ACME")
+    cu_none = insereaza.insereaza_capitol(GAZDA, capitol.alege_sectiuni(), client="ACME", delimitari=None)
+    cu_lista_goala = insereaza.insereaza_capitol(GAZDA, capitol.alege_sectiuni(), client="ACME", delimitari=[])
+
+    texte_fara_parametru = [p.text for p in fara_parametru.paragraphs]
+    assert texte_fara_parametru == [p.text for p in cu_none.paragraphs]
+    assert texte_fara_parametru == [p.text for p in cu_lista_goala.paragraphs]
+
+
+# --- „Delimitări de scop” ajung și în documentul gazdă inserat -------------
+
+def test_delimitarile_apar_ca_ultimul_subcapitol_in_documentul_inserat():
+    d = capitol.Delimitare(element="Migrarea istoricului", precizare="Nu face obiectul acestui scop.")
+    rezultat = insereaza.insereaza_capitol(GAZDA, capitol.alege_sectiuni(), client="ACME", delimitari=[d])
+    h2 = [t for stil_nume, t in _titluri(rezultat) if stil_nume == "Heading 2"]
+    assert h2[-1] == "5.11. Delimitări de scop"
+
+
+# --- curata_antet_subsol golește antetul/subsolul GAZDEI ÎNTOARSE ----------
+
+def test_curata_antet_subsol_true_goleste_antetul_si_subsolul_gazdei_intoarse(tmp_path):
+    gazda = _gazda_cu_antet_subsol(
+        tmp_path, "Vechi Client SRL — descriere soluție", "Vechi Client SRL | Charisma ERP | v1.0",
+    )
+    rezultat = insereaza.insereaza_capitol(
+        gazda, capitol.alege_sectiuni(), client="Alt Client SRL", curata_antet_subsol=True,
+    )
+    antet, subsol = stil.texte_antet_subsol(rezultat)
+    assert antet == ""
+    assert subsol == ""
+
+
+def test_curata_antet_subsol_implicit_false_pastreaza_antetul_si_subsolul(tmp_path):
+    gazda = _gazda_cu_antet_subsol(
+        tmp_path, "Vechi Client SRL — descriere soluție", "Vechi Client SRL | Charisma ERP | v1.0",
+    )
+    rezultat = insereaza.insereaza_capitol(gazda, capitol.alege_sectiuni(), client="Alt Client SRL")
+    antet, subsol = stil.texte_antet_subsol(rezultat)
+    assert "Vechi Client SRL" in antet
+    assert "Vechi Client SRL" in subsol
+
+
+def test_curata_antet_subsol_pastreaza_stilurile_bulinele_si_bordurile_tabelului(tmp_path):
+    """Golirea antetului/subsolului nu trebuie să atingă restul pachetului —
+    stilurile, bulinele cu `w:numPr` și bordurile tabelului de fluxuri rămân
+    intacte (vezi „lecția” din brief despre pachete stricate)."""
+    gazda = _gazda_cu_antet_subsol(tmp_path, "Vechi Client SRL", "Vechi Client SRL | Charisma ERP")
+    rezultat = insereaza.insereaza_capitol(
+        gazda, capitol.alege_sectiuni(), client="Alt Client SRL", curata_antet_subsol=True,
+    )
+
+    liste = [p for p in rezultat.paragraphs if p.style is not None and p.style.name == "List Paragraph"]
+    assert liste, "capitolul standard trebuie să producă paragrafe cu bulină"
+    assert any(stil._numid_din_paragraf(p) is not None for p in liste)
+
+    tabele = [c for c in rezultat.element.body if c.tag.endswith("}tbl")]
+    assert tabele, "capitolul standard trebuie să conțină tabele de fluxuri"
 
 
 # --- gazda de pe disc nu se modifică niciodată -----------------------------

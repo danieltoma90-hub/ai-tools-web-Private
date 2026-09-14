@@ -20,6 +20,8 @@ import zipfile
 import pytest
 from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.oxml.ns import qn
+from docx.shared import Cm
 
 from skills.scop_core import stil
 
@@ -103,3 +105,119 @@ def test_document_din_gazda_fara_nicio_imagine_nu_pica(tmp_path):
     nicio eroare — lista de relații de tip imagine e goală, nu lipsă."""
     doc = stil.document_din_gazda(GAZDA)
     assert [r for r in doc.part.rels.values() if r.reltype == RT.IMAGE] == []
+
+
+# --- antet/subsol: detectare mismatch de client și golire ------------------
+# GAZDA are antetul/subsolul golite (vezi docstring-ul fișierului) — cu un
+# singur paragraf gol fiecare. Testele de mai jos pornesc de la o COPIE a
+# gazdei, cu text real adăugat în antet/subsol, ca gazda reală (Turkish Doner
+# Steakhouse, unde numele clientului stă într-un TABEL din subsol, nu într-un
+# paragraf simplu) — vezi `_gazda_cu_antet_subsol`.
+
+def _gazda_cu_antet_subsol(tmp_path, antet_text: str = "", subsol_tabel: list | None = None) -> pathlib.Path:
+    doc = Document(str(GAZDA))
+    s = doc.sections[0]
+    if antet_text:
+        s.header.paragraphs[0].add_run(antet_text)
+    if subsol_tabel:
+        t = s.footer.add_table(rows=1, cols=len(subsol_tabel), width=Cm(16))
+        for celula, text in zip(t.rows[0].cells, subsol_tabel):
+            celula.text = text
+    cale = tmp_path / "gazda_cu_antet_subsol.docx"
+    doc.save(str(cale))
+    return cale
+
+
+def test_texte_antet_subsol_pe_gazda_goala_intoarce_siruri_goale():
+    doc = stil.document_din_gazda(GAZDA)
+    antet, subsol = stil.texte_antet_subsol(doc)
+    assert antet == ""
+    assert subsol == ""
+
+
+def test_texte_antet_subsol_citeste_text_din_paragraf(tmp_path):
+    gazda = _gazda_cu_antet_subsol(tmp_path, antet_text="Descrierea soluției | Modul Producție")
+    doc = stil.document_din_gazda(gazda)
+    antet, subsol = stil.texte_antet_subsol(doc)
+    assert "Descrierea soluției" in antet
+    assert subsol == ""
+
+
+def test_texte_antet_subsol_citeste_text_din_tabelul_subsolului(tmp_path):
+    """Gazda reală ține numele clientului într-un tabel din subsol
+    („Turkish Doner Steakhouse S.R.L. | Charisma ERP | v1.0”), nu într-un
+    paragraf simplu — `texte_antet_subsol` trebuie să-l găsească acolo."""
+    gazda = _gazda_cu_antet_subsol(
+        tmp_path, subsol_tabel=["", "Turkish Doner Steakhouse S.R.L. | Charisma ERP | v1.0", "Pag. 1 / 1"],
+    )
+    doc = stil.document_din_gazda(gazda)
+    _, subsol = stil.texte_antet_subsol(doc)
+    assert "Turkish Doner Steakhouse S.R.L." in subsol
+
+
+def test_curata_antet_subsol_goleste_paragraful_antetului(tmp_path):
+    gazda = _gazda_cu_antet_subsol(tmp_path, antet_text="Vechi Client SRL")
+    doc = stil.document_din_gazda(gazda)
+    stil.curata_antet_subsol(doc)
+    antet, _ = stil.texte_antet_subsol(doc)
+    assert antet == ""
+
+
+def test_curata_antet_subsol_goleste_tabelul_subsolului(tmp_path):
+    gazda = _gazda_cu_antet_subsol(
+        tmp_path, subsol_tabel=["", "Vechi Client SRL | Charisma ERP | v1.0", "Pag. 1 / 1"],
+    )
+    doc = stil.document_din_gazda(gazda)
+    stil.curata_antet_subsol(doc)
+    _, subsol = stil.texte_antet_subsol(doc)
+    assert subsol == ""
+
+
+def test_curata_antet_subsol_nu_atinge_un_run_doar_cu_imagine(tmp_path):
+    """Un logo în antet stă într-un run fără text vizibil (`run.text == ""`,
+    doar un `w:drawing`) — golirea trebuie să-l lase intact, nu să-l șteargă
+    ca efect secundar al lui `CT_R.clear_content` pe un run fără text."""
+    doc = Document(str(GAZDA))
+    header = doc.sections[0].header
+    png = tmp_path / "logo.png"
+    png.write_bytes(_PNG_1X1)
+    run_logo = header.paragraphs[0].add_run()
+    run_logo.add_picture(str(png))
+    header.paragraphs[0].add_run("Vechi Client SRL")
+    cale = tmp_path / "gazda_cu_logo.docx"
+    doc.save(str(cale))
+
+    doc2 = stil.document_din_gazda(cale)
+    rels_imagine_inainte = [r for r in doc2.part.rels.values() if r.reltype == RT.IMAGE]
+    stil.curata_antet_subsol(doc2)
+
+    antet, _ = stil.texte_antet_subsol(doc2)
+    assert antet == ""  # textul a fost golit
+
+    iesire = tmp_path / "rezultat.docx"
+    doc2.save(str(iesire))
+    with zipfile.ZipFile(iesire) as z:
+        parti_media = [n for n in z.namelist() if n.startswith("word/media/")]
+        assert parti_media, "logo-ul din antet nu trebuie șters de golirea textului"
+
+
+def test_curata_antet_subsol_pastreaza_pachetul_deschis_curat(tmp_path):
+    """Verificarea „lecției” din brief: golirea antetului/subsolului nu
+    trebuie să lase relații orfane sau un pachet pe care Word să-l respingă —
+    fișierul rezultat tot trebuie să se deschidă curat, cu `sectPr` și
+    referințele lui de antet/subsol intacte."""
+    gazda = _gazda_cu_antet_subsol(
+        tmp_path, antet_text="Vechi Client SRL",
+        subsol_tabel=["", "Vechi Client SRL | Charisma ERP | v1.0", "Pag. 1 / 1"],
+    )
+    doc = stil.document_din_gazda(gazda)
+    stil.curata_antet_subsol(doc)
+    iesire = tmp_path / "rezultat.docx"
+    doc.save(str(iesire))
+
+    # se redeschide fără nicio excepție — un pachet stricat (relații orfane,
+    # părți lipsă) ar ridica una aici.
+    redeschis = Document(str(iesire))
+    sectPr = redeschis.sections[0]._sectPr
+    assert sectPr.find(qn("w:headerReference")) is not None
+    assert sectPr.find(qn("w:footerReference")) is not None

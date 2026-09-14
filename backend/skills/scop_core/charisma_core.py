@@ -58,8 +58,8 @@ SECTIUNI: list[Sectiune] = [
             "Înainte de operarea propriu-zisă, sistemul se configurează pe specificul organizației."
         ),
         functionalitate=(
-            "Configurarea inițială reprezintă baza pe care se așază toate fluxurile operaționale și "
-            "cuprinde:"
+            "Configurarea inițială reprezintă baza pe care se așază toate fluxurile operaționale "
+            "ale sistemului."
         ),
         beneficii=[],
         detaliere=[
@@ -100,7 +100,7 @@ SECTIUNI: list[Sectiune] = [
             "Nomenclatoarele reprezintă fundația soluției: se configurează în orice implementare "
             "CORE și, fără ele, fluxurile operaționale descrise mai jos nu pot funcționa."
         ),
-        functionalitate="Modulul General acoperă:",
+        functionalitate="Modulul General oferă nomenclatoarele și structurile de bază ale sistemului.",
         beneficii=[],
         detaliere=[],
         grupe=[
@@ -656,7 +656,7 @@ SECTIUNI: list[Sectiune] = [
             "Pornirea sistemului presupune încărcarea datelor inițiale, realizată ca parte a "
             "proiectului."
         ),
-        functionalitate="Migrarea acoperă:",
+        functionalitate="Migrarea pregătește sistemul cu datele inițiale necesare pornirii în producție.",
         beneficii=[],
         detaliere=[
             "Nomenclatoarele de bază: parteneri și articole (cu unități de măsură, taxe și liste de prețuri).",

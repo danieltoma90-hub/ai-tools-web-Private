@@ -22,6 +22,7 @@ import pathlib
 import zipfile
 
 from docx.oxml.ns import qn
+from docx.table import Table
 from docx.text.paragraph import Paragraph
 
 from skills.scop_core import capitol, stil
@@ -238,3 +239,83 @@ def test_fixture_gazda_nu_contine_nicio_imagine():
                 assert "media/image" not in continut, (
                     f"{n} conține o relație orfană către o imagine ștearsă"
                 )
+
+
+# --- „Delimitări de scop” (feature nou) -------------------------------------
+
+def _ultimul_tabel(doc) -> Table:
+    tabele = [Table(copil, doc) for copil in doc.element.body if copil.tag == qn("w:tbl")]
+    assert tabele, "documentul nu conține niciun tabel"
+    return tabele[-1]
+
+
+def test_fara_delimitari_nu_apare_nicio_sectiune():
+    """`delimitari=None` (implicit, la fel ca omiterea parametrului) nu trebuie
+    să scrie nici titlul „Delimitări de scop”, nici vreun tabel gol."""
+    doc = stil.document_din_gazda(GAZDA)
+    capitol.construieste(doc, capitol.alege_sectiuni(None, None), numar=5)
+    texte = [p.text for p in doc.paragraphs]
+    assert not any("Delimitări de scop" in t for t in texte)
+
+
+def test_lista_delimitari_goala_da_acelasi_rezultat_ca_fara_parametru():
+    """`delimitari=[]` explicit trebuie să fie echivalent cu omiterea lui —
+    aceeași regulă ca la `elemente` (vezi `test_fara_elemente_iese_exact_ca_inainte`)."""
+    a = stil.document_din_gazda(GAZDA)
+    capitol.construieste(a, capitol.alege_sectiuni(None, None), numar=5)
+    b = stil.document_din_gazda(GAZDA)
+    capitol.construieste(b, capitol.alege_sectiuni(None, None), numar=5, delimitari=[])
+    assert [p.text for p in a.paragraphs] == [p.text for p in b.paragraphs]
+
+
+def test_delimitarile_apar_ca_ultimul_subcapitol_dupa_sectiunile_standard():
+    doc = stil.document_din_gazda(GAZDA)
+    d1 = capitol.Delimitare(element="Migrarea istoricului", precizare="Nu face obiectul acestui scop.")
+    d2 = capitol.Delimitare(element="Cântare suplimentare", precizare="Se estimează separat.")
+    capitol.construieste(doc, capitol.alege_sectiuni(None, None), numar=5,
+                         delimitari=[d1, d2])
+    h2 = [p.text for p in doc.paragraphs if p.style.name == "Heading 2"]
+    assert h2[-1] == "5.11. Delimitări de scop"
+
+
+def test_delimitarile_apar_dupa_elementul_propriu():
+    """Regula din brief: delimitările sunt ultimul sub-capitol — după cele
+    zece secțiuni standard ȘI după orice element „propriu”, nu înaintea lui."""
+    doc = stil.document_din_gazda(GAZDA)
+    el = capitol.Element(titlu="Integrare cu cântarul electronic", text="Text.", plasare="propriu")
+    d = capitol.Delimitare(element="Migrarea istoricului", precizare="Nu face obiectul acestui scop.")
+    capitol.construieste(doc, capitol.alege_sectiuni(None, None), numar=5,
+                         elemente=[el], delimitari=[d])
+    h2 = [p.text for p in doc.paragraphs if p.style.name == "Heading 2"]
+    assert h2[-2] == "5.11. Integrare cu cântarul electronic"
+    assert h2[-1] == "5.12. Delimitări de scop"
+
+
+def test_delimitarile_se_randeaza_ca_tabel_element_precizare():
+    doc = stil.document_din_gazda(GAZDA)
+    d1 = capitol.Delimitare(element="Migrarea istoricului",
+                            precizare="Nu face obiectul acestui scop.")
+    d2 = capitol.Delimitare(element="Cântare suplimentare",
+                            precizare="Se estimează separat, după primirea documentației tehnice.")
+    capitol.construieste(doc, capitol.alege_sectiuni(None, None), numar=5, delimitari=[d1, d2])
+
+    tabel = _ultimul_tabel(doc)
+    randuri = [[c.text for c in r.cells] for r in tabel.rows]
+    assert randuri[0] == ["Element", "Precizare"]
+    assert randuri[1] == ["Migrarea istoricului", "Nu face obiectul acestui scop."]
+    assert randuri[2] == ["Cântare suplimentare",
+                          "Se estimează separat, după primirea documentației tehnice."]
+
+
+def test_delimitarile_apar_dupa_titlul_lor_in_ordinea_corpului():
+    """Tabelul trebuie să apară DUPĂ titlul „Delimitări de scop”, nu oriunde
+    altundeva în corp — verificare pe ordinea reală (paragrafe + tabele)."""
+    doc = stil.document_din_gazda(GAZDA)
+    d = capitol.Delimitare(element="X", precizare="Y")
+    capitol.construieste(doc, capitol.alege_sectiuni(None, None), numar=5, delimitari=[d])
+
+    corp = _corp_in_ordine(doc)
+    idx_titlu = next(i for i, (tip, txt) in enumerate(corp)
+                     if tip == "p" and txt == "5.11. Delimitări de scop")
+    idx_tabel = next(i for i, (tip, _) in enumerate(corp) if tip == "tbl" and i > idx_titlu)
+    assert idx_tabel > idx_titlu

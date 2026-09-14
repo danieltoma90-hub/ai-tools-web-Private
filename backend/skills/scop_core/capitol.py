@@ -33,6 +33,19 @@ class Element:
     fluxuri_legate: list[str] = field(default_factory=list)   # coduri: ["V2", "F5"]
 
 
+@dataclass(frozen=True)
+class Delimitare:
+    """O intrare din „Delimitări de scop” — ce anume NU intră în scopul ofertat.
+
+    Forma (`element` scurt + `precizare` clarificatoare) și randarea ca tabel
+    „Element | Precizare” mimează exact capitolul „Delimitari de scop” pe
+    care documentele gazdă reale (ex. Turkish Doner Steakhouse) îl au deja
+    pentru același conținut — vezi `stil.tabel_delimitari`.
+    """
+    element: str
+    precizare: str
+
+
 def _denumiri_fluxuri_legate(fluxuri_legate: list[str]) -> list[str]:
     """Traduce codurile de fluxuri legate în denumirile lor verificate din SECTIUNI.
 
@@ -82,7 +95,8 @@ def alege_sectiuni(fara=None, doar=None) -> list[Sectiune]:
 
 def construieste(doc, sectiuni, numar: int = 5, nivel: int = 1,
                  client: str = "[NUME CLIENT]",
-                 elemente: list[Element] | None = None) -> None:
+                 elemente: list[Element] | None = None,
+                 delimitari: list[Delimitare] | None = None) -> None:
     """Scrie capitolul în `doc`, deja pregătit cu stilurile gazdei.
 
     `elemente` — elemente suplimentare față de standard, cu plasarea deja
@@ -95,8 +109,15 @@ def construieste(doc, sectiuni, numar: int = 5, nivel: int = 1,
     "propriu" explicite, ca să nu se piardă tăcut conținutul din documentul
     încărcat de client. `elemente=None` (implicit) și `elemente=[]` produc
     exact același rezultat — ambele nu ating deloc pașii de mai jos.
+
+    `delimitari` — ce anume NU intră în scopul ofertat (vezi `Delimitare`),
+    randat ca ultimul sub-capitol, „Delimitări de scop”, DUPĂ toate secțiunile
+    standard și după orice element „propriu” — vezi coada de mai jos. La fel
+    ca la `elemente`, `delimitari=None` și `delimitari=[]` nu ating pasul
+    respectiv: nicio secțiune „Delimitări de scop” nu apare, nici măcar goală.
     """
     elemente = elemente or []
+    delimitari = delimitari or []
     chei_selectate = {s.cheie for s in sectiuni}
 
     stil.heading(doc, f"{numar}. {TITLU_CAPITOL}", nivel)
@@ -149,3 +170,13 @@ def construieste(doc, sectiuni, numar: int = 5, nivel: int = 1,
     elemente_proprii = [el for el in elemente if el.plasare not in chei_selectate]
     for k, el in enumerate(elemente_proprii, start=1):
         _scrie_element(doc, el, f"{numar}.{NUMAR_SECTIUNI_CANONICE + k}. {el.titlu}", nivel + 1)
+
+    # „Delimitări de scop” — mereu ultimul sub-capitol, după cele zece secțiuni
+    # standard ȘI după orice element „propriu” (continuă contiguu numerotarea
+    # lor: dacă au fost N elemente proprii, secțiunea asta e "numar.N+1", la
+    # fel cum ar fi fost al (N+1)-lea element propriu). Lista goală (implicit
+    # sau explicit) nu scrie nimic — nici titlu, nici tabel gol.
+    if delimitari:
+        numar_delimitari = NUMAR_SECTIUNI_CANONICE + len(elemente_proprii) + 1
+        stil.heading(doc, f"{numar}.{numar_delimitari}. Delimitări de scop", nivel + 1)
+        stil.tabel_delimitari(doc, delimitari)

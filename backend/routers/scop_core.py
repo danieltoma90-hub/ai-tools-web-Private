@@ -69,7 +69,9 @@ class GenerateRequest(BaseModel):
     gazda_filename: str
     client: str = ""
     elemente: list[dict] = []
+    delimitari: list[dict] = []
     insereaza: bool = False
+    curata_antet_subsol: bool = False
 
 
 @router.post("/scop-core/propune")
@@ -129,6 +131,8 @@ async def _run_job(
     client: str,
     elemente: list[dict],
     insereaza_in_gazda: bool,
+    delimitari: list[dict],
+    curata_antet_subsol: bool,
 ) -> None:
     def _on_step(step: str) -> None:
         jobs.set_step(job_id, step)
@@ -137,7 +141,8 @@ async def _run_job(
     gazda_out_path: Path | None = None
     try:
         capitol_path, gazda_out_path, sumar = await run_scop_core_pipeline(
-            gazda_path, client, elemente, insereaza_in_gazda, on_step=_on_step,
+            gazda_path, client, elemente, insereaza_in_gazda,
+            delimitari=delimitari, curata_antet_subsol=curata_antet_subsol, on_step=_on_step,
         )
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -226,6 +231,7 @@ async def genereaza_scop_core(
     job_id = jobs.create_job(user_email)
     background_tasks.add_task(
         _run_job, job_id, gazda_path, req.gazda_filename, req.client, req.elemente, req.insereaza,
+        req.delimitari, req.curata_antet_subsol,
     )
     return {"job_id": job_id}
 

@@ -34,6 +34,22 @@ def _h2(path: pathlib.Path) -> list[str]:
     return [p.text for p in Document(str(path)).paragraphs if p.style is not None and p.style.name == "Heading 2"]
 
 
+def _gazda_cu_antet_subsol(tmp_path, antet_text: str = "", subsol_text: str = "") -> pathlib.Path:
+    """`GAZDA` cu antetul/subsolul (goale în fixture) populate cu text real —
+    simulează gazda reală (Turkish Doner Steakhouse), care numește clientul
+    în subsol, ca să poată fi verificate detectarea mismatch-ului și
+    `curata_antet_subsol` la nivel de pipeline."""
+    doc = Document(str(GAZDA))
+    s = doc.sections[0]
+    if antet_text:
+        s.header.paragraphs[0].add_run(antet_text)
+    if subsol_text:
+        s.footer.paragraphs[0].add_run(subsol_text)
+    cale = tmp_path / "gazda_cu_antet_subsol.docx"
+    doc.save(str(cale))
+    return cale
+
+
 @pytest.fixture
 def spion_mktemp(monkeypatch):
     """Înlocuiește `_mktemp_path` cu o variantă care reține fiecare cale creată,
@@ -354,6 +370,178 @@ async def test_esecul_la_inserare_pastreaza_capitolul_si_avertizeaza(monkeypatch
         assert candidati_ramasi == []
     finally:
         capitol_path.unlink(missing_ok=True)
+
+
+# --- „Delimitări de scop” (feature nou) -------------------------------------
+
+async def test_delimitarile_valide_ajung_in_capitol():
+    delimitari = [
+        {"element": "Migrarea istoricului", "precizare": "Nu face obiectul acestui scop."},
+        {"element": "Cântare suplimentare", "precizare": "Se estimează separat."},
+    ]
+    capitol_path, _, sumar = await pipeline.run_scop_core_pipeline(
+        GAZDA, client="ACME", elemente=[], insereaza_in_gazda=False, delimitari=delimitari,
+    )
+    try:
+        assert sumar["delimitari_primite"] == 2
+        assert sumar["delimitari_plasate"] == 2
+        assert sumar["delimitari_respinse"] == 0
+        texte = "\n".join(_texte(capitol_path))
+        assert "Delimitări de scop" in texte
+        tabel = Document(str(capitol_path)).tables[-1]
+        celule = [c.text for r in tabel.rows for c in r.cells]
+        assert "Migrarea istoricului" in celule
+    finally:
+        capitol_path.unlink(missing_ok=True)
+
+
+async def test_delimitare_fara_element_e_respinsa():
+    delimitari = [{"element": "", "precizare": "Text valid."}]
+    capitol_path, _, sumar = await pipeline.run_scop_core_pipeline(
+        GAZDA, client="ACME", elemente=[], insereaza_in_gazda=False, delimitari=delimitari,
+    )
+    try:
+        assert sumar["delimitari_respinse"] == 1
+        assert sumar["delimitari_plasate"] == 0
+        assert "Delimitări de scop" not in "\n".join(_texte(capitol_path))
+    finally:
+        capitol_path.unlink(missing_ok=True)
+
+
+async def test_delimitare_fara_precizare_e_respinsa():
+    delimitari = [{"element": "Element valid", "precizare": "   "}]
+    capitol_path, _, sumar = await pipeline.run_scop_core_pipeline(
+        GAZDA, client="ACME", elemente=[], insereaza_in_gazda=False, delimitari=delimitari,
+    )
+    try:
+        assert sumar["delimitari_respinse"] == 1
+        assert sumar["delimitari_plasate"] == 0
+    finally:
+        capitol_path.unlink(missing_ok=True)
+
+
+async def test_delimitari_care_nu_e_lista_nu_pica_pipelineul():
+    capitol_path, _, sumar = await pipeline.run_scop_core_pipeline(
+        GAZDA, client="ACME", elemente=[], insereaza_in_gazda=False, delimitari=None,
+    )
+    try:
+        assert sumar["delimitari_primite"] == 0
+        assert sumar["delimitari_plasate"] == 0
+        assert sumar["delimitari_respinse"] == 0
+    finally:
+        capitol_path.unlink(missing_ok=True)
+
+
+async def test_fara_delimitari_avertisment_gol():
+    capitol_path, _, sumar = await pipeline.run_scop_core_pipeline(
+        GAZDA, client="ACME", elemente=[], insereaza_in_gazda=False,
+    )
+    try:
+        assert sumar["avertisment"] == ""
+    finally:
+        capitol_path.unlink(missing_ok=True)
+
+
+async def test_delimitarile_ajung_si_in_gazda_cu_capitol_inserat():
+    delimitari = [{"element": "Migrarea istoricului", "precizare": "Nu face obiectul acestui scop."}]
+    capitol_path, gazda_out, sumar = await pipeline.run_scop_core_pipeline(
+        GAZDA, client="ACME", elemente=[], insereaza_in_gazda=True, delimitari=delimitari,
+    )
+    try:
+        assert gazda_out is not None
+        assert "Delimitări de scop" in "\n".join(_texte(gazda_out))
+        assert sumar["avertisment"] == ""
+    finally:
+        capitol_path.unlink(missing_ok=True)
+        if gazda_out is not None:
+            gazda_out.unlink(missing_ok=True)
+
+
+# --- antet/subsol: mismatch de client și curata_antet_subsol ---------------
+
+async def test_antet_subsol_avertisment_cand_clientul_nu_apare(tmp_path):
+    gazda = _gazda_cu_antet_subsol(tmp_path, subsol_text="Vechi Client SRL | Charisma ERP | v1.0")
+    capitol_path, _, sumar = await pipeline.run_scop_core_pipeline(
+        gazda, client="Alt Client SRL", elemente=[], insereaza_in_gazda=False,
+    )
+    try:
+        assert sumar["antet_subsol_avertisment"] != ""
+        assert "Alt Client SRL" in sumar["antet_subsol_avertisment"]
+        assert "Vechi Client SRL" in sumar["antet_subsol_avertisment"]
+    finally:
+        capitol_path.unlink(missing_ok=True)
+
+
+async def test_antet_subsol_fara_avertisment_cand_clientul_apare(tmp_path):
+    gazda = _gazda_cu_antet_subsol(tmp_path, subsol_text="ACME SRL | Charisma ERP | v1.0")
+    capitol_path, _, sumar = await pipeline.run_scop_core_pipeline(
+        gazda, client="ACME SRL", elemente=[], insereaza_in_gazda=False,
+    )
+    try:
+        assert sumar["antet_subsol_avertisment"] == ""
+    finally:
+        capitol_path.unlink(missing_ok=True)
+
+
+async def test_antet_subsol_fara_avertisment_cand_clientul_e_gol(tmp_path):
+    """Client necompletat (placeholder implicit) — comparat, ar da mereu
+    mismatch fals; nu se compară deloc în acest caz."""
+    gazda = _gazda_cu_antet_subsol(tmp_path, subsol_text="Vechi Client SRL | Charisma ERP | v1.0")
+    capitol_path, _, sumar = await pipeline.run_scop_core_pipeline(
+        gazda, client="", elemente=[], insereaza_in_gazda=False,
+    )
+    try:
+        assert sumar["antet_subsol_avertisment"] == ""
+    finally:
+        capitol_path.unlink(missing_ok=True)
+
+
+async def test_antet_subsol_fara_avertisment_cand_curata_e_cerut(tmp_path):
+    gazda = _gazda_cu_antet_subsol(tmp_path, subsol_text="Vechi Client SRL | Charisma ERP | v1.0")
+    capitol_path, _, sumar = await pipeline.run_scop_core_pipeline(
+        gazda, client="Alt Client SRL", elemente=[], insereaza_in_gazda=False,
+        curata_antet_subsol=True,
+    )
+    try:
+        assert sumar["antet_subsol_avertisment"] == ""
+        assert sumar["antet_subsol_curatat"] is True
+    finally:
+        capitol_path.unlink(missing_ok=True)
+
+
+async def test_curata_antet_subsol_goleste_capitolul_generat(tmp_path):
+    from docx import Document as _Document
+
+    gazda = _gazda_cu_antet_subsol(tmp_path, subsol_text="Vechi Client SRL | Charisma ERP | v1.0")
+    capitol_path, _, _ = await pipeline.run_scop_core_pipeline(
+        gazda, client="Alt Client SRL", elemente=[], insereaza_in_gazda=False,
+        curata_antet_subsol=True,
+    )
+    try:
+        rezultat = _Document(str(capitol_path))
+        subsol = rezultat.sections[0].footer.paragraphs[0].text
+        assert "Vechi Client SRL" not in subsol
+    finally:
+        capitol_path.unlink(missing_ok=True)
+
+
+async def test_curata_antet_subsol_goleste_si_gazda_cu_capitol_inserat(tmp_path):
+    from docx import Document as _Document
+
+    gazda = _gazda_cu_antet_subsol(tmp_path, subsol_text="Vechi Client SRL | Charisma ERP | v1.0")
+    capitol_path, gazda_out, _ = await pipeline.run_scop_core_pipeline(
+        gazda, client="Alt Client SRL", elemente=[], insereaza_in_gazda=True,
+        curata_antet_subsol=True,
+    )
+    try:
+        assert gazda_out is not None
+        rezultat = _Document(str(gazda_out))
+        subsol = rezultat.sections[0].footer.paragraphs[0].text
+        assert "Vechi Client SRL" not in subsol
+    finally:
+        capitol_path.unlink(missing_ok=True)
+        if gazda_out is not None:
+            gazda_out.unlink(missing_ok=True)
 
 
 # --- propune_job -------------------------------------------------------------
