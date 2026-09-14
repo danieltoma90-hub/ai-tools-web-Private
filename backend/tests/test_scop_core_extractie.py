@@ -341,6 +341,71 @@ async def test_lipsa_groq_si_anthropic_key_nu_afecteaza_apelul(tmp_path, monkeyp
     assert rezultat == []
 
 
+def test_extrage_text_include_randurile_tabelului(tmp_path):
+    """Documentul standard TotalSoft (caietul de sarcini) e o matrice de
+    cerințe — un tabel, nu paragrafe. `doc.paragraphs` omite tabelele cu
+    totul: fără parcurgerea corpului în ordinea lui reală (`_iter_blocuri`),
+    un asemenea document ar produce text aproape gol, `propune_elemente` ar
+    întoarce `[]` FĂRĂ SĂ APELEZE deloc modelul, iar utilizatorul ar vedea
+    „niciun element găsit” — pierdere tăcută și totală a cerințelor
+    clientului. Documentul de test are atât un titlu și un paragraf, cât și
+    un tabel de doua randuri — toate trei trebuie să ajungă în text."""
+    d = Document()
+    d.add_heading("Cerințe suplimentare", level=1)
+    d.add_paragraph("Un paragraf normal de context.")
+    tabel = d.add_table(rows=2, cols=2)
+    tabel.rows[0].cells[0].text = "Cod"
+    tabel.rows[0].cells[1].text = "Cerință"
+    tabel.rows[1].cells[0].text = "C1"
+    tabel.rows[1].cells[1].text = "Sistemul trebuie să valideze codul de bare la recepție."
+    cale = tmp_path / "cu_tabel.docx"
+    d.save(str(cale))
+
+    text = extractie._extrage_text(cale)
+
+    assert "Cerințe suplimentare" in text
+    assert "Un paragraf normal de context." in text
+    assert "C1" in text
+    assert "Sistemul trebuie să valideze codul de bare la recepție." in text
+
+
+async def test_apelul_foloseste_max_tokens_8192(tmp_path):
+    """`text` trebuie extras verbatim — lungimea lui scalează cu documentul,
+    nu cu un rezumat. Implicitul lui `llm_client.chat` (4000) taie JSON-ul la
+    jumătate pe un document de dimensiune reală (peste ~40 de elemente) —
+    vezi raportul. Alte extractoare din acest repo cu aceeași nevoie (extras
+    integral, nu rezumat) folosesc deja 8192 — `skills/training/spec_extract.py`
+    și `skills/training/spec_build.py`."""
+    captura: dict = {}
+    _simuleaza(json.dumps({"elemente": []}), captura=captura)
+
+    await extractie.propune_elemente(_docx(tmp_path))
+
+    assert captura["body"]["max_tokens"] == 8192
+
+
+async def test_raspuns_trunchiat_da_mesaj_distinct_de_document_prea_mare(tmp_path):
+    """Un răspuns tăiat la mijlocul JSON-ului (depășire de `max_tokens`) nu
+    trebuie confundat cu un răspuns garbage oarecare din alt motiv (ex.
+    modelul refuză cererea) — utilizatorul trebuie să înțeleagă că documentul
+    e prea mare pentru un singur apel, nu că extragerea a eșuat aleatoriu."""
+    trunchiat = '{"elemente": [{"titlu": "X", "text": "Un text lung care se taie la mij'
+    _simuleaza(trunchiat)
+
+    with pytest.raises(ValueError, match="prea mare"):
+        await extractie.propune_elemente(_docx(tmp_path))
+
+
+async def test_raspuns_garbage_nu_trunchiat_pastreaza_mesajul_vechi(tmp_path):
+    """Un răspuns care nu seamănă deloc cu JSON (ex. refuzul modelului) nu
+    trebuie etichetat drept „document prea mare” — euristica de trunchiere
+    (`_pare_trunchiat`) nu trebuie să se declanșeze pe orice eșec de parsare."""
+    _simuleaza("Ne pare rău, nu pot ajuta cu asta.")
+
+    with pytest.raises(ValueError, match="nu este JSON valid"):
+        await extractie.propune_elemente(_docx(tmp_path))
+
+
 async def test_document_gol_nu_apeleaza_deloc_modelul(tmp_path, monkeypatch):
     apelat = {"de_cate_ori": 0}
 

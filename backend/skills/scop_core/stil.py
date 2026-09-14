@@ -11,6 +11,7 @@ import pathlib
 
 from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, RGBColor
@@ -19,12 +20,75 @@ ANTET_TABEL = ("Cod", "Flux", "Ce presupune")
 CULOARE_ANTET = "1F3864"     # aceeași cu Heading 1 al gazdei
 
 
+class DocumentInvalid(Exception):
+    """Fișierul încărcat nu poate fi deschis ca document Word (.docx) valid.
+
+    Mesajul e mereu curat — text simplu în română, fără nicio cale de fișier
+    de pe server — sigur de arătat direct utilizatorului. Excepțiile brute pe
+    care le poate ridica python-docx nu sunt: un `.xlsx` redenumit `.docx`
+    produce un `ValueError` care include calea temporară internă a serverului
+    (``file 'C:\\Users\\...\\tmpXXXX.docx' is not a Word file, content type is
+    '...'``), iar un pachet corupt/nu-e-zip produce alte excepții tehnice —
+    niciuna potrivită pentru un mesaj către client.
+    """
+
+
+def deschide_docx(cale) -> Document:
+    """Deschide `cale` ca document Word, cu eroare curată la conținut invalid.
+
+    Punct unic de trecere prin `Document(...)` pentru fișiere încărcate de
+    utilizator (gazdă sau document suplimentar) — vezi `document_din_gazda`,
+    `skills.scop_core.insereaza.insereaza_capitol` și
+    `skills.scop_core.extractie._extrage_text`. Orice excepție ridicată de
+    python-docx la deschidere devine aici `DocumentInvalid`, cu un mesaj în
+    română fără nicio cale de sistem de fișiere.
+    """
+    try:
+        return Document(str(cale))
+    except Exception as e:
+        raise DocumentInvalid(
+            "Fișierul încărcat nu este un document Word (.docx) valid."
+        ) from e
+
+
+def _elimina_imagini_orfane(doc) -> None:
+    """Scoate din relațiile documentului principal cele de tip imagine,
+    devenite orfane după golirea corpului în `document_din_gazda`.
+
+    Corpul e deja gol în acest punct (doar `sectPr` rămâne, cu
+    `headerReference`/`footerReference` către antet/subsol — niciodată către
+    o imagine), deci ORICE relație de tip imagine de pe partea principală e
+    garantat neutilizată: nu mai există niciun `r:embed` în `document.xml`
+    care s-o mai țintească. Antetul și subsolul își țin propriile imagini în
+    *propriile* fișiere `.rels` (`header1.xml.rels`/`footer1.xml.rels`) —
+    părți OPC distincte, neatinse aici — deci imaginile lor rămân intacte.
+
+    Ștergerea e directă din `doc.part.rels`, nu prin `part.drop_rel`: acela
+    decide dacă șterge numărând aparițiile atributului `r:id` în XML — dar
+    imaginile sunt legate prin `r:embed`, nu `r:id`, deci numărătoarea lui
+    ar întoarce mereu 0 și n-ar oferi nicio protecție reală aici. Corpul gol
+    e deja dovada suficientă că ștergerea e sigură; python-docx nu scrie la
+    salvare nicio parte care nu mai e accesibilă din graful de relații
+    pornind de la pachet, deci imaginea (`word/media/imageN.*`) dispare
+    automat din fișierul rezultat odată cu relația ei.
+    """
+    rels = doc.part.rels
+    id_uri_imagine = [rId for rId, rel in rels.items() if rel.reltype == RT.IMAGE]
+    for rId in id_uri_imagine:
+        del rels[rId]
+
+
 def document_din_gazda(cale_gazda):
     """Deschide gazda ca template și îi golește corpul, păstrând sectPr.
 
     ``cale_gazda`` este obligatorie: în fluxul web documentul gazdă este
     întotdeauna cel încărcat de utilizator, nu există niciun fallback local
     care să aibă sens pe server.
+
+    Imaginile din corpul gazdei (ex. logo pe copertă) devin orfane odată
+    golit corpul — vezi `_elimina_imagini_orfane`, apelată la final, ca
+    fișierul capitolului rezultat să nu care mai departe conținut al gazdei
+    pe care nimic nu-l mai referă.
     """
     if not cale_gazda:
         raise ValueError(
@@ -35,7 +99,7 @@ def document_din_gazda(cale_gazda):
     if not cale.is_file():
         raise FileNotFoundError(f"Documentul gazdă nu există: {cale}")
 
-    doc = Document(str(cale))
+    doc = deschide_docx(cale)
     # Reținută pentru bullets(): golirea corpului de mai jos șterge singurul loc
     # din care se poate afla ce numId folosește gazda pentru bulinele ei proprii
     # (vezi _numid_pentru_buline).
@@ -44,6 +108,7 @@ def document_din_gazda(cale_gazda):
     for child in list(body):
         if not child.tag.endswith("}sectPr"):
             body.remove(child)
+    _elimina_imagini_orfane(doc)
     return doc
 
 

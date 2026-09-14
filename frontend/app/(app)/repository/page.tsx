@@ -20,6 +20,7 @@ const TOOL_ICONS: Record<string, string> = {
   scenarii: "🧪",
   training: "🎓",
   context: "📋",
+  "scop-core": "📄",
 };
 const TOOL_LABELS: Record<string, string> = {
   minuta: "Minută",
@@ -27,9 +28,10 @@ const TOOL_LABELS: Record<string, string> = {
   scenarii: "Scenarii",
   training: "Training",
   context: "Context",
+  "scop-core": "Scop CORE",
 };
 // Ordinea butoanelor de filtrare; „toate” se adauga la afisare.
-const FILTRE = ["minuta", "mockup", "scenarii", "training", "context"];
+const FILTRE = ["minuta", "mockup", "scenarii", "training", "context", "scop-core"];
 
 const ALERT_THRESHOLD = 95; // % — alerta rosie + sugestii de curatenie
 const WARN_THRESHOLD = 80; // % — bara devine portocalie

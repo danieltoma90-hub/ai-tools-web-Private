@@ -28,7 +28,12 @@ _usage: dict = {"day": "", "tokens": 0}
 
 
 def _model() -> str:
-    return os.environ.get("MISTRAL_MODEL", "mistral-large-latest")
+    # "mistral-large-latest" a fost implicitul inițial, dar abonamentul curent
+    # (tier gratuit) primește 403 tier_not_allowed pe el — verificat direct pe
+    # API-ul live. "ministral-8b-latest" a răspuns 200 pe același abonament.
+    # Dacă Render setează MISTRAL_MODEL, implicitul de-aici nu contează; dacă
+    # nu-l setează, acesta e modelul care chiar funcționează în producție.
+    return os.environ.get("MISTRAL_MODEL", "ministral-8b-latest")
 
 
 def _api_key() -> str:

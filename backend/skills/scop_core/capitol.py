@@ -103,7 +103,7 @@ def construieste(doc, sectiuni, numar: int = 5, nivel: int = 1,
     stil.para(
         doc,
         f"Capitolul descrie funcționalitățile standard Charisma ERP CORE care intră în "
-        f"perimetrul implementării la {client}, pe module, cu fluxurile operaționale acoperite.",
+        f"scopul implementării la {client}, pe module, cu fluxurile operaționale acoperite.",
     )
 
     for i, s in enumerate(sectiuni, start=1):

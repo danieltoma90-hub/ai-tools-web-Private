@@ -10,8 +10,6 @@ import copy
 import pathlib
 import re
 
-from docx import Document
-
 from . import capitol
 from . import stil
 
@@ -34,15 +32,24 @@ def _numar_capitol(text: str) -> int | None:
 def _e_paragraf_de_capitol(p) -> bool:
     """Adevărat doar dacă paragraful chiar poate reprezenta un titlu de capitol:
     stilizat Heading 1/2, sau explicit cunoscut ca defect de stil al gazdei
-    (vezi DEFECTE_STIL_CUNOSCUTE). Exclude orice paragraf Normal obișnuit care
-    începe întâmplător cu o cifră (ex. „300 de zile”), ca să nu fie confundat
-    cu un capitol și renumerotat greșit — imunitatea gazdei actuale la acest
-    caz vine din formatarea ei curată, nu din potrivirea de text, deci nu
-    trebuie să depindem tacit de asta.
+    (vezi DEFECTE_STIL_CUNOSCUTE) — ȘI, în acest al doilea caz, doar dacă
+    paragraful chiar ÎNCEPE cu un număr de capitol. Fără condiția asta, orice
+    paragraf de text obișnuit care conține din întâmplare fraza marcaj
+    (ex. „Puncte de confirmat cu clientul înainte de semnare: lista de mai
+    jos.”, fără niciun număr în față) ar fi confundat cu un titlu de capitol
+    și ar deveni un capitol-fantomă în cuprinsul clientului — vezi
+    `_repara_puncte_de_confirmat`, care aplică aceeași regulă la restilizare.
+    Exclude, la fel, orice paragraf Normal obișnuit care începe întâmplător
+    cu o cifră (ex. „300 de zile”), ca să nu fie confundat cu un capitol și
+    renumerotat greșit — imunitatea gazdei actuale la acest caz vine din
+    formatarea ei curată, nu din potrivirea de text, deci nu trebuie să
+    depindem tacit de asta.
     """
     stil_nume = p.style.name if p.style is not None else None
     if stil_nume in ("Heading 1", "Heading 2"):
         return True
+    if _numar_capitol(p.text) is None:
+        return False
     return any(marcaj in p.text for marcaj in DEFECTE_STIL_CUNOSCUTE)
 
 
@@ -102,8 +109,19 @@ def renumeroteaza(doc, de_la: int) -> int:
 
 
 def _repara_puncte_de_confirmat(doc) -> None:
+    """Restilizează la Heading 1 doar un paragraf care e CHIAR titlul de
+    capitol defect — adică începe cu un număr de capitol ȘI conține fraza
+    marcaj (vezi DEFECTE_STIL_CUNOSCUTE). Fără condiția numărului, o
+    propoziție obișnuită de text care doar menționează fraza (ex. „Puncte de
+    confirmat cu clientul înainte de semnare: lista de mai jos.”) ar fi
+    promovată la Heading 1 și ar apărea ca un capitol-fantomă în cuprinsul
+    clientului — vezi și `_e_paragraf_de_capitol`, care aplică aceeași regulă.
+    """
     for p in doc.paragraphs:
-        e_defect_cunoscut = any(marcaj in p.text for marcaj in DEFECTE_STIL_CUNOSCUTE)
+        e_defect_cunoscut = (
+            _numar_capitol(p.text) is not None
+            and any(marcaj in p.text for marcaj in DEFECTE_STIL_CUNOSCUTE)
+        )
         if e_defect_cunoscut and p.style.name != "Heading 1":
             p.style = doc.styles["Heading 1"]
 
@@ -141,7 +159,7 @@ def insereaza_capitol(cale_gazda, sectiuni, numar: int = 5, nivel: int = 1,
     if not cale.is_file():
         raise FileNotFoundError(f"Documentul gazdă nu există: {cale}")
 
-    gazda = Document(str(cale))
+    gazda = stil.deschide_docx(cale)
     _repara_puncte_de_confirmat(gazda)
     renumeroteaza(gazda, de_la=numar)
 

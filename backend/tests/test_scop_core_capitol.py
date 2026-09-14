@@ -43,6 +43,24 @@ def _corp_in_ordine(doc):
     return rezultat
 
 
+def test_capitolul_nu_foloseste_niciodata_cuvantul_perimetru():
+    """Instrucțiune permanentă a utilizatorului: „perimetru” nu se folosește
+    în documentele de scop — se spune „scop”/„scopul”. Fraza de deschidere a
+    capitolului (prima propoziție din fiecare document generat de acest tool)
+    folosea „perimetrul implementării” — corectat la „scopul implementării”.
+    Testul scanează întregul capitol generat (toate cele zece secțiuni +
+    elemente suplimentare, pe secțiune și proprii), nu doar prima propoziție,
+    ca o reapariție viitoare a cuvântului — oriunde în capitol — să pice
+    zgomotos, nu doar cazul deja cunoscut."""
+    doc = stil.document_din_gazda(GAZDA)
+    el_pe_sectiune = capitol.Element(titlu="X", text="Text.", plasare="vanzari")
+    el_propriu = capitol.Element(titlu="Y", text="Alt text.", plasare="propriu")
+    capitol.construieste(doc, capitol.alege_sectiuni(None, None), client="Client Test SRL",
+                         elemente=[el_pe_sectiune, el_propriu])
+    corp = "\n".join(p.text for p in doc.paragraphs).lower()
+    assert "perimetr" not in corp
+
+
 def test_element_ca_subcapitol_apare_sub_sectiunea_ceruta():
     doc = stil.document_din_gazda(GAZDA)
     el = capitol.Element(titlu="Aprobare comenzi pe niveluri", text="Text.", plasare="achizitii")

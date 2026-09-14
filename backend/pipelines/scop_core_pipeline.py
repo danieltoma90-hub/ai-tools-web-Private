@@ -25,12 +25,17 @@ conțin identic aceleași elemente suplimentare, plasate la fel.
 """
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from pathlib import Path
 
 from skills.scop_core import capitol, extractie, insereaza, stil
 from skills.scop_core.charisma_core import SECTIUNI
+from skills.scop_core.stil import DocumentInvalid  # re-exportat pentru router,
+# care nu importă `skills.scop_core` direct — vezi docstring-ul de sus.
+
+logger = logging.getLogger(__name__)
 
 # cele zece chei de secțiune CORE, plus "propriu" — singurele valori valide
 # pentru `plasare`, aceeași listă pe care se bazează și `extractie.py`.
@@ -43,6 +48,22 @@ def _mktemp_path(suffix: str) -> Path:
     fd, name = tempfile.mkstemp(suffix=suffix)
     os.close(fd)
     return Path(name)
+
+
+def valideaza_docx(cale: Path) -> None:
+    """Verifică sincron că `cale` chiar se deschide ca document Word.
+
+    Nu păstrează rezultatul — e o gardă rapidă, apelată de router imediat
+    după descărcarea gazdei în `/scop-core/genereaza`, ÎNAINTE de a porni
+    jobul de fundal. Fără ea, un fișier cu extensia `.docx` dar conținut
+    invalid (ex. un `.xlsx` redenumit) trecea de verificarea de extensie,
+    pornea un job care eșua abia mai târziu în `stil.document_din_gazda`, iar
+    utilizatorul primea un job „error" cu mesaj tehnic în loc de un răspuns
+    422 imediat — vezi raportul, itemul despre erorile de upload malformat.
+    Ridică `DocumentInvalid` (mesaj curat, fără cale de fișier) dacă `cale`
+    nu e un `.docx` valid.
+    """
+    stil.deschide_docx(cale)
 
 
 async def propune_job(supliment_path: Path) -> list[dict]:
@@ -185,9 +206,20 @@ async def run_scop_core_pipeline(
             )
             gazda_cu_capitol.save(str(candidat))
             gazda_path_out = candidat
-        except Exception as e:
+        except DocumentInvalid as e:
+            # Mesajul lui `DocumentInvalid` e garantat curat (fără cale de
+            # fișier) — sigur de arătat direct utilizatorului, spre deosebire
+            # de orice altă excepție de mai jos.
             candidat.unlink(missing_ok=True)
             avertismente.append(f"Inserarea capitolului în documentul gazdă a eșuat: {e}")
+        except Exception as e:
+            # Excepție neprevăzută: nu interpolăm `{e}` brut într-un mesaj
+            # către utilizator (poate conține o cale de fișier de pe server
+            # sau alt detaliu tehnic) — detaliul rămâne în logul serverului,
+            # utilizatorul primește un mesaj generic.
+            candidat.unlink(missing_ok=True)
+            logger.warning("Inserarea capitolului în gazdă a eșuat: %s", e)
+            avertismente.append("Inserarea capitolului în documentul gazdă a eșuat.")
 
     sumar = {
         "sectiuni": len(sectiuni),

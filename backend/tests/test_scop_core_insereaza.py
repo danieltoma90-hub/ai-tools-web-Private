@@ -41,6 +41,17 @@ def _titluri(doc) -> list[tuple[str, str]]:
     ]
 
 
+def _gazda_cu_paragraf(tmp_path, text: str, nume_fisier: str) -> pathlib.Path:
+    """`GAZDA` + un paragraf „Normal” suplimentar cu `text` — folosit ca să
+    verifice regula de promovare la Heading 1 din `_repara_puncte_de_confirmat`
+    fără să depindă de conținutul brut al gazdei reale."""
+    doc = Document(str(GAZDA))
+    doc.add_paragraph(text)
+    cale = tmp_path / nume_fisier
+    doc.save(str(cale))
+    return cale
+
+
 def _gazda_cu_capitole_existente(tmp_path) -> pathlib.Path:
     """`GAZDA` + două capitole „Heading 1” numerotate, 5 și 6 — ca să existe
     ceva de renumerotat la inserarea unui capitol nou tot cu `numar=5`."""
@@ -96,6 +107,44 @@ def test_subnumerele_elementelor_de_pe_aceeasi_sectiune_raman_contigue_in_docume
     assert "5.5.1. Primul" in texte
     assert "5.5.2. Al doilea" in texte
     assert texte.index("5.5.1. Primul") < texte.index("5.5.2. Al doilea")
+
+
+# --- fraza „Puncte de confirmat” nu promovează orice paragraf la Heading 1 --
+
+def test_fraza_marcaj_fara_numar_de_capitol_nu_e_promovata(tmp_path):
+    """Non-regresie: `_repara_puncte_de_confirmat`/`_e_paragraf_de_capitol`
+    restilizau la Heading 1 ORICE paragraf care conținea fraza marcaj — chiar
+    și o propoziție obișnuită de text care doar o menționează, fără niciun
+    număr de capitol în față (ex. „Puncte de confirmat cu clientul înainte de
+    semnare: lista de mai jos.”). Un asemenea paragraf ar apărea ca un
+    capitol-fantomă în cuprinsul clientului. Acum se cere explicit un număr
+    de capitol la începutul paragrafului."""
+    text_normal = "Puncte de confirmat cu clientul inainte de semnare: lista de mai jos."
+    gazda = _gazda_cu_paragraf(tmp_path, text_normal, "gazda_cu_fraza.docx")
+
+    rezultat = insereaza.insereaza_capitol(gazda, capitol.alege_sectiuni(), client="ACME")
+
+    paragraf = next(p for p in rezultat.paragraphs if text_normal in p.text)
+    assert paragraf.style.name != "Heading 1"
+
+
+def test_fraza_marcaj_cu_numar_de_capitol_tot_se_promoveaza(tmp_path):
+    """Cazul genuin pe care `DEFECTE_STIL_CUNOSCUTE` există să-l repare —
+    titlul de capitol defect al gazdei reale (Producție): text formatat
+    „Normal” în loc de „Heading 1”, dar care CHIAR începe cu un număr de
+    capitol. Fix-ul de mai sus (cere numărul) nu trebuie să strice acest caz,
+    doar pe cel fără număr."""
+    marcaj = "Puncte de confirmat cu clientul inainte de semnare:"
+    text_defect = f"7. {marcaj}"
+    gazda = _gazda_cu_paragraf(tmp_path, text_defect, "gazda_cu_defect.docx")
+
+    rezultat = insereaza.insereaza_capitol(gazda, capitol.alege_sectiuni(), client="ACME")
+
+    # căutat după marcajul fără număr: paragraful ("7. Puncte...") e chiar
+    # capitolul >= 5, deci `renumeroteaza` îi mută numărul la "8." — regula
+    # testată aici e restilizarea, nu numerotarea (acoperită separat mai sus).
+    paragraf = next(p for p in rezultat.paragraphs if marcaj in p.text)
+    assert paragraf.style.name == "Heading 1"
 
 
 # --- compatibilitate cu apelanții existenți --------------------------------

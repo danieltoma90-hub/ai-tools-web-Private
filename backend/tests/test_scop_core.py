@@ -23,6 +23,7 @@ from unittest.mock import patch
 
 import pytest
 from docx import Document
+from openpyxl import Workbook
 
 from auth import verify_token
 from main import app
@@ -48,6 +49,19 @@ def _copie_gazda_reala() -> _P:
     fd, name = tempfile.mkstemp(suffix=".docx")
     os.close(fd)
     _P(name).write_bytes(GAZDA_FIXTURE.read_bytes())
+    return _P(name)
+
+
+def _xlsx_redenumit_docx() -> _P:
+    """Un .xlsx real, salvat sub extensia .docx — reproduce exact cazul din
+    itemul 4: un pachet zip valid, dar de alt tip de conținut. python-docx
+    ridică `ValueError` pentru el, cu calea temporară internă a serverului
+    inclusă în mesaj — exact ce nu are voie să ajungă la utilizator."""
+    wb = Workbook()
+    wb.active["A1"] = "nu e word"
+    fd, name = tempfile.mkstemp(suffix=".docx")
+    os.close(fd)
+    wb.save(name)
     return _P(name)
 
 
@@ -170,6 +184,28 @@ async def test_propune_docx_corupt_da_422(client, monkeypatch):
     assert not supliment.exists()
 
 
+async def test_propune_xlsx_redenumit_docx_da_422_fara_cale_in_mesaj(client, monkeypatch):
+    """Non-regresie pentru itemul 4: un .xlsx redenumit .docx trecea prin
+    `except (ValueError, RuntimeError)` — categoria de eroare model/rețea —
+    și ajungea 502 cu calea temporară a serverului scursă în mesaj. Acum
+    `DocumentInvalid` (ridicat de `stil.deschide_docx`) e prins separat,
+    înaintea acelui catch, cu 422 și mesaj curat."""
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+    supliment = _xlsx_redenumit_docx()
+
+    with patch("routers.scop_core.download_upload", return_value=supliment):
+        response = await client.post(
+            "/api/scop-core/propune",
+            json={"storage_path": "scop-core/x.docx", "filename": "supliment.docx"},
+            headers=AUTH,
+        )
+    detail = response.json()["detail"]
+    assert response.status_code == 422
+    assert not supliment.exists()
+    assert str(supliment) not in detail
+    assert supliment.name not in detail
+
+
 async def test_genereaza_fara_autentificare_da_401(client):
     app.dependency_overrides.clear()
     response = await client.post(
@@ -200,6 +236,29 @@ async def test_genereaza_corp_malformat_da_422_nu_500(client):
         headers=AUTH,
     )
     assert response.status_code == 422
+
+
+async def test_genereaza_xlsx_redenumit_docx_da_422_fara_cale_in_mesaj(client):
+    """Non-regresie pentru itemul 4, pe cealaltă cale: `/genereaza` pornea
+    anterior jobul de fundal necondiționat — un .xlsx redenumit .docx trecea
+    de verificarea de extensie, iar `stil.document_din_gazda` eșua abia mai
+    târziu, în job, cu mesaj tehnic ajuns tel-quel în `jobs.fail` (deci și în
+    fața utilizatorului). Acum `valideaza_docx` verifică sincron, înainte de
+    a porni jobul — un fișier invalid dă 422 imediat, ca la `/propune`."""
+    gazda = _xlsx_redenumit_docx()
+
+    with patch("routers.scop_core.download_upload", return_value=gazda):
+        response = await client.post(
+            "/api/scop-core/genereaza",
+            json={"gazda_storage_path": "scop-core/g.docx", "gazda_filename": "gazda.docx",
+                  "client": "ACME", "elemente": [], "insereaza": False},
+            headers=AUTH,
+        )
+    detail = response.json()["detail"]
+    assert response.status_code == 422
+    assert not gazda.exists()
+    assert str(gazda) not in detail
+    assert gazda.name not in detail
 
 
 async def test_genereaza_upload_lipsa_da_422(client):

@@ -34,7 +34,12 @@ from pydantic import BaseModel
 
 import jobs
 from auth import verify_token
-from pipelines.scop_core_pipeline import propune_job, run_scop_core_pipeline
+from pipelines.scop_core_pipeline import (
+    DocumentInvalid,
+    propune_job,
+    run_scop_core_pipeline,
+    valideaza_docx,
+)
 from storage import download_upload, upload_file
 
 logger = logging.getLogger(__name__)
@@ -93,6 +98,12 @@ async def propune_scop_core(
 
     try:
         elemente = await propune_job(supliment_path)
+    except DocumentInvalid as e:
+        # Fișierul are extensia .docx dar conținutul nu e un document Word
+        # valid (ex. un .xlsx redenumit) — vina e a fișierului încărcat, nu a
+        # furnizorului de model. Mesajul lui `DocumentInvalid` e mereu curat
+        # (fără nicio cale de fișier de pe server) — sigur de arătat direct.
+        raise HTTPException(status_code=422, detail=str(e))
     except (ValueError, RuntimeError) as e:
         # Model/rețea: JSON invalid întors de model sau eroare la `llm_client`
         # (cheie respinsă, 429/5xx după reîncercări epuizate) — vina nu e a
@@ -102,9 +113,8 @@ async def propune_scop_core(
             detail=f"Nu s-a putut extrage conținutul din documentul suplimentar: {e}",
         )
     except Exception as e:
-        # Orice altă excepție (ex. python-docx nu poate deschide pachetul —
-        # fișierul nu e de fapt un .docx valid, doar are extensia) e vina
-        # fișierului încărcat, nu a serverului.
+        # Orice altă excepție neprevăzută e tratată tot ca fișier invalid,
+        # nu ca eroare de server.
         raise HTTPException(status_code=422, detail=f"Fișier .docx invalid: {e}")
     finally:
         supliment_path.unlink(missing_ok=True)
@@ -201,6 +211,16 @@ async def genereaza_scop_core(
             status_code=422,
             detail="Documentul gazdă încărcat nu a fost găsit în storage — reîncarcă fișierul.",
         )
+
+    # Validare sincronă a conținutului, înainte de a porni jobul de fundal —
+    # un fișier cu extensia .docx dar conținut invalid (ex. un .xlsx redenumit)
+    # trebuie să dea 422 imediat, nu un job care eșuează mai târziu cu un mesaj
+    # tehnic (vezi `stil.DocumentInvalid` / `valideaza_docx`).
+    try:
+        valideaza_docx(gazda_path)
+    except DocumentInvalid as e:
+        gazda_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail=str(e))
 
     user_email = getattr(user, "email", None) or "anonymous"
     job_id = jobs.create_job(user_email)

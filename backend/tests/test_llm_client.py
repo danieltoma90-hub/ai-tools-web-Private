@@ -47,7 +47,7 @@ def _mock_response(content: str, total_tokens: int = 50):
 async def test_chat_success_returns_content_and_counts_usage():
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
-        assert body["model"] == "mistral-large-latest"
+        assert body["model"] == "ministral-8b-latest"
         assert body["response_format"] == {"type": "json_object"}
         assert request.headers["authorization"] == "Bearer test-key"
         return httpx.Response(200, json=_mock_response('{"ok": true}', 42))

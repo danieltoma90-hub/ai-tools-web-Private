@@ -50,11 +50,23 @@ import json
 import re
 from pathlib import Path
 
-from docx import Document
+from docx.oxml.ns import qn
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 import llm_client
 
+from . import stil
 from .charisma_core import SECTIUNI
+
+# Bugetul de tokeni al apelului de model — cât mai mare (limita practică a
+# providerului), pentru că `text` trebuie extras verbatim: lungimea lui
+# scalează cu documentul, nu cu un rezumat, iar implicitul lui `llm_client`
+# (4000) taie JSON-ul la jumătate pe orice document de dimensiune reală. Alte
+# extractoare din acest repo cu aceeași nevoie (extras integral, nu rezumat)
+# folosesc aceeași valoare — vezi `skills/training/spec_extract.py` și
+# `skills/training/spec_build.py`.
+MAX_TOKENS_RASPUNS = 8192
 
 # cele zece chei de secțiune CORE, în ordinea canonică din SECTIUNI
 CHEI_SECTIUNI: list[str] = [s.cheie for s in SECTIUNI]
@@ -65,17 +77,49 @@ def _coduri_valide() -> set[str]:
     return {f.cod for s in SECTIUNI for f in s.fluxuri}
 
 
+def _iter_blocuri(doc):
+    """Paragrafele și tabelele documentului, în ordinea reală din body.
+
+    `doc.paragraphs` omite tabelele cu totul — un document al cărui conținut
+    e (parțial sau integral) un tabel de cerințe, cum e caietul de sarcini
+    standard TotalSoft, ar pierde tăcut acele rânduri. Tiparul de mai jos
+    (`doc.element.body` + `docx.table.Table`/`docx.text.paragraph.Paragraph`)
+    e cel deja folosit în acest repo pentru exact aceeași nevoie — vezi
+    `skills/minuta/scripts/context_parser.py::_iter_blocks`."""
+    for copil in doc.element.body:
+        if copil.tag == qn("w:p"):
+            yield Paragraph(copil, doc)
+        elif copil.tag == qn("w:tbl"):
+            yield Table(copil, doc)
+
+
+def _randuri_tabel(tabel: Table) -> list[str]:
+    """Fiecare rând al tabelului, ca `celulă | celulă | ...` — un rând cu
+    toate celulele goale nu adaugă nimic (zgomot, nu conținut)."""
+    randuri = []
+    for row in tabel.rows:
+        celule = [cell.text.strip() for cell in row.cells]
+        if any(celule):
+            randuri.append(" | ".join(celule))
+    return randuri
+
+
 def _extrage_text(docx_path: Path) -> str:
     """Textul documentului încărcat, cu titlurile (stiluri Heading/Title)
     marcate distinct — ajută modelul să găsească segmentele naturale ale
-    documentului fără să fie nevoit să rescrie nimic ca să le delimiteze."""
-    doc = Document(str(docx_path))
+    documentului fără să fie nevoit să rescrie nimic ca să le delimiteze.
+    Tabelele (ex. caietul de sarcini standard, o matrice de cerințe) sunt
+    incluse rând cu rând, la locul lor real în document — vezi `_iter_blocuri`."""
+    doc = stil.deschide_docx(docx_path)
     linii: list[str] = []
-    for p in doc.paragraphs:
-        text = p.text.strip()
+    for bloc in _iter_blocuri(doc):
+        if isinstance(bloc, Table):
+            linii.extend(_randuri_tabel(bloc))
+            continue
+        text = bloc.text.strip()
         if not text:
             continue
-        stil_p = p.style.name if p.style else ""
+        stil_p = bloc.style.name if bloc.style else ""
         if re.match(r"^(Heading \d|Title)$", stil_p, re.I):
             linii.append(f"\n## {text}")
         else:
@@ -187,6 +231,27 @@ def _valideaza_elemente(bruti, coduri_valide: set[str]) -> list[dict]:
     return rezultat
 
 
+def _pare_trunchiat(raw: str) -> bool:
+    """Euristică pentru „răspunsul modelului s-a oprit la mijlocul JSON-ului”
+    (depășire de `max_tokens`), fără să inspecteze `finish_reason` —
+    `llm_client.chat` întoarce doar textul, nu și motivul opririi, iar a-l
+    expune ar cere modificarea lui `llm_client.py`, în afara acestui fix
+    (vezi raportul). Un răspuns JSON complet, chiar împachetat în
+    ```json ... ```, se termină mereu cu acolada de închidere a obiectului
+    de nivel de bază; unul tăiat la mijloc aproape sigur nu. Nu e o dovadă
+    matematică — un răspuns garbage complet, coincidental, s-ar putea și el
+    termina fără acoladă — dar diferențiază corect cazul care contează aici:
+    un document mare, valid, al cărui răspuns depășește bugetul de tokeni.
+    """
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.strip("`").strip()
+        if text.lower().startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    return text.startswith("{") and not text.endswith("}")
+
+
 async def propune_elemente(docx_path: Path) -> list[dict]:
     """Segmentează documentul suplimentar de la `docx_path` și propune, pentru
     fiecare element găsit, o plasare printre secțiunile CORE.
@@ -210,11 +275,19 @@ async def propune_elemente(docx_path: Path) -> list[dict]:
     if not text:
         return []
 
-    raw = await llm_client.chat(_construieste_system_prompt(), text, json_mode=True)
+    raw = await llm_client.chat(
+        _construieste_system_prompt(), text, max_tokens=MAX_TOKENS_RASPUNS, json_mode=True,
+    )
 
     try:
         data = llm_client.parse_json(raw)
     except json.JSONDecodeError as exc:
+        if _pare_trunchiat(raw):
+            raise ValueError(
+                "Documentul suplimentar e prea mare pentru un singur răspuns al "
+                "modelului — răspunsul a fost tăiat înainte să se termine JSON-ul. "
+                "Încarcă un document mai scurt sau împarte-l în mai multe."
+            ) from exc
         raise ValueError(f"Răspunsul modelului nu este JSON valid: {raw[:300]!r}") from exc
 
     if not isinstance(data, dict):
