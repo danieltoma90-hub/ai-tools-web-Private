@@ -11,6 +11,17 @@ apel de model care:
 Utilizatorul corectează plasările în UI înainte ca `capitol.Element` să fie
 construit dintr-un dict validat aici — vezi `capitol.py`.
 
+Apelul de model trece prin `llm_client` (rădăcina `backend/`), clientul comun
+provider-agnostic al repo-ului — nu prin apeluri proprii către Anthropic sau
+Groq. Varianta inițială a acestui modul avea `_call_claude`/`_call_groq`
+proprii, copiate din `skills/scenarii/ai_gen.py`; s-a renunțat la ele pentru
+că, la verificare, `ANTHROPIC_API_KEY` din acest proiect e invalidă și
+`GROQ_API_KEY` lipsește complet din `.env` — niciuna nu poate autentifica.
+`MISTRAL_API_KEY`, singura cheie validă disponibilă, e exact ceea ce
+`llm_client` folosește implicit, cu throttle și retry deja incluse pentru
+tier-ul ei gratuit. Nu mai există parametru de alegere a providerului
+(`engine`) — un singur furnizor, un singur drum.
+
 Regula centrală, ținută prin construcție (nu doar prin instrucțiuni în prompt):
 modelul NU are voie să introducă o denumire de flux Charisma în datele
 întoarse. Cele 47 de fluxuri din `charisma_core.py` au fost verificate pe
@@ -33,17 +44,14 @@ rescrie, nu le rezumă și nu le parafrazează (vezi promptul).
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
-from typing import Any
 
 from docx import Document
 
-from .charisma_core import SECTIUNI
+import llm_client
 
-CLAUDE_MODEL = os.environ.get("SCOP_CORE_CLAUDE_MODEL", "claude-sonnet-4-6")
-GROQ_MODEL = os.environ.get("SCOP_CORE_GROQ_MODEL", "openai/gpt-oss-120b")
+from .charisma_core import SECTIUNI
 
 # cele zece chei de secțiune CORE, în ordinea canonică din SECTIUNI
 CHEI_SECTIUNI: list[str] = [s.cheie for s in SECTIUNI]
@@ -83,16 +91,16 @@ def _context_fluxuri() -> str:
     return "\n".join(blocuri)
 
 
-_PROMPT_TEMPLATE = """Ești analist de business pentru implementări ERP Charisma. Primești un \
-DOCUMENT SUPLIMENTAR încărcat de un client — cerințe sau elemente care depășesc funcționalitatea \
-standard Charisma ERP CORE.
+_SYSTEM_TEMPLATE = """Ești analist de business pentru implementări ERP Charisma. Primești, ca \
+mesaj separat de la utilizator, un DOCUMENT SUPLIMENTAR încărcat de un client — cerințe sau \
+elemente care depășesc funcționalitatea standard Charisma ERP CORE.
 
 Sarcina ta are exact două părți:
 
 1. SEGMENTEAZĂ documentul în elemente distincte. `titlu` și `text` se PREIAU din document — nu \
 rescrie, nu rezuma, nu parafraza conținutul. Dacă documentul are deja titluri sau subtitluri \
-(marcate cu "## " mai jos), folosește-le ca `titlu`; altfel formulează un titlu scurt, format \
-doar din cuvinte care apar deja în text.
+(marcate cu "## " în textul primit), folosește-le ca `titlu`; altfel formulează un titlu scurt, \
+format doar din cuvinte care apar deja în text.
 
 2. Pentru FIECARE element, propune o PLASARE: cheia secțiunii CORE sub care se potrivește cel \
 mai bine ca sub-capitol, sau exact valoarea "propriu" dacă elementul nu se potrivește la nicio \
@@ -110,74 +118,16 @@ sistemului — a ta nu contează și va fi ignorată dacă apare acolo.
 
 Răspunde DOAR cu JSON valid, fără text în plus, fără explicații:
 {{"elemente": [{{"titlu": "...", "text": "...", "plasare": "<o cheie din listă sau propriu>", \
-"fluxuri_legate": ["<cod>", ...]}}]}}
-
-=== DOCUMENT SUPLIMENTAR ===
-"""
+"fluxuri_legate": ["<cod>", ...]}}]}}"""
 
 
-def _construieste_prompt() -> str:
-    return _PROMPT_TEMPLATE.format(
+def _construieste_system_prompt() -> str:
+    """Regulile și catalogul de fluxuri — partea stabilă a interacțiunii,
+    trimisă ca mesaj `system` către `llm_client.chat`. Textul documentului
+    clientului NU intră aici, ci în mesajul `user` — vezi `propune_elemente`."""
+    return _SYSTEM_TEMPLATE.format(
         chei=", ".join(CHEI_SECTIUNI), context_fluxuri=_context_fluxuri()
     )
-
-
-def parse_json_block(text: str) -> Any:
-    """Valoarea JSON din răspunsul modelului, chiar dacă vine încadrat în
-    ```json``` sau cu text în jur. Un răspuns care nu conține JSON valid
-    ridică `ValueError` cu mesaj clar — routerul îl poate arăta direct
-    utilizatorului.
-
-    Întoarce exact ce a parsat `json.loads` — nu neapărat un `dict`: un
-    model poate răspunde sintactic valid cu `null`, cu o listă sau cu un
-    număr la nivelul de bază. Apelantul (`propune_elemente`) verifică forma
-    imediat după apel."""
-    match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
-    candidate = match.group(1) if match else text
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        pass
-    m = re.search(r"\{[\s\S]*\}", candidate)
-    if m:
-        try:
-            return json.loads(m.group(0))
-        except json.JSONDecodeError:
-            pass
-    raise ValueError(f"Răspunsul modelului nu este JSON valid: {text[:300]!r}")
-
-
-async def _call_claude(prompt: str, continut: str, max_tokens: int = 4_000) -> str:
-    from anthropic import AsyncAnthropic
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY lipsește de pe server — nu se poate apela Claude.")
-    client = AsyncAnthropic(api_key=api_key)
-    resp = await client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": f"{prompt}\n{continut}"}],
-    )
-    return resp.content[0].text
-
-
-async def _call_groq(prompt: str, continut: str, max_tokens: int = 4_000) -> str:
-    from groq import AsyncGroq
-
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError("GROQ_API_KEY lipsește de pe server — nu se poate apela Groq.")
-    client = AsyncGroq(api_key=api_key)
-    kwargs = {"reasoning_effort": "low"} if GROQ_MODEL.startswith("openai/") else {}
-    resp = await client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[{"role": "user", "content": f"{prompt}\n{continut}"}],
-        max_tokens=max_tokens,
-        temperature=0.1,
-        **kwargs,
-    )
-    return resp.choices[0].message.content
 
 
 def _valideaza_elemente(bruti, coduri_valide: set[str]) -> list[dict]:
@@ -228,30 +178,36 @@ def _valideaza_elemente(bruti, coduri_valide: set[str]) -> list[dict]:
     return rezultat
 
 
-async def propune_elemente(docx_path: Path, engine: str = "groq") -> list[dict]:
+async def propune_elemente(docx_path: Path) -> list[dict]:
     """Segmentează documentul suplimentar de la `docx_path` și propune, pentru
     fiecare element găsit, o plasare printre secțiunile CORE.
 
-    `engine`: "groq" (implicit, gratuit — pasul e opțional și nu trebuie să
-    schimbe costul zero al capitolului standard) sau "claude".
+    Apelul de model trece prin `llm_client` — clientul comun, provider-agnostic
+    al repo-ului (implicit Mistral La Plateforme, tier gratuit), cu throttle,
+    retry pe 429/5xx și buget zilnic incluse acolo. Nu mai există alegere de
+    provider aici: modulul nu mai apelează Anthropic sau Groq direct (vezi
+    docstring-ul de sus al fișierului pentru motiv) — un singur furnizor,
+    un singur drum.
 
     Întoarce o listă de dicturi validate — gata să alimenteze `capitol.Element`
     într-un pas ulterior, după ce utilizatorul le corectează în UI. Un răspuns
     care nu e JSON valid ridică `ValueError`; orice altă formă de răspuns
     garbage (elemente malformate, chei lipsă, tipuri greșite) e filtrată aici,
-    nu propagată — vezi `_valideaza_elemente`.
+    nu propagată — vezi `_valideaza_elemente`. O eroare de rețea/autentificare
+    la nivelul lui `llm_client` (cheie lipsă, 429 după reîncercări epuizate)
+    urcă neschimbată, ca `RuntimeError` — vezi `llm_client.chat`.
     """
     text = _extrage_text(docx_path)
     if not text:
         return []
 
-    prompt = _construieste_prompt()
-    if engine == "claude":
-        raw = await _call_claude(prompt, text)
-    else:
-        raw = await _call_groq(prompt, text)
+    raw = await llm_client.chat(_construieste_system_prompt(), text, json_mode=True)
 
-    data = parse_json_block(raw)
+    try:
+        data = llm_client.parse_json(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Răspunsul modelului nu este JSON valid: {raw[:300]!r}") from exc
+
     if not isinstance(data, dict):
         raise ValueError(
             "Răspunsul modelului e JSON valid, dar nu are forma așteptată "
