@@ -244,6 +244,19 @@ async def test_denumire_charisma_inventata_de_model_nu_ajunge_in_rezultat(tmp_pa
     assert denumire_reala not in json.dumps(rezultat, ensure_ascii=False)
 
 
+async def test_prompt_cere_extras_verbatim_nu_reformulare():
+    """Nu poate exista un test unitar care să detecteze o invenție a modelului
+    (asta ar cere un apel real) — dar putem apăra promptul care o previne: dacă
+    o editare viitoare scoate accidental instrucțiunea de extras verbatim,
+    acest test trebuie să pice, ca semnal că fidelitatea textului către sursă
+    nu mai e garantată prin prompt. Nu dovedește nimic despre ce face modelul
+    efectiv — dovedește doar că instrucțiunea încă există în textul trimis."""
+    system_prompt = extractie._construieste_system_prompt()
+    assert "EXTRAS COPIAT" in system_prompt
+    assert "praguri valorice" in system_prompt
+    assert "nu inventa un titlu" in system_prompt.lower()
+
+
 async def test_prompt_refera_toate_cele_zece_chei_de_sectiune():
     """Promptul e sursa constrângerii — dacă nu enumeră toate cele zece chei
     valide, modelul nu are cum să le respecte. Rulează pe mesajul `system`

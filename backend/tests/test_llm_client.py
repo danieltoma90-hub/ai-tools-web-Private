@@ -9,6 +9,13 @@ import llm_client
 @pytest.fixture(autouse=True)
 def _reset(monkeypatch):
     monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+    # `main.py` (importat de `tests/conftest.py`) rulează `load_dotenv()` la
+    # colectare, deci `MISTRAL_MODEL` din `backend/.env` (setat separat, ca
+    # model funcțional pe tier-ul gratuit) ajunge în mediul procesului de
+    # test și nu doar în cel al aplicației reale. Fără curățarea de-aici,
+    # testele care presupun modelul implicit ar depinde de ce are `.env` pe
+    # mașina care rulează suita, nu de comportamentul din cod.
+    monkeypatch.delenv("MISTRAL_MODEL", raising=False)
     monkeypatch.setattr(llm_client, "MIN_CALL_INTERVAL_S", 0)
     monkeypatch.setattr(llm_client, "RETRY_DELAYS", [0, 0, 0])
     llm_client._usage["day"] = ""

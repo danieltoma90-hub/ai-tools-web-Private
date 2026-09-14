@@ -38,8 +38,11 @@ denumire completă de tranzacție scrisă acolo de model, e aruncat tăcut,
 exact ca la randare în `capitol._denumiri_fluxuri_legate`. Denumirea reală
 se traduce din cod abia în `capitol.py`, niciodată aici.
 
-`titlu` și `text` sunt segmentate din documentul clientului — modelul nu le
-rescrie, nu le rezumă și nu le parafrazează (vezi promptul).
+`text` e un extras copiat din documentul clientului — modelul nu are voie
+să-l rescrie, să-l rezume, să-l completeze sau să-l parafrazeze, și mai ales
+nu are voie să adauge exemple, cifre, praguri valorice sau nume de roluri pe
+care documentul nu le conține (vezi promptul). Doar `titlu` poate fi compus
+de model, ca etichetă scurtă, când documentul nu oferă unul propriu.
 """
 from __future__ import annotations
 
@@ -97,10 +100,16 @@ elemente care depășesc funcționalitatea standard Charisma ERP CORE.
 
 Sarcina ta are exact două părți:
 
-1. SEGMENTEAZĂ documentul în elemente distincte. `titlu` și `text` se PREIAU din document — nu \
-rescrie, nu rezuma, nu parafraza conținutul. Dacă documentul are deja titluri sau subtitluri \
-(marcate cu "## " în textul primit), folosește-le ca `titlu`; altfel formulează un titlu scurt, \
-format doar din cuvinte care apar deja în text.
+1. SEGMENTEAZĂ documentul în elemente distincte. `text` este un EXTRAS COPIAT cuvânt cu cuvânt din \
+document — nu reformula, nu rezuma, nu completa și nu parafraza conținutul. NU adăuga exemple, \
+cifre, praguri valorice, sume, procente, nume de roluri sau de funcții, sau orice alt detaliu \
+concret pe care documentul nu îl conține deja — chiar dacă ți se pare plauzibil sau util pentru \
+un client din acest domeniu. Dacă o cerință e formulată într-o singură propoziție, `text` este \
+EXACT acea propoziție — un element scurt e corect, nu un eșec de extragere. `titlu`, singurul câmp \
+unde ai voie să compui: dacă documentul are deja titluri sau subtitluri (marcate cu "## " în \
+textul primit), folosește-le ca `titlu`; altfel formulează un titlu scurt, descriptiv, format doar \
+din cuvinte care apar deja în text — nu inventa un titlu care sugerează conținut ce nu există în \
+`text`.
 
 2. Pentru FIECARE element, propune o PLASARE: cheia secțiunii CORE sub care se potrivește cel \
 mai bine ca sub-capitol, sau exact valoarea "propriu" dacă elementul nu se potrivește la nicio \
