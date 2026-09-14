@@ -199,7 +199,7 @@ function postGenerate(path: string, estimateId: string, useAi: boolean) {
 
 export async function uploadSourceFile(
   file: File,
-  tool: "scenarii" | "mockup" | "training" | "minuta"
+  tool: "scenarii" | "mockup" | "training" | "minuta" | "scop-core"
 ): Promise<{ storage_path: string }> {
   const sign = (await apiFetch(`${PROXY}/uploads/sign`, {
     method: "POST",
@@ -407,4 +407,80 @@ export async function getIstoriaZilei(): Promise<{
 
 export async function getTrainingJob(jobId: string): Promise<TrainingJob> {
   return apiFetch(`${PROXY}/training/job/${jobId}`) as Promise<TrainingJob>;
+}
+
+// --- scop-core ---------------------------------------------------------
+// Capitolul standard „Charisma ERP CORE" clonat pe stilurile documentului
+// gazdă, cu elemente suplimentare plasate unde le confirmă utilizatorul.
+// Fără parametru `engine`: `/propune` rulează pe un singur furnizor.
+
+export type ScopCoreElement = {
+  titlu: string;
+  text: string;
+  /** Una din cele zece chei de secțiune CORE, sau "propriu". */
+  plasare: string;
+  fluxuri_legate: string[];
+};
+
+export async function postScopCorePropune(
+  storagePath: string,
+  filename: string
+): Promise<{ propunere_id: string; elemente: ScopCoreElement[] }> {
+  return apiFetch(`${PROXY}/scop-core/propune`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ storage_path: storagePath, filename }),
+  }) as Promise<{ propunere_id: string; elemente: ScopCoreElement[] }>;
+}
+
+export async function postScopCoreGenereaza(params: {
+  gazdaStoragePath: string;
+  gazdaFilename: string;
+  client: string;
+  elemente: ScopCoreElement[];
+  insereaza: boolean;
+}): Promise<{ job_id: string }> {
+  return apiFetch(`${PROXY}/scop-core/genereaza`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      gazda_storage_path: params.gazdaStoragePath,
+      gazda_filename: params.gazdaFilename,
+      client: params.client,
+      elemente: params.elemente,
+      insereaza: params.insereaza,
+    }),
+  }) as Promise<{ job_id: string }>;
+}
+
+export type ScopCoreSummary = {
+  sectiuni: number;
+  fluxuri: number;
+  elemente_primite: number;
+  elemente_plasate: number;
+  elemente_pe_sectiune: number;
+  elemente_proprii: number;
+  elemente_respinse: number;
+  gazda_inserata: boolean;
+  /** Mesaj (poate fi gol) despre elemente respinse sau eșecul inserării. */
+  avertisment: string;
+};
+
+export type ScopCoreJob = {
+  status: "processing" | "done" | "error";
+  step?: string; // "parsing" | "building" | "inserare"
+  filename?: string;
+  docx_b64?: string;
+  storage_path?: string;
+  /** Nenule doar dacă inserarea în gazdă a reușit efectiv. */
+  gazda_filename?: string | null;
+  gazda_b64?: string | null;
+  gazda_storage_path?: string | null;
+  summary?: ScopCoreSummary;
+  cuprins_avertisment?: string | null;
+  error?: string;
+};
+
+export async function getScopCoreJob(jobId: string): Promise<ScopCoreJob> {
+  return apiFetch(`${PROXY}/scop-core/job/${jobId}`) as Promise<ScopCoreJob>;
 }
