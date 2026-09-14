@@ -18,18 +18,10 @@ nu în router (routerul nu importă skill-ul direct), cu aceeași filosofie de
 validare „nu ridica, corectează sau aruncă” pe care `extractie._valideaza_elemente`
 o aplică deja părții AI a fluxului — vezi `_element_din_dict`.
 
-LIMITARE CUNOSCUTĂ, semnalată explicit (nu ascunsă): `insereaza.insereaza_capitol`
-(Task 1, modul înghețat) nu acceptă un parametru `elemente` — a fost scris
-înainte ca elementele suplimentare să existe în `capitol.construieste` (Task 2)
-și nu a fost actualizat de atunci. Rezultă că a doua copie produsă aici
-(„gazdă cu capitol”) conține doar cele zece secțiuni standard CORE, FĂRĂ
-elementele suplimentare — acelea apar complet doar în capitolul separat,
-primul fișier întors. Pipeline-ul nu ascunde asta: cât timp există elemente
-suplimentare valide și `insereaza_in_gazda=True`, sumarul întors poartă un
-`avertisment` care spune exact ce lipsește din a doua copie, ca utilizatorul
-să nu creadă din greșeală că totul e deja acolo. Nu s-a atins `insereaza.py`
-ca să se rezolve asta — modulul e marcat înghețat; extinderea lui cu un
-parametru `elemente` e o decizie separată, de raportat, nu de luat aici.
+`insereaza.insereaza_capitol` primește acum aceleași `elemente` cu care se
+construiește și capitolul separat — cele două fișiere întoarse de acest
+pipeline (capitolul standalone și, dacă e cerută, gazda cu capitolul inserat)
+conțin identic aceleași elemente suplimentare, plasate la fel.
 """
 from __future__ import annotations
 
@@ -188,15 +180,11 @@ async def run_scop_core_pipeline(
             on_step("inserare")
         candidat = _mktemp_path(".docx")
         try:
-            gazda_cu_capitol = insereaza.insereaza_capitol(gazda_path, sectiuni, client=client_nume)
+            gazda_cu_capitol = insereaza.insereaza_capitol(
+                gazda_path, sectiuni, client=client_nume, elemente=elemente_valide,
+            )
             gazda_cu_capitol.save(str(candidat))
             gazda_path_out = candidat
-            if elemente_valide:
-                avertismente.append(
-                    "Elementele suplimentare apar doar în capitolul separat — copia gazdă+capitol "
-                    "conține deocamdată doar cele zece secțiuni standard CORE, fără ele "
-                    "(limitare cunoscută a modulului de inserare)."
-                )
         except Exception as e:
             candidat.unlink(missing_ok=True)
             avertismente.append(f"Inserarea capitolului în documentul gazdă a eșuat: {e}")

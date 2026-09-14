@@ -109,8 +109,15 @@ def _repara_puncte_de_confirmat(doc) -> None:
 
 
 def insereaza_capitol(cale_gazda, sectiuni, numar: int = 5, nivel: int = 1,
-                      client: str = "[NUME CLIENT]"):
+                      client: str = "[NUME CLIENT]",
+                      elemente: list[capitol.Element] | None = None):
     """Întoarce un Document nou = gazda cu capitolul inserat și capitolele renumerotate.
+
+    Capitolul inserat include și elementele suplimentare (`elemente`), plasate
+    exact ca în `capitol.construieste`: fiecare fie ca sub-capitol sub secțiunea
+    lui, fie ca secțiune proprie la finalul capitolului — vezi docstring-ul
+    acelei funcții pentru regulile complete de plasare și numerotare.
+    `elemente=None` (implicit) și `elemente=[]` produc exact același rezultat.
 
     ATENȚIE — cuprinsul cache-uit rămâne neactualizat: Word păstrează un
     Cuprins real (câmp TOC) ca un bloc `w:sdt` cu paragrafe cache-uite pentru
@@ -140,7 +147,8 @@ def insereaza_capitol(cale_gazda, sectiuni, numar: int = 5, nivel: int = 1,
 
     # capitolul, construit separat pe stilurile aceleiași gazde
     temp = stil.document_din_gazda(cale)
-    capitol.construieste(temp, sectiuni, numar=numar, nivel=nivel, client=client)
+    capitol.construieste(temp, sectiuni, numar=numar, nivel=nivel, client=client,
+                         elemente=elemente)
 
     ancora = _gaseste_ancora(gazda, numar + 1)
     for element in list(temp.element.body):

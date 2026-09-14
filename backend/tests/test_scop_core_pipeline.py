@@ -287,17 +287,21 @@ async def test_avertisment_gol_fara_elemente_si_fara_insereaza():
         capitol_path.unlink(missing_ok=True)
 
 
-async def test_avertisment_semnaleaza_elementele_lipsa_din_gazda_cu_capitol():
-    """Limitarea cunoscută: `insereaza.insereaza_capitol` nu duce elementele
-    suplimentare în copia gazdă+capitol — utilizatorul trebuie avertizat, nu
-    lăsat să creadă tacit că cele două fișiere au același conținut."""
-    elemente = [{"titlu": "X", "text": "Y", "plasare": "propriu", "fluxuri_legate": []}]
+async def test_elementele_suplimentare_ajung_si_in_gazda_cu_capitol():
+    """Limitarea din raportul Task 4 a fost rezolvată: `insereaza.insereaza_capitol`
+    primește acum `elemente` — cele două fișiere întoarse de pipeline conțin
+    identic aceleași elemente suplimentare, nu doar capitolul standalone.
+    Fără avertisment: nu mai există nimic de semnalat pe această cale."""
+    elemente = [{"titlu": "Element unic pentru test", "text": "Y", "plasare": "propriu",
+                 "fluxuri_legate": []}]
     capitol_path, gazda_out, sumar = await pipeline.run_scop_core_pipeline(
         GAZDA, client="ACME", elemente=elemente, insereaza_in_gazda=True,
     )
     try:
-        assert sumar["avertisment"] != ""
-        assert "gazdă+capitol" in sumar["avertisment"]
+        assert sumar["avertisment"] == ""
+        assert gazda_out is not None
+        assert "Element unic pentru test" in "\n".join(_texte(gazda_out))
+        assert "5.11. Element unic pentru test" in _h2(gazda_out)
     finally:
         capitol_path.unlink(missing_ok=True)
         if gazda_out is not None:
@@ -331,7 +335,8 @@ async def test_gazda_inexistenta_ridica_eroare_fara_fisier_temporar_ramas(tmp_pa
 async def test_esecul_la_inserare_pastreaza_capitolul_si_avertizeaza(monkeypatch, spion_mktemp):
     """Un eșec la pasul opțional de inserare nu trebuie să tragă după el
     capitolul deja construit cu succes — vezi docstring-ul funcției."""
-    def insereaza_stricata(cale_gazda, sectiuni, numar=5, nivel=1, client="[NUME CLIENT]"):
+    def insereaza_stricata(cale_gazda, sectiuni, numar=5, nivel=1, client="[NUME CLIENT]",
+                           elemente=None):
         raise RuntimeError("gazdă simulat coruptă")
 
     monkeypatch.setattr(pipeline.insereaza, "insereaza_capitol", insereaza_stricata)
