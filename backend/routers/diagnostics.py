@@ -10,6 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends
 
 from auth import verify_token
+from llm_client import _model
 
 router = APIRouter()
 
@@ -44,6 +45,11 @@ def _classify(status: int, body: dict) -> tuple[str, str]:
         )
     if status == 429:
         return "limita_atinsa", "Limita de utilizare a fost atinsă (rate limit / cotă zilnică)."
+    if status == 403 or "tier_not_allowed" in low or "model subscription required" in low:
+        return "model_nepermis", (
+            "Modelul nu e disponibil pe nivelul de abonament curent. "
+            "Configurează MISTRAL_MODEL pe server cu un model disponibil pentru abonamentul tău."
+        )
     if status == 404 and "model" in low:
         return "model_indisponibil", f"Cheia e validă, dar modelul nu e disponibil: {msg}"
     return "eroare", msg or f"Răspuns neașteptat (HTTP {status})."
@@ -97,7 +103,7 @@ async def _check_mistral(client: httpx.AsyncClient) -> dict:
         r = await client.post(
             "https://api.mistral.ai/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json={"model": os.environ.get("MISTRAL_MODEL", "mistral-large-latest"),
+            json={"model": _model(),
                   "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]},
         )
         state, message = _classify(r.status_code, r.json() if r.content else {})
