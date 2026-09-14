@@ -91,3 +91,34 @@ async def test_chat_without_key_raises(monkeypatch):
 def test_parse_json_strips_markdown_fences():
     assert llm_client.parse_json('```json\n{"a": 1}\n```') == {"a": 1}
     assert llm_client.parse_json('{"a": 1}') == {"a": 1}
+
+
+def test_model_unset_uses_default(monkeypatch):
+    """MISTRAL_MODEL nesetat foloseste implicitul ministral-8b-latest."""
+    monkeypatch.delenv("MISTRAL_MODEL", raising=False)
+    assert llm_client._model() == "ministral-8b-latest"
+
+
+def test_model_empty_string_uses_default(monkeypatch):
+    """MISTRAL_MODEL setat la şir gol ("") foloseste implicitul."""
+    monkeypatch.setenv("MISTRAL_MODEL", "")
+    assert llm_client._model() == "ministral-8b-latest"
+
+
+def test_model_whitespace_only_uses_default(monkeypatch):
+    """MISTRAL_MODEL setat la doar spații albe foloseste implicitul."""
+    monkeypatch.setenv("MISTRAL_MODEL", "   ")
+    assert llm_client._model() == "ministral-8b-latest"
+
+
+def test_model_explicit_value_is_used(monkeypatch):
+    """MISTRAL_MODEL setat la o valoare reală este folosit corect."""
+    monkeypatch.setenv("MISTRAL_MODEL", "mistral-7b-custom")
+    assert llm_client._model() == "mistral-7b-custom"
+
+
+def test_api_key_empty_string_raises(monkeypatch):
+    """MISTRAL_API_KEY setat la şir gol ridică eroare clară."""
+    monkeypatch.setenv("MISTRAL_API_KEY", "")
+    with pytest.raises(RuntimeError, match="MISTRAL_API_KEY lipsă"):
+        llm_client._api_key()

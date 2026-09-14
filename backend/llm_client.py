@@ -33,7 +33,10 @@ def _model() -> str:
     # API-ul live. "ministral-8b-latest" a răspuns 200 pe același abonament.
     # Dacă Render setează MISTRAL_MODEL, implicitul de-aici nu contează; dacă
     # nu-l setează, acesta e modelul care chiar funcționează în producție.
-    return os.environ.get("MISTRAL_MODEL", "ministral-8b-latest")
+    # O valoare goală sau doar spații albe e tratată ca nesetată — se folosește
+    # implicitul, nu o soluție 403 sau 400 din API.
+    model = os.environ.get("MISTRAL_MODEL", "ministral-8b-latest").strip()
+    return model or "ministral-8b-latest"
 
 
 def _api_key() -> str:
