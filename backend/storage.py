@@ -12,13 +12,14 @@ BUCKET = "documents"
 # "context" tine fisierele de Context Proiect reutilizabile — nu sunt documente
 # generate, dar traiesc in acelasi bucket ca sa mosteneasca gratuit listarea,
 # semnarea si stergerea cu verificare de proprietar.
-ALLOWED_TOOLS = {"minuta", "mockup", "scenarii", "context", "training"}
+ALLOWED_TOOLS = {"minuta", "mockup", "scenarii", "context", "training", "scop-core"}
 UPLOADS_BUCKET = "uploads"
 UPLOAD_TOOLS_EXT = {
     "scenarii": {".docx"},
     "mockup": {".docx", ".xlsx"},
     "training": {".docx"},
     "minuta": {".vtt", ".docx"},
+    "scop-core": {".docx"},
 }
 UPLOAD_MAX_BYTES = 52_428_800  # 50MB — maximul planului free Supabase
 
