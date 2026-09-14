@@ -30,6 +30,13 @@ const TOOLS = [
     desc: "Specificație → catalog standard + cerințe specifice client, în Excel.",
   },
   {
+    href: "/scop-core",
+    tool: "scop-core",
+    icon: "📄",
+    title: "Scop CORE",
+    desc: "Capitol standard Charisma CORE în documentul de scop al verticalei, cu elemente suplimentare plasate unde le spui. (early build)",
+  },
+  {
     href: "/training",
     tool: "training",
     icon: "🎓",
@@ -42,6 +49,7 @@ const TOOL_ICONS: Record<string, string> = {
   minuta: "📝",
   mockup: "🎨",
   scenarii: "🧪",
+  "scop-core": "📄",
   training: "🎓",
 };
 
