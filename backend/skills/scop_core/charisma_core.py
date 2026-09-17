@@ -101,7 +101,32 @@ SECTIUNI: list[Sectiune] = [
             "CORE și, fără ele, fluxurile operaționale descrise mai jos nu pot funcționa."
         ),
         functionalitate="Modulul General oferă nomenclatoarele și structurile de bază ale sistemului.",
-        beneficii=[],
+        beneficii=[
+            Beneficiu(
+                "Reduce timpul de operare și erorile de preț",
+                "Datorită listelor de prețuri de intrare și de ieșire, cu prețul completat "
+                "automat pe document — fără căutare în surse din afara sistemului — modulul "
+                "reduce timpul de operare al documentelor și elimină erorile de introducere "
+                "manuală a prețurilor, oferind în același timp un control mai bun al "
+                "corespondenței dintre prețurile din documentele partenerilor și cele din "
+                "listele în vigoare.",
+            ),
+            Beneficiu(
+                "Menține integritatea catalogului de articole",
+                "Datorită catalogului de articole, care face corespondența automată între "
+                "codurile proprii și codurile folosite de fiecare furnizor sau client, "
+                "utilizatorii pot opera documentele cu codificarea partenerului fără să creeze "
+                "articole noi inutil, evitând alterarea bazei de date.",
+            ),
+            Beneficiu(
+                "Reduce riscul comercial și fiscal în relația cu partenerii",
+                "Datorită validării stării de plătitor de TVA direct pe site-ul ANAF și a "
+                "mecanismului de credit control — care limitează sau blochează înregistrarea "
+                "comenzilor la depășirea plafonului de credit ori a numărului de zile de "
+                "întârziere agreat — sistemul reduce riscul de facturare eronată și expunerea "
+                "financiară în relația cu partenerii.",
+            ),
+        ],
         detaliere=[],
         grupe=[
             Grup(
@@ -690,7 +715,8 @@ def valideaza(sectiuni: list[Sectiune]) -> list[str]:
     O secțiune e validă cu `detaliere` SAU `grupe` (nu neapărat ambele) —
     conținutul poate fi organizat plat sau pe sub-titluri. `beneficii` gol e
     acceptat: nu orice secțiune are un beneficiu propriu documentat în sursă
-    (ex. `configurare`, `nomenclatoare`, `migrare`); randarea omite blocul.
+    (ex. `configurare`, `migrare` — activități de proiect, nu module de
+    produs); randarea omite blocul.
     """
     erori: list[str] = []
     chei_vazute: set[str] = set()

@@ -121,11 +121,26 @@ def construieste(doc, sectiuni, numar: int = 5, nivel: int = 1,
     chei_selectate = {s.cheie for s in sectiuni}
 
     stil.heading(doc, f"{numar}. {TITLU_CAPITOL}", nivel)
-    stil.para(
-        doc,
-        f"Capitolul descrie funcționalitățile standard Charisma ERP CORE care intră în "
-        f"scopul implementării la {client}, pe module, cu fluxurile operaționale acoperite.",
+    # Fraza de trimitere către „Delimitări de scop” se scrie DOAR când secțiunea
+    # chiar va exista mai jos (vezi coada capitolului) — altfel ar promite un
+    # capitol pe care documentul nu-l mai are, pentru un client fără delimitări.
+    introducere = (
+        "Charisma ERP CORE este pachetul de module de bază pe care se sprijină orice "
+        "implementare Charisma — nomenclatoare, contabilitate, financiar, vânzări, "
+        "achiziții, mijloace fixe, gestiunea stocurilor și analiza multidimensională — "
+        "spre deosebire de modulele specifice unei anumite verticale de activitate. "
+        f"Capitolul de față descrie această fundație standard care intră în scopul "
+        f"implementării la {client}; particularitățile specifice domeniului de "
+        f"activitate al {client} sunt tratate separat, în capitolul dedicat verticalei. "
+        "Pentru fiecare modul sunt prezentate scopul, funcționalitatea și un tabel cu "
+        "fluxurile operaționale care se vor implementa."
     )
+    if delimitari:
+        introducere += (
+            " Ce nu intră în acest scop este listat în secțiunea „Delimitări de scop” de "
+            "la finalul capitolului."
+        )
+    stil.para(doc, introducere)
 
     for i, s in enumerate(sectiuni, start=1):
         stil.heading(doc, f"{numar}.{i}. {s.titlu}", nivel + 1)
@@ -136,8 +151,9 @@ def construieste(doc, sectiuni, numar: int = 5, nivel: int = 1,
         stil.para(doc, "Funcționalitate", bold=True)
         stil.para(doc, s.functionalitate)
 
-        # Beneficiile lipsesc la configurare / nomenclatoare / migrare — șablonul
-        # nu are pentru ele. Blocul se sare complet, nu se scrie un titlu gol.
+        # Beneficiile lipsesc la configurare / migrare — activități de proiect, nu
+        # module de produs; șablonul nu are pentru ele. Blocul se sare complet, nu
+        # se scrie un titlu gol.
         if s.beneficii:
             stil.para(doc, "Beneficii", bold=True)
             for b in s.beneficii:
