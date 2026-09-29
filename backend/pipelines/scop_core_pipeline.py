@@ -28,16 +28,34 @@ conțin identic aceleași elemente suplimentare, plasate la fel.
 și duse identic pe ambele căi. `curata_antet_subsol` golește antetul/subsolul
 moștenite din gazdă pe ambele căi, pentru cazul unei gazde reutilizate ca
 șablon de stil pentru alt client — vezi `stil.curata_antet_subsol`.
+
+A doua orchestrare din acest fișier, `run_scope_document_pipeline`, construiește
+DOCUMENTUL COMPLET de scop (11 capitole, `skills.scop_core.scope`) — nu doar
+capitolul CORE de mai sus. Primește `continut`, un dicționar brut din browser
+cu toate elementele editabile (client, elemente suplimentare, matricea de
+acoperire A/P/D/N, delimitarea față de documentul-frate, fluxul operațional,
+ordinea capitolului 4, beneficii, puncte de confirmat) și le convertește
+defensiv în dataclass-urile din `scope.py`, cu aceeași filosofie „nu ridica,
+corectează sau numără” ca mai sus — vezi `_client_din_dict`,
+`_suplimentare_din_dicturi`, `_acoperire_din_dicturi` etc. Excepție de la acea
+filosofie: erorile pe care `scope.genereaza` le ridică deliberat (element
+suplimentar atașat unui modul exclus; ordinea capitolului 4 incompletă sau cu
+element necunoscut) NU se înghit aici — se lasă să treacă neschimbate, ca
+routerul să le transforme într-un 422 cu mesaj clar, nu într-o pierdere tăcută
+de conținut dintr-o ofertă comercială.
 """
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import tempfile
 from pathlib import Path
 
-from skills.scop_core import capitol, extractie, insereaza, stil
-from skills.scop_core.charisma_core import SECTIUNI
+import docx
+
+from skills.scop_core import capitol, extractie, insereaza, scope, stil
+from skills.scop_core.charisma_core import SECTIUNI, Flux
 from skills.scop_core.stil import DocumentInvalid  # re-exportat pentru router,
 # care nu importă `skills.scop_core` direct — vezi docstring-ul de sus.
 
@@ -332,3 +350,410 @@ async def run_scop_core_pipeline(
         "avertisment": " ".join(avertismente),
     }
     return capitol_path, gazda_path_out, sumar
+
+
+# =============================================================================
+# Documentul complet de scop (11 capitole) — Task 3 din planul scop-core-web.
+# =============================================================================
+
+_INCADRARI_VALIDE: set[str] = {"A", "P", "D", "N"}
+
+
+def _str_sau_gol(valoare: object) -> str:
+    """`valoare.strip()` dacă e un `str` nevid după strip, altfel șir gol."""
+    return valoare.strip() if isinstance(valoare, str) else ""
+
+
+def _lista_stringuri(brute: object) -> list[str]:
+    """Filtrează o listă brută, păstrând doar șirurile nevide (curățate de spații).
+
+    O `brute` care nu e deloc listă (None, dict trimis din greșeală) devine
+    listă goală — fără nicio excepție ridicată."""
+    if not isinstance(brute, list):
+        return []
+    return [s.strip() for s in brute if isinstance(s, str) and s.strip()]
+
+
+def _situatie_actuala_din_lista(brute: object) -> list[tuple[str, str]]:
+    """Rândurile «Situația actuală | Cum se adresează în Charisma» ale clientului.
+
+    Fiecare rând e un dict `{"actual": ..., "solutie": ...}`; un rând căruia
+    îi lipsește oricare din cele două texte se ignoră tăcut — nu e unul din
+    cele două erori care trebuie lăsate să treacă (vezi docstring-ul de sus),
+    doar un rând de context necompletat, nu conținut de ofertă pierdut."""
+    if not isinstance(brute, list):
+        return []
+    randuri = []
+    for rand in brute:
+        if not isinstance(rand, dict):
+            continue
+        actual = _str_sau_gol(rand.get("actual"))
+        solutie = _str_sau_gol(rand.get("solutie"))
+        if actual and solutie:
+            randuri.append((actual, solutie))
+    return randuri
+
+
+def _client_din_dict(brut: object) -> scope.Client:
+    """Construiește `scope.Client` dintr-un dict brut din browser.
+
+    Câmpurile lipsă sau de tip greșit cad pe valorile implicite ale
+    dataclass-ului (`scope.PLACEHOLDER` pentru `nume`, șiruri/liste goale
+    pentru rest) — niciodată nu ridică excepție, ca un formular parțial
+    completat de utilizator să nu blocheze restul generării."""
+    if not isinstance(brut, dict):
+        brut = {}
+    kwargs: dict = {}
+    nume = _str_sau_gol(brut.get("nume"))
+    if nume:
+        kwargs["nume"] = nume
+    kwargs["nume_complet"] = _str_sau_gol(brut.get("nume_complet"))
+    kwargs["domeniu"] = _str_sau_gol(brut.get("domeniu"))
+    kwargs["entitati"] = _lista_stringuri(brut.get("entitati"))
+    kwargs["situatie_actuala"] = _situatie_actuala_din_lista(brut.get("situatie_actuala"))
+    kwargs["obiective"] = _lista_stringuri(brut.get("obiective"))
+    kwargs["observatii"] = _str_sau_gol(brut.get("observatii"))
+    return scope.Client(**kwargs)
+
+
+def _fluxuri_din_lista(brute: object) -> list[Flux]:
+    """`Flux`-urile unui element suplimentar — cod, denumire, ce presupune.
+
+    Toate cele trei câmpuri sunt obligatorii pentru ca un rând de tabel să
+    aibă sens; un flux căruia îi lipsește unul se ignoră (nu e conținut
+    esențial al ofertei, doar detalierea unui element care rămâne oricum
+    scris, chiar fără acel rând de tabel)."""
+    if not isinstance(brute, list):
+        return []
+    rezultat = []
+    for f in brute:
+        if not isinstance(f, dict):
+            continue
+        cod = _str_sau_gol(f.get("cod"))
+        flux_text = _str_sau_gol(f.get("flux"))
+        presupune = _str_sau_gol(f.get("presupune"))
+        if cod and flux_text and presupune:
+            rezultat.append(Flux(cod=cod, flux=flux_text, presupune=presupune))
+    return rezultat
+
+
+def _suplimentar_din_dict(brut: object) -> scope.Suplimentar | None:
+    """Un element suplimentar (capitol propriu sau atașat unui modul CORE).
+
+    `titlu` lipsă/gol face elementul inutilizabil — respins, nu reparat cu
+    text de rezervă. `in_modul`, dacă e prezent, se păstrează AȘA CUM VINE,
+    fără validare împotriva secțiunilor CORE existente aici — acea validare
+    e responsabilitatea lui `scope.genereaza` (`_cap_solutie`), care ridică
+    `ValueError` pentru un modul exclus; ridicarea aceea NU trebuie duplicată
+    sau anticipată aici, ca mesajul și punctul unic de adevăr să rămână
+    `scope.py` — vezi docstring-ul de sus al fișierului."""
+    if not isinstance(brut, dict):
+        return None
+    titlu = _str_sau_gol(brut.get("titlu"))
+    if not titlu:
+        return None
+    in_modul_brut = brut.get("in_modul")
+    in_modul = in_modul_brut.strip() if isinstance(in_modul_brut, str) and in_modul_brut.strip() else None
+    incadrare_brut = brut.get("incadrare")
+    incadrare = incadrare_brut.strip() if isinstance(incadrare_brut, str) and incadrare_brut.strip() else "Inclus"
+    return scope.Suplimentar(
+        titlu=titlu,
+        intro=_str_sau_gol(brut.get("intro")),
+        puncte=_lista_stringuri(brut.get("puncte")),
+        fluxuri=_fluxuri_din_lista(brut.get("fluxuri")),
+        nota=_str_sau_gol(brut.get("nota")),
+        in_modul=in_modul,
+        incadrare=incadrare,
+    )
+
+
+def _suplimentare_din_dicturi(brute: object) -> tuple[list[scope.Suplimentar], int]:
+    """Convertește lista de elemente suplimentare; întoarce (valide, respinse)."""
+    if not isinstance(brute, list):
+        return [], 0
+    valide: list[scope.Suplimentar] = []
+    respinse = 0
+    for brut in brute:
+        element = _suplimentar_din_dict(brut)
+        if element is None:
+            respinse += 1
+        else:
+            valide.append(element)
+    return valide, respinse
+
+
+def _cerinta_din_dict(brut: object) -> tuple[scope.Cerinta | None, bool]:
+    """O cerință a matricei de acoperire; întoarce `(cerința, a_fost_corectată)`.
+
+    `cerinta`/`raspuns` lipsă fac rândul inutilizabil — respins. `zona` poate
+    lipsi (rândul tot are sens, doar coloana «Zonă» rămâne goală). `incadrare`
+    necunoscută sau lipsă NU se respinge — s-ar pierde o cerință reală doar
+    pentru o etichetă greșită — ci se trece la «D. De definit», încadrarea
+    cea mai conservatoare (cere analiză explicită, nu o declară nici acoperită,
+    nici în afara scopului), și se semnalează prin `a_fost_corectată`."""
+    if not isinstance(brut, dict):
+        return None, False
+    cerinta_text = _str_sau_gol(brut.get("cerinta"))
+    raspuns = _str_sau_gol(brut.get("raspuns"))
+    if not cerinta_text or not raspuns:
+        return None, False
+    zona = _str_sau_gol(brut.get("zona"))
+    incadrare_brut = brut.get("incadrare")
+    incadrare = incadrare_brut.strip().upper() if isinstance(incadrare_brut, str) else ""
+    corectata = incadrare not in _INCADRARI_VALIDE
+    if corectata:
+        incadrare = "D"
+    return scope.Cerinta(zona=zona, cerinta=cerinta_text, raspuns=raspuns, incadrare=incadrare), corectata
+
+
+def _acoperire_din_dicturi(brute: object) -> tuple[list[scope.Cerinta], int, int]:
+    """Convertește matricea de acoperire; întoarce (valide, respinse, corectate)."""
+    if not isinstance(brute, list):
+        return [], 0, 0
+    valide: list[scope.Cerinta] = []
+    respinse = 0
+    corectate = 0
+    for brut in brute:
+        cerinta, corectata = _cerinta_din_dict(brut)
+        if cerinta is None:
+            respinse += 1
+        else:
+            valide.append(cerinta)
+            if corectata:
+                corectate += 1
+    return valide, respinse, corectate
+
+
+def _randuri_3col_din_dicturi(brute: object, chei: tuple[str, str, str]) -> tuple[list[list[str]], int]:
+    """Rândurile unui tabel cu 3 coloane text (delimitare, flux operațional).
+
+    Fiecare rând e un dict cu exact cheile din `chei`; un rând căruia îi
+    lipsește oricare dintre cele trei valori se respinge — un rând pe jumătate
+    completat dintr-un tabel contractual (delimitare) sau operațional (flux)
+    n-are cum să se randeze coerent cu text de rezervă inventat aici."""
+    if not isinstance(brute, list):
+        return [], 0
+    valide: list[list[str]] = []
+    respinse = 0
+    for brut in brute:
+        if not isinstance(brut, dict):
+            respinse += 1
+            continue
+        valori = [_str_sau_gol(brut.get(cheie)) for cheie in chei]
+        if all(valori):
+            valide.append(valori)
+        else:
+            respinse += 1
+    return valide, respinse
+
+
+def _confirmare_din_dict(brut: object) -> tuple[str, str] | None:
+    if not isinstance(brut, dict):
+        return None
+    aspect = _str_sau_gol(brut.get("aspect"))
+    motiv = _str_sau_gol(brut.get("motiv"))
+    if not aspect or not motiv:
+        return None
+    return (aspect, motiv)
+
+
+def _confirmari_din_dicturi(brute: object) -> tuple[list[tuple[str, str]], int]:
+    if not isinstance(brute, list):
+        return [], 0
+    valide: list[tuple[str, str]] = []
+    respinse = 0
+    for brut in brute:
+        confirmare = _confirmare_din_dict(brut)
+        if confirmare is None:
+            respinse += 1
+        else:
+            valide.append(confirmare)
+    return valide, respinse
+
+
+def _ordine_cap4_din_lista(brut: object) -> list[str] | None:
+    """Ordinea subcapitolelor capitolului 4 — listă de chei de secțiune CORE
+    amestecate cu titluri de elemente suplimentare cu capitol propriu.
+
+    Intrările care nu sunt șiruri (sau devin goale după strip) se elimină
+    tăcut AICI — dar dacă eliminarea lor face ordinea incompletă sau lasă
+    o cheie necunoscută, `scope.genereaza` ridică `ValueError`, care NU se
+    prinde în funcția asta: e exact eroarea deliberată care trebuie să
+    ajungă la router, nu o pierdere tăcută de conținut. `None` (nu listă,
+    sau listă golită complet de filtrare) înseamnă „nicio ordine cerută” —
+    `scope.genereaza` foloseşte atunci ordinea canonică implicită."""
+    if not isinstance(brut, list):
+        return None
+    curatata = [x.strip() for x in brut if isinstance(x, str) and x.strip()]
+    return curatata or None
+
+
+def _cfg_pregatit(cfg: object, gazda_path: Path | None) -> dict:
+    """O copie sigură a `cfg` pentru `scope.genereaza`.
+
+    `cfg` vine din browser, la fel ca `continut` — sub-dicturile structurale
+    (`document`, `document_frate`, `sectiuni_core`, `capitole`, `stil`) devin
+    goale dacă nu sunt chiar dicturi, ca accesul `.get(...)` din `scope.py` să
+    nu ridice `AttributeError` pe un payload malformat.
+
+    `stil.document_gazda` NU se preia NICIODATĂ din `cfg`: un șir venit din
+    browser ar fi o cale de fișier aleasă de client, citită direct de pe
+    discul serverului de `stil.document_din_gazda` — o cale de a deschide
+    orice `.docx` accesibil procesului, nu doar documentele utilizatorului.
+    Singura gazdă acceptată e cea descărcată de router din storage-ul
+    utilizatorului (`gazda_path`, un fișier temporar local), sau nicio gazdă."""
+    cfg = cfg if isinstance(cfg, dict) else {}
+    rezultat = copy.deepcopy(cfg)
+
+    for cheie in ("document", "document_frate", "sectiuni_core", "capitole", "stil"):
+        if not isinstance(rezultat.get(cheie), dict):
+            rezultat[cheie] = {}
+
+    coduri = rezultat["document_frate"].get("coduri")
+    rezultat["document_frate"]["coduri"] = list(coduri) if isinstance(coduri, list) else []
+
+    for cheie in ("fara", "doar"):
+        valoare = rezultat["sectiuni_core"].get(cheie)
+        rezultat["sectiuni_core"][cheie] = (
+            [c for c in valoare if isinstance(c, str)] if isinstance(valoare, list) else []
+        )
+
+    rezultat["stil"]["document_gazda"] = str(gazda_path) if gazda_path else None
+    return rezultat
+
+
+async def run_scope_document_pipeline(
+    gazda_path: Path | None,
+    cfg: dict,
+    continut: dict,
+    on_step=None,
+) -> tuple[Path, dict]:
+    """Construiește documentul complet de scop (11 capitole) — `skills.scop_core.scope`.
+
+    `gazda_path` e opțională: fără ea, `scope.genereaza` (prin
+    `stil.document_din_gazda(None)`) degradează la un document nou, cu
+    stilurile implicite din python-docx — nu ridică eroare de fișier lipsă.
+
+    `continut` — dicționarul brut din browser (`client`, `suplimentare`,
+    `acoperire`, `delimitare`, `flux_operational`, `ordine_cap4`, `beneficii`,
+    `confirmari`) — se convertește AICI, defensiv, în dataclass-urile din
+    `scope.py`; vezi funcțiile `_*_din_dict(uri)` de mai sus pentru regulile
+    de toleranță pe fiecare bucată. `cfg` — configurarea structurală
+    (document, document_frate, sectiuni_core, capitole, stil) — trece prin
+    `_cfg_pregatit`, aceeași filosofie defensivă.
+
+    Cele două erori deliberate ale lui `scope.genereaza` (element suplimentar
+    atașat unui modul exclus; ordinea capitolului 4 incompletă sau cu element
+    necunoscut) NU sunt prinse aici — traversează neschimbate până la
+    apelant, ca routerul să le transforme într-un 422 cu mesaj clar (mesajele
+    lor nu conțin nicio cale de fișier — sigure de arătat direct).
+
+    Întoarce `(document_path, sumar)`. `sumar` alimentează UI-ul: capitolele
+    scrise, modulele CORE incluse, elementele suplimentare plasate, cerințele
+    pe fiecare încadrare A/P/D/N și avertismentele (rânduri respinse la
+    conversie, nu erorile deliberate de mai sus)."""
+    if on_step:
+        on_step("parsing")
+
+    continut = continut if isinstance(continut, dict) else {}
+
+    client = _client_din_dict(continut.get("client"))
+    suplimentare, suplimentare_respinse = _suplimentare_din_dicturi(continut.get("suplimentare"))
+    acoperire, cerinte_respinse, cerinte_corectate = _acoperire_din_dicturi(continut.get("acoperire"))
+    delimitare, delimitare_respinse = _randuri_3col_din_dicturi(
+        continut.get("delimitare"), ("zona", "tratat_in", "interfatare"))
+    flux_operational, flux_respinse = _randuri_3col_din_dicturi(
+        continut.get("flux_operational"), ("etapa", "ce_se_intampla", "rezultat"))
+    ordine_cap4 = _ordine_cap4_din_lista(continut.get("ordine_cap4"))
+    beneficii = _lista_stringuri(continut.get("beneficii"))
+    confirmari, confirmari_respinse = _confirmari_din_dicturi(continut.get("confirmari"))
+
+    cfg_pregatit = _cfg_pregatit(cfg, gazda_path)
+
+    if on_step:
+        on_step("building")
+
+    document_path = _mktemp_path(".docx")
+    try:
+        scope.genereaza(
+            cfg_pregatit, document_path, client=client, suplimentare=suplimentare,
+            beneficii=beneficii, confirmari=confirmari, acoperire=acoperire,
+            delimitare=delimitare, flux_operational=flux_operational, ordine_cap4=ordine_cap4,
+        )
+    except Exception:
+        # Include cele două erori deliberate (ValueError) — se curăță fișierul
+        # temporar oricum, dar excepția urcă NESCHIMBATĂ (vezi docstring-ul).
+        document_path.unlink(missing_ok=True)
+        raise
+
+    doc_citit = docx.Document(str(document_path))
+    capitole = [
+        p.text.strip() for p in doc_citit.paragraphs
+        if p.style is not None and p.style.name == "Heading 1" and p.text.strip()
+    ]
+
+    sc = cfg_pregatit.get("sectiuni_core", {})
+    sectiuni = capitol.alege_sectiuni(
+        fara=None if sc.get("toate", True) else (sc.get("fara") or None),
+        doar=None if sc.get("toate", True) else (sc.get("doar") or None),
+    )
+
+    cerinte_pe_incadrare = {"A": 0, "P": 0, "D": 0, "N": 0}
+    for c in acoperire:
+        cerinte_pe_incadrare[c.incadrare] += 1
+
+    suplimentare_brute = continut.get("suplimentare")
+    acoperire_brute = continut.get("acoperire")
+
+    avertismente: list[str] = []
+    if suplimentare_respinse:
+        avertismente.append(
+            f"{suplimentare_respinse} element(e) suplimentar(e) primite din browser nu au putut fi "
+            "folosite (titlu lipsă) și au fost ignorate."
+        )
+    if cerinte_respinse:
+        avertismente.append(
+            f"{cerinte_respinse} cerință(e) de acoperire primite din browser nu au putut fi folosite "
+            "(cerință sau răspuns lipsă) și au fost ignorate."
+        )
+    if cerinte_corectate:
+        avertismente.append(
+            f"{cerinte_corectate} cerință(e) de acoperire aveau o încadrare necunoscută și au fost "
+            "trecute la «D. De definit», ca să nu dispară tăcut din analiză."
+        )
+    if delimitare_respinse:
+        avertismente.append(
+            f"{delimitare_respinse} rând(uri) din tabelul de delimitare față de documentul-frate nu "
+            "au putut fi folosite (zonă, tratare sau interfațare lipsă) și au fost ignorate."
+        )
+    if flux_respinse:
+        avertismente.append(
+            f"{flux_respinse} etapă(e) din fluxul operațional nu au putut fi folosite (etapă, "
+            "descriere sau rezultat lipsă) și au fost ignorate."
+        )
+    if confirmari_respinse:
+        avertismente.append(
+            f"{confirmari_respinse} punct(e) de confirmat nu au putut fi folosite (aspect sau motiv "
+            "lipsă) și au fost ignorate."
+        )
+
+    sumar = {
+        "capitole_scrise": len(capitole),
+        "capitole": capitole,
+        "module_core": len(sectiuni),
+        "elemente_suplimentare_primite": len(suplimentare_brute) if isinstance(suplimentare_brute, list) else 0,
+        "elemente_suplimentare_plasate": len(suplimentare),
+        "elemente_suplimentare_respinse": suplimentare_respinse,
+        "cerinte_primite": len(acoperire_brute) if isinstance(acoperire_brute, list) else 0,
+        "cerinte_plasate": len(acoperire),
+        "cerinte_respinse": cerinte_respinse,
+        "cerinte_pe_incadrare": cerinte_pe_incadrare,
+        "delimitare_randuri_plasate": len(delimitare),
+        "delimitare_randuri_respinse": delimitare_respinse,
+        "flux_operational_randuri_plasate": len(flux_operational),
+        "flux_operational_randuri_respinse": flux_respinse,
+        "confirmari_plasate": len(confirmari),
+        "confirmari_respinse": confirmari_respinse,
+        "avertisment": " ".join(avertismente),
+    }
+    return document_path, sumar

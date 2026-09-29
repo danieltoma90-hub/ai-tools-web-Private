@@ -9,6 +9,7 @@ vezi non-negociabilul din brief.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import pathlib
 
@@ -16,7 +17,7 @@ import pytest
 from docx import Document
 
 from pipelines import scop_core_pipeline as pipeline
-from skills.scop_core import extractie
+from skills.scop_core import extractie, scope
 from skills.scop_core.charisma_core import SECTIUNI
 
 GAZDA = pathlib.Path(__file__).resolve().parent / "fixtures" / "gazda_reala_anonimizata.docx"
@@ -573,3 +574,409 @@ async def test_propune_job_propaga_erorile_lui_extractie(monkeypatch, tmp_path):
     supliment.touch()
     with pytest.raises(ValueError, match="JSON valid"):
         await pipeline.propune_job(supliment)
+
+
+# =============================================================================
+# `run_scope_document_pipeline` — documentul complet de scop, 11 capitole
+# (Task 3 din planul scop-core-web). `GAZDA` de mai sus servește și aici,
+# doar ca sursă de stiluri/numbering — conținutul ei nu contează pentru
+# `scope.genereaza`, care își golește oricum corpul documentului.
+# =============================================================================
+
+CFG_MINIM: dict = {
+    "client": {},
+    "document": {"titlu": "Descrierea soluției ofertate",
+                "subtitlu": "Implementare Charisma ERP CORE"},
+    "document_frate": {"exista": False, "titlu": "", "arie_acoperita": "", "coduri": []},
+    "sectiuni_core": {"toate": True, "doar": [], "fara": []},
+    "capitole": {"context": True, "abordare": True, "beneficii": True, "acoperire": True,
+                "delimitare": True, "premise": True, "confirmari": True, "sinteza": True,
+                "validare": True},
+    "stil": {"antet": "Antet de test"},
+}
+
+
+def _h1(path: pathlib.Path) -> list[str]:
+    return [p.text.strip() for p in Document(str(path)).paragraphs
+            if p.style is not None and p.style.name == "Heading 1" and p.text.strip()]
+
+
+def _tot_textul(path: pathlib.Path) -> str:
+    """Paragrafe ȘI celule de tabel — spre deosebire de `_texte` de mai sus
+    (doar paragrafe), necesar aici pentru că situația actuală, delimitarea și
+    confirmările se randează ca tabele, nu ca paragrafe simple."""
+    doc = Document(str(path))
+    bucati = [p.text for p in doc.paragraphs]
+    for t in doc.tables:
+        for r in t.rows:
+            bucati.extend(c.text for c in r.cells)
+    return "\n".join(bucati)
+
+
+# --- documentul de bază — cu/fără gazdă, cu/fără documentul-frate -----------
+
+async def test_document_minim_produce_documentul_cu_capitolele_implicite():
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, {})
+    try:
+        titluri = _h1(doc_path)
+        # fără document_frate.exista, capitolul de delimitare nu se scrie
+        assert len(titluri) == 10
+        assert sumar["capitole_scrise"] == 10
+        assert sumar["capitole"] == titluri
+        assert sumar["module_core"] == len(SECTIUNI) == 10
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_document_frate_exista_adauga_capitolul_de_delimitare():
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["document_frate"] = {"exista": True, "titlu": "Scop Producție",
+                             "arie_acoperita": "Producția", "coduri": ["N1"]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, cfg, {})
+    try:
+        assert sumar["capitole_scrise"] == 11
+        assert any("Delimitarea" in t for t in sumar["capitole"])
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_fara_gazda_degradeaza_la_document_nou():
+    """`gazda_path=None` — non-negociabilul din brief: `scope.genereaza`
+    degradează la un document nou, cu stilurile implicite, nu ridică eroare."""
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(None, CFG_MINIM, {})
+    try:
+        assert doc_path.is_file()
+        assert sumar["capitole_scrise"] == 10
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_gazda_ramane_neschimbata_documentul_complet():
+    """Non-negociabilul din brief, ca la modul „capitol": documentul-gazdă de
+    pe disc nu se modifică niciodată — hash identic înainte/după."""
+    hash_inainte = _hash(GAZDA)
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, {})
+    try:
+        assert _hash(GAZDA) == hash_inainte
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+# --- clientul -----------------------------------------------------------
+
+async def test_client_complet_ajunge_in_document():
+    continut = {"client": {"nume": "ACME SRL", "domeniu": "distribuție"}}
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert "ACME SRL" in "\n".join(_texte(doc_path))
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_client_lipsa_foloseste_placeholder_din_scope():
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, {})
+    try:
+        assert scope.PLACEHOLDER in "\n".join(_texte(doc_path))
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_client_situatie_actuala_si_obiective_ajung_in_document():
+    continut = {"client": {
+        "nume": "ACME SRL",
+        "situatie_actuala": [{"actual": "Problema X", "solutie": "Soluția Y"},
+                             {"actual": "", "solutie": "Rând incomplet — se ignoră"}],
+        "obiective": ["Obiectiv unu.", "  ", "Obiectiv doi."],
+    }}
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        text = _tot_textul(doc_path)
+        assert "Problema X" in text and "Soluția Y" in text
+        assert "Rând incomplet" not in text
+        assert "Obiectiv unu." in text and "Obiectiv doi." in text
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+# --- forme malformate din browser — nu ridică excepții necontrolate --------
+
+async def test_continut_care_nu_e_dict_nu_pica_pipelineul():
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, None)  # type: ignore[arg-type]
+    try:
+        assert doc_path.is_file()
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_client_care_nu_e_dict_nu_pica():
+    doc_path, _ = await pipeline.run_scope_document_pipeline(
+        GAZDA, CFG_MINIM, {"client": "nu sunt un dict"})
+    try:
+        assert doc_path.is_file()
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_suplimentar_fara_titlu_e_respins_dar_nu_pica():
+    continut = {"suplimentare": [
+        {"titlu": "", "intro": "Text fără titlu."},
+        {"titlu": "Element bun", "intro": "Text bun."},
+    ]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert sumar["elemente_suplimentare_respinse"] == 1
+        assert sumar["elemente_suplimentare_plasate"] == 1
+        assert "Element bun" in "\n".join(_texte(doc_path))
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_suplimentar_care_nu_e_dict_e_ignorat():
+    continut = {"suplimentare": ["nu sunt un dict", 42, {"titlu": "Titlu valid"}]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert sumar["elemente_suplimentare_respinse"] == 2
+        assert sumar["elemente_suplimentare_plasate"] == 1
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_suplimentar_cu_in_modul_valid_se_ataseaza_in_interior():
+    continut = {"suplimentare": [
+        {"titlu": "Element atașat", "intro": "Intro atașată.", "in_modul": "vanzari"},
+    ]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert sumar["elemente_suplimentare_plasate"] == 1
+        assert "Element atașat" in "\n".join(_texte(doc_path))
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_acoperire_fara_cerinta_sau_raspuns_e_respinsa():
+    continut = {"acoperire": [
+        {"zona": "Z", "cerinta": "", "raspuns": "R.", "incadrare": "A"},
+        {"zona": "Z", "cerinta": "C.", "raspuns": "", "incadrare": "A"},
+        {"zona": "Z", "cerinta": "Cerință bună", "raspuns": "Răspuns.", "incadrare": "P"},
+    ]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert sumar["cerinte_respinse"] == 2
+        assert sumar["cerinte_plasate"] == 1
+        assert sumar["cerinte_pe_incadrare"] == {"A": 0, "P": 1, "D": 0, "N": 0}
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_acoperire_incadrare_necunoscuta_devine_d_si_avertizeaza():
+    continut = {"acoperire": [{"zona": "Z", "cerinta": "C.", "raspuns": "R.", "incadrare": "X"}]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert sumar["cerinte_pe_incadrare"]["D"] == 1
+        assert "încadrare necunoscută" in sumar["avertisment"]
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_delimitare_randuri_incomplete_sunt_respinse():
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["document_frate"] = {"exista": True, "titlu": "Frate", "arie_acoperita": "X", "coduri": []}
+    continut = {"delimitare": [
+        {"zona": "Z1", "tratat_in": "Altundeva", "interfatare": ""},
+        {"zona": "Z2", "tratat_in": "Altundeva", "interfatare": "Punct de interfațare."},
+    ]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, cfg, continut)
+    try:
+        assert sumar["delimitare_randuri_respinse"] == 1
+        assert sumar["delimitare_randuri_plasate"] == 1
+        assert "Z2" in _tot_textul(doc_path)
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_flux_operational_randuri_incomplete_sunt_respinse():
+    continut = {"flux_operational": [
+        {"etapa": "E1", "ce_se_intampla": "", "rezultat": "R"},
+        {"etapa": "E2", "ce_se_intampla": "Se întâmplă ceva.", "rezultat": "Rezultatul."},
+    ]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert sumar["flux_operational_randuri_respinse"] == 1
+        assert sumar["flux_operational_randuri_plasate"] == 1
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_confirmari_incomplete_sunt_respinse():
+    continut = {"confirmari": [
+        {"aspect": "Aspect fără motiv", "motiv": ""},
+        {"aspect": "Aspect complet", "motiv": "Motivul."},
+    ]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert sumar["confirmari_respinse"] == 1
+        assert sumar["confirmari_plasate"] == 1
+        assert "Aspect complet" in _tot_textul(doc_path)
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_beneficii_valide_ajung_in_document_iar_golurile_dispar():
+    continut = {"beneficii": ["Beneficiu unu.", "", "   ", "Beneficiu doi."]}
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        text = "\n".join(_texte(doc_path))
+        assert "Beneficiu unu." in text
+        assert "Beneficiu doi." in text
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_ordine_cap4_care_nu_e_lista_foloseste_ordinea_implicita():
+    doc_path, _ = await pipeline.run_scope_document_pipeline(
+        GAZDA, CFG_MINIM, {"ordine_cap4": "nu sunt o listă"})
+    try:
+        assert doc_path.is_file()
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+# --- cele două erori deliberate NU se înghit -------------------------------
+
+async def test_in_modul_exclus_ridica_eroare_nu_se_inghite():
+    """`scope.genereaza` ridică deliberat `ValueError` pentru un element
+    atașat unui modul care nu intră în document — pipeline-ul NU o prinde,
+    o lasă să treacă neschimbată (routerul o transformă în 422)."""
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["sectiuni_core"] = {"toate": False, "doar": ["contabilitate"], "fara": []}
+    continut = {"suplimentare": [{"titlu": "Element orfan", "in_modul": "financiar"}]}
+    with pytest.raises(ValueError, match="financiar"):
+        await pipeline.run_scope_document_pipeline(GAZDA, cfg, continut)
+
+
+async def test_ordine_cap4_incompleta_ridica_eroare_nu_se_inghite():
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["sectiuni_core"] = {"toate": False, "doar": ["contabilitate", "financiar"], "fara": []}
+    continut = {"ordine_cap4": ["contabilitate"]}
+    with pytest.raises(ValueError, match="financiar"):
+        await pipeline.run_scope_document_pipeline(GAZDA, cfg, continut)
+
+
+async def test_ordine_cap4_cu_element_necunoscut_ridica_eroare():
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["sectiuni_core"] = {"toate": False, "doar": ["contabilitate", "financiar"], "fara": []}
+    continut = {"ordine_cap4": ["contabilitate", "financiar", "nu-exista-asa-ceva"]}
+    with pytest.raises(ValueError, match="nu-exista-asa-ceva"):
+        await pipeline.run_scope_document_pipeline(GAZDA, cfg, continut)
+
+
+# --- curățarea fișierelor temporare pe calea de eșec -----------------------
+
+async def test_esec_deliberat_nu_lasa_fisier_temporar(spion_mktemp):
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["sectiuni_core"] = {"toate": False, "doar": ["contabilitate"], "fara": []}
+    continut = {"suplimentare": [{"titlu": "X", "in_modul": "financiar"}]}
+    with pytest.raises(ValueError):
+        await pipeline.run_scope_document_pipeline(GAZDA, cfg, continut)
+    assert spion_mktemp, "cel puțin un fișier temporar trebuia creat înainte de eroare"
+    assert not any(p.exists() for p in spion_mktemp)
+
+
+async def test_gazda_invalida_ridica_eroare_fara_fisier_temporar_ramas(tmp_path, spion_mktemp):
+    gazda_inexistenta = tmp_path / "nu_exista.docx"
+    with pytest.raises(FileNotFoundError):
+        await pipeline.run_scope_document_pipeline(gazda_inexistenta, CFG_MINIM, {})
+    assert spion_mktemp
+    assert not any(p.exists() for p in spion_mktemp)
+
+
+# --- cfg malformat / securitatea gazdei din cfg -----------------------------
+
+async def test_cfg_care_nu_e_dict_nu_pica_pipelineul():
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, None, {})  # type: ignore[arg-type]
+    try:
+        assert doc_path.is_file()
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_cfg_cu_subdicturi_malformate_nu_pica():
+    cfg = {"document_frate": "nu sunt un dict", "capitole": ["nu", "sunt", "dict"],
+          "sectiuni_core": 42, "stil": "text", "document": None}
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, cfg, {})
+    try:
+        assert doc_path.is_file()
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_cfg_document_gazda_din_browser_e_ignorat():
+    """Securitate: `cfg['stil']['document_gazda']` vine din browser și NU se
+    folosește niciodată ca o cale de fișier de pe disc — vezi docstring-ul
+    `_cfg_pregatit`. O cale inexistentă aici nu trebuie să ridice
+    `FileNotFoundError`: pipeline-ul o ignoră complet, indiferent de gazda
+    reală primită ca parametru separat."""
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["stil"]["document_gazda"] = r"C:\nu\exista\niciodata.docx"
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, cfg, {})
+    try:
+        assert doc_path.is_file()
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_cfg_document_gazda_din_browser_e_ignorat_fara_gazda_reala():
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["stil"]["document_gazda"] = r"C:\nu\exista\niciodata.docx"
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(None, cfg, {})
+    try:
+        assert doc_path.is_file()
+        assert sumar["capitole_scrise"] == 10
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+# --- on_step -----------------------------------------------------------
+
+async def test_on_step_semnaleaza_parsing_si_building():
+    pasi: list[str] = []
+    doc_path, _ = await pipeline.run_scope_document_pipeline(
+        GAZDA, CFG_MINIM, {}, on_step=pasi.append)
+    try:
+        assert pasi == ["parsing", "building"]
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+# --- sumarul ----------------------------------------------------------------
+
+async def test_capitole_scrise_lista_titlurile_corecte():
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, {})
+    try:
+        assert any("Scopul documentului" in t for t in sumar["capitole"])
+        assert any("Soluția ofertată" in t for t in sumar["capitole"])
+        assert len(sumar["capitole"]) == sumar["capitole_scrise"]
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_sumarul_document_are_numerele_corecte():
+    continut = {
+        "suplimentare": [{"titlu": "Sub A", "in_modul": "vanzari"}, {"titlu": "Sub B"}],
+        "acoperire": [
+            {"zona": "Z", "cerinta": "C1", "raspuns": "R1", "incadrare": "A"},
+            {"zona": "Z", "cerinta": "C2", "raspuns": "R2", "incadrare": "N"},
+        ],
+    }
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert sumar["module_core"] == 10
+        assert sumar["elemente_suplimentare_primite"] == 2
+        assert sumar["elemente_suplimentare_plasate"] == 2
+        assert sumar["elemente_suplimentare_respinse"] == 0
+        assert sumar["cerinte_primite"] == 2
+        assert sumar["cerinte_plasate"] == 2
+        assert sumar["cerinte_pe_incadrare"] == {"A": 1, "P": 0, "D": 0, "N": 1}
+        assert sumar["avertisment"] == ""
+    finally:
+        doc_path.unlink(missing_ok=True)

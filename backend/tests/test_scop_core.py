@@ -502,3 +502,329 @@ async def test_gazda_reala_ramane_neschimbata_dupa_fluxul_prin_router(client):
     job = job_res.json()
     assert job["status"] == "done"
     assert _hash(GAZDA_FIXTURE) == hash_inainte
+
+
+# --- mod „capitol” — neregresie explicită (Task 4) --------------------------
+
+async def test_genereaza_mod_capitol_explicit_functioneaza_ca_implicitul(client):
+    """Trimiterea explicită a `"mod": "capitol"` trebuie să producă exact
+    același răspuns ca lipsa completă a câmpului `mod` (comportamentul
+    dinaintea Task 4) — non-regresie pentru clienții care încep să-l trimită."""
+    gazda = _docx_tempfile()
+
+    async def fals_pipeline(gazda_path, client, elemente, insereaza_in_gazda,
+                            delimitari=None, curata_antet_subsol=False, on_step=None):
+        capitol_path = _docx_tempfile(("Capitol CORE",))
+        return capitol_path, None, {
+            "sectiuni": 10, "fluxuri": 47, "elemente_primite": 0, "elemente_plasate": 0,
+            "elemente_pe_sectiune": 0, "elemente_proprii": 0, "elemente_respinse": 0,
+            "gazda_inserata": False, "avertisment": "",
+        }
+
+    with patch("routers.scop_core.download_upload", return_value=gazda), \
+         patch("routers.scop_core.run_scop_core_pipeline", side_effect=fals_pipeline), \
+         patch("routers.scop_core.upload_file", return_value="scop-core/u1/capitol.docx"):
+        gen_res = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "capitol", "gazda_storage_path": "scop-core/g.docx",
+                  "gazda_filename": "gazda.docx", "client": "ACME", "elemente": [],
+                  "insereaza": False},
+            headers=AUTH,
+        )
+    assert gen_res.status_code == 200
+    job_id = gen_res.json()["job_id"]
+    job_res = await client.get(f"/api/scop-core/job/{job_id}", headers=AUTH)
+    job = job_res.json()
+    assert job["status"] == "done"
+    assert job["docx_b64"]
+    assert job["gazda_b64"] is None
+    assert job["cuprins_avertisment"] is None
+
+
+async def test_genereaza_capitol_fara_gazda_da_422(client):
+    """`gazda_storage_path`/`gazda_filename` au devenit opționale la nivel de
+    Pydantic (ca modul „document” să poată rula fără gazdă) — dar pentru
+    modul „capitol” rămân obligatorii, verificate acum manual în router."""
+    response = await client.post(
+        "/api/scop-core/genereaza",
+        json={"client": "ACME", "elemente": [], "insereaza": False},
+        headers=AUTH,
+    )
+    assert response.status_code == 422
+    assert "obligatoriu" in response.json()["detail"]
+
+
+async def test_genereaza_mod_necunoscut_da_422(client):
+    response = await client.post(
+        "/api/scop-core/genereaza",
+        json={"mod": "nu-exista-asa-ceva", "gazda_storage_path": "scop-core/g.docx",
+              "gazda_filename": "gazda.docx"},
+        headers=AUTH,
+    )
+    assert response.status_code == 422
+
+
+# --- mod „document” (Task 4) -------------------------------------------------
+
+CONFIG_MINIM_DOC = {
+    "document": {"titlu": "Descrierea soluției ofertate"},
+    "document_frate": {"exista": False},
+    "sectiuni_core": {"toate": True},
+    "capitole": {"context": True, "abordare": True, "beneficii": True, "acoperire": True,
+                "delimitare": True, "premise": True, "confirmari": True, "sinteza": True,
+                "validare": True},
+    "stil": {"antet": "Antet de test"},
+}
+
+
+def _sumar_document_fals() -> dict:
+    return {
+        "capitole_scrise": 10, "capitole": ["1. Scopul documentului"], "module_core": 10,
+        "elemente_suplimentare_primite": 0, "elemente_suplimentare_plasate": 0,
+        "elemente_suplimentare_respinse": 0, "cerinte_primite": 0, "cerinte_plasate": 0,
+        "cerinte_respinse": 0, "cerinte_pe_incadrare": {"A": 0, "P": 0, "D": 0, "N": 0},
+        "delimitare_randuri_plasate": 0, "delimitare_randuri_respinse": 0,
+        "flux_operational_randuri_plasate": 0, "flux_operational_randuri_respinse": 0,
+        "confirmari_plasate": 0, "confirmari_respinse": 0, "avertisment": "",
+    }
+
+
+async def test_genereaza_document_fara_autentificare_da_401(client):
+    app.dependency_overrides.clear()
+    response = await client.post(
+        "/api/scop-core/genereaza",
+        json={"mod": "document", "config": CONFIG_MINIM_DOC, "continut": {}},
+    )
+    assert response.status_code == 401
+
+
+async def test_genereaza_document_fara_gazda_produce_documentul(client):
+    """Documentul-gazdă e opțional la modul „document" — funcționează fără el."""
+    documentul = _docx_tempfile(("Document de scop",))
+
+    async def fals_pipeline(gazda_path, cfg, continut, on_step=None):
+        assert gazda_path is None
+        return documentul, _sumar_document_fals()
+
+    with patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline), \
+         patch("routers.scop_core.upload_file", return_value="scop-core/u1/doc.docx") as fals_upload:
+        gen_res = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "document", "config": CONFIG_MINIM_DOC,
+                  "continut": {"client": {"nume": "ACME SRL"}}},
+            headers=AUTH,
+        )
+    assert gen_res.status_code == 200
+    fals_upload.assert_called_once()
+    job_id = gen_res.json()["job_id"]
+
+    job_res = await client.get(f"/api/scop-core/job/{job_id}", headers=AUTH)
+    job = job_res.json()
+    assert job["status"] == "done"
+    assert job["docx_b64"]
+    assert job["storage_path"] == "scop-core/u1/doc.docx"
+    assert job["summary"]["capitole_scrise"] == 10
+    assert job["gazda_filename"] is None
+    assert job["gazda_b64"] is None
+    assert job["gazda_storage_path"] is None
+    assert job["cuprins_avertisment"] is None
+    # fisierul temporar produs de pipeline trebuie curatat dupa upload
+    assert not documentul.exists()
+
+
+async def test_genereaza_document_fara_config_sau_continut_functioneaza(client):
+    """`config`/`continut` lipsă complet (nu doar goale) nu trebuie să pice —
+    routerul le tratează ca dicturi goale, la fel ca pipeline-ul."""
+    documentul = _docx_tempfile(("Document minimal",))
+
+    async def fals_pipeline(gazda_path, cfg, continut, on_step=None):
+        assert cfg == {}
+        assert continut == {}
+        return documentul, _sumar_document_fals()
+
+    with patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline), \
+         patch("routers.scop_core.upload_file", return_value="scop-core/u1/doc.docx"):
+        gen_res = await client.post(
+            "/api/scop-core/genereaza", json={"mod": "document"}, headers=AUTH,
+        )
+    assert gen_res.status_code == 200
+
+
+async def test_genereaza_document_cu_gazda_produce_documentul(client):
+    gazda = _docx_tempfile()
+    documentul = _docx_tempfile(("Document cu stiluri de gazdă",))
+
+    async def fals_pipeline(gazda_path, cfg, continut, on_step=None):
+        assert gazda_path == gazda
+        return documentul, _sumar_document_fals()
+
+    with patch("routers.scop_core.download_upload", return_value=gazda), \
+         patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline), \
+         patch("routers.scop_core.upload_file", return_value="scop-core/u1/doc.docx"):
+        gen_res = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "document", "gazda_storage_path": "scop-core/g.docx",
+                  "gazda_filename": "gazda.docx", "config": CONFIG_MINIM_DOC, "continut": {}},
+            headers=AUTH,
+        )
+    assert gen_res.status_code == 200
+    # gazda descarcata local trebuie curatata dupa folosire
+    assert not gazda.exists()
+
+
+async def test_genereaza_document_doar_storage_path_fara_filename_da_422(client):
+    response = await client.post(
+        "/api/scop-core/genereaza",
+        json={"mod": "document", "gazda_storage_path": "scop-core/g.docx"},
+        headers=AUTH,
+    )
+    assert response.status_code == 422
+
+
+async def test_genereaza_document_extensie_gresita_da_422(client):
+    response = await client.post(
+        "/api/scop-core/genereaza",
+        json={"mod": "document", "gazda_storage_path": "scop-core/g.pdf",
+              "gazda_filename": "gazda.pdf"},
+        headers=AUTH,
+    )
+    assert response.status_code == 422
+
+
+async def test_genereaza_document_upload_gazda_lipsa_da_422(client):
+    with patch("routers.scop_core.download_upload", side_effect=Exception("object not found")):
+        response = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "document", "gazda_storage_path": "scop-core/lipsa.docx",
+                  "gazda_filename": "gazda.docx"},
+            headers=AUTH,
+        )
+    assert response.status_code == 422
+    assert "nu a fost găsit" in response.json()["detail"]
+
+
+async def test_genereaza_document_xlsx_redenumit_docx_da_422_fara_cale_in_mesaj(client):
+    gazda = _xlsx_redenumit_docx()
+    with patch("routers.scop_core.download_upload", return_value=gazda):
+        response = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "document", "gazda_storage_path": "scop-core/g.docx",
+                  "gazda_filename": "gazda.docx"},
+            headers=AUTH,
+        )
+    detail = response.json()["detail"]
+    assert response.status_code == 422
+    assert not gazda.exists()
+    assert str(gazda) not in detail
+    assert gazda.name not in detail
+
+
+async def test_genereaza_document_in_modul_exclus_da_422_cu_mesaj_actionabil(client):
+    """Eroarea deliberată a lui `scope.genereaza` (element atașat unui modul
+    exclus) trebuie să ajungă ca 422 cu mesaj clar — NU ca job „error”, pentru
+    că pierderea tăcută a conținutului dintr-o ofertă comercială e mai gravă
+    decât un cod HTTP."""
+    async def fals_pipeline(gazda_path, cfg, continut, on_step=None):
+        raise ValueError("Elemente atașate unor module care nu intră în document: financiar")
+
+    with patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline):
+        response = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "document", "config": CONFIG_MINIM_DOC,
+                  "continut": {"suplimentare": [{"titlu": "X", "in_modul": "financiar"}]}},
+            headers=AUTH,
+        )
+    assert response.status_code == 422
+    assert "financiar" in response.json()["detail"]
+
+
+async def test_genereaza_document_ordine_cap4_incompleta_da_422(client):
+    async def fals_pipeline(gazda_path, cfg, continut, on_step=None):
+        raise ValueError("Elemente absente din ordinea declarată: financiar")
+
+    with patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline):
+        response = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "document", "config": CONFIG_MINIM_DOC,
+                  "continut": {"ordine_cap4": ["contabilitate"]}},
+            headers=AUTH,
+        )
+    assert response.status_code == 422
+    assert "financiar" in response.json()["detail"]
+
+
+async def test_genereaza_document_eroare_neasteptata_da_500_fara_detaliu_tehnic(client):
+    async def fals_pipeline(gazda_path, cfg, continut, on_step=None):
+        raise RuntimeError(r"eroare internă cu cale C:\Users\server\temp\secret.docx")
+
+    with patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline):
+        response = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "document", "config": CONFIG_MINIM_DOC, "continut": {}},
+            headers=AUTH,
+        )
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert "secret.docx" not in detail
+    assert "C:\\" not in detail
+
+
+async def test_genereaza_document_upload_esuat_da_500(client):
+    documentul = _docx_tempfile(("Document",))
+
+    async def fals_pipeline(gazda_path, cfg, continut, on_step=None):
+        return documentul, _sumar_document_fals()
+
+    with patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline), \
+         patch("routers.scop_core.upload_file", side_effect=Exception("storage indisponibil")):
+        response = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "document", "config": CONFIG_MINIM_DOC, "continut": {}},
+            headers=AUTH,
+        )
+    assert response.status_code == 500
+    # fisierul temporar produs de pipeline trebuie curatat chiar daca uploadul pica
+    assert not documentul.exists()
+
+
+async def test_genereaza_document_fisier_gazda_curatat_la_esecul_pipelineului(client):
+    """Gazda descărcată local (fișier temporar pe server) trebuie ștearsă și
+    pe calea de eșec — nu doar la succes."""
+    gazda = _docx_tempfile()
+
+    async def fals_pipeline(gazda_path, cfg, continut, on_step=None):
+        raise ValueError("configurare invalidă")
+
+    with patch("routers.scop_core.download_upload", return_value=gazda), \
+         patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline):
+        response = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "document", "gazda_storage_path": "scop-core/g.docx",
+                  "gazda_filename": "gazda.docx", "config": CONFIG_MINIM_DOC, "continut": {}},
+            headers=AUTH,
+        )
+    assert response.status_code == 422
+    assert not gazda.exists()
+
+
+async def test_genereaza_document_gazda_reala_ramane_neschimbata(client):
+    """Non-negociabilul din brief, la modul „document”: documentul-gazdă
+    original nu e niciodată atins — verificat cu pipeline-ul REAL (nu mock-uit),
+    la fel ca testul echivalent al modului „capitol” de mai sus."""
+    hash_inainte = _hash(GAZDA_FIXTURE)
+
+    with patch("routers.scop_core.download_upload", side_effect=lambda sp: _copie_gazda_reala()), \
+         patch("routers.scop_core.upload_file", return_value="scop-core/u1/doc.docx"):
+        gen_res = await client.post(
+            "/api/scop-core/genereaza",
+            json={"mod": "document", "gazda_storage_path": "scop-core/g.docx",
+                  "gazda_filename": "gazda.docx", "config": CONFIG_MINIM_DOC,
+                  "continut": {"client": {"nume": "ACME SRL"}}},
+            headers=AUTH,
+        )
+    assert gen_res.status_code == 200
+    job_id = gen_res.json()["job_id"]
+    job_res = await client.get(f"/api/scop-core/job/{job_id}", headers=AUTH)
+    job = job_res.json()
+    assert job["status"] == "done"
+    assert _hash(GAZDA_FIXTURE) == hash_inainte

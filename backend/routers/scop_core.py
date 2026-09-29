@@ -18,6 +18,25 @@ Ca și în `scenarii.py`/`mockup.py`/`training.py`, routerul NU importă
 `skills.scop_core` direct — trece exclusiv prin pipeline, care face deja
 conversia tolerantă a elementelor brute din browser (`_elemente_din_dicturi`)
 și nu trebuie duplicată aici.
+
+`/scop-core/genereaza` are acum două moduri, prin câmpul `mod`:
+  - `"capitol"` (implicit, pentru compatibilitate cu frontend-ul existent care
+    nu trimite deloc `mod`) — comportamentul de mai sus, neschimbat.
+  - `"document"` — construiește documentul complet de scop pe 11 capitole
+    (`run_scope_document_pipeline`), cu corpul cererii purtând `config` și
+    `continut` în loc de `client`/`elemente`. Documentul-gazdă e opțional (dă
+    doar stilurile, dacă e trimis) — spre deosebire de modul „capitol”, unde
+    e obligatoriu. Generarea propriu-zisă e SINCRONĂ (nu job de fundal): nu
+    există niciun pas lent (fără model de limbaj, ca la `/propune`), iar
+    execuția sincronă permite celor două erori deliberate ale lui
+    `scope.genereaza` (element suplimentar atașat unui modul exclus; ordinea
+    capitolului 4 incompletă sau cu element necunoscut) să ajungă direct ca
+    422 — vezi `_genereaza_document`. Rezultatul e totuși împachetat într-un
+    job „done” (`jobs.create_job` + `jobs.finish`, imediat), ca frontend-ul să
+    citească rezultatul prin același tipar de interogare
+    (`GET /scop-core/job/{job_id}`) ca la modul „capitol”, cu aceleași chei în
+    corpul jobului (`gazda_*`/`cuprins_avertisment` rămân `None` — nu există
+    o a doua cale de document la modul „document”).
 """
 from __future__ import annotations
 
@@ -38,6 +57,7 @@ from pipelines.scop_core_pipeline import (
     DocumentInvalid,
     propune_job,
     run_scop_core_pipeline,
+    run_scope_document_pipeline,
     valideaza_docx,
 )
 from storage import download_upload, upload_file
@@ -65,13 +85,24 @@ class PropuneRequest(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    gazda_storage_path: str
-    gazda_filename: str
+    """Corp comun pentru ambele moduri — vezi docstring-ul de sus al fișierului.
+
+    `gazda_storage_path`/`gazda_filename` au devenit opționale (implicit
+    `None`) față de forma inițială: modul „document” poate rula fără gazdă.
+    Obligativitatea lor pentru modul „capitol” NU mai vine gratuit de la
+    Pydantic — se verifică explicit în `genereaza_scop_core`, la fel de strict
+    (422 dacă lipsesc), ca frontend-ul existent să nu observe nicio schimbare.
+    """
+    mod: str = "capitol"
+    gazda_storage_path: str | None = None
+    gazda_filename: str | None = None
     client: str = ""
     elemente: list[dict] = []
     delimitari: list[dict] = []
     insereaza: bool = False
     curata_antet_subsol: bool = False
+    config: dict | None = None
+    continut: dict | None = None
 
 
 @router.post("/scop-core/propune")
@@ -192,6 +223,107 @@ async def _run_job(
             gazda_out_path.unlink(missing_ok=True)
 
 
+async def _genereaza_document(req: GenerateRequest, user) -> dict:
+    """Modul „document”: construiește documentul complet de scop, sincron.
+
+    Spre deosebire de modul „capitol”, nu există niciun pas lent (fără model
+    de limbaj) — construirea rulează direct în cererea HTTP, nu ca job de
+    fundal, tocmai ca cele două erori deliberate ale lui `scope.genereaza`
+    (element suplimentar atașat unui modul exclus; ordinea capitolului 4
+    incompletă sau cu element necunoscut) să ajungă la utilizator ca 422
+    imediat — nu ca stare de job, unde un cod HTTP nu mai are cum să se
+    schimbe (răspunsul cu `job_id` a plecat deja). Rezultatul reușit e totuși
+    împachetat într-un job „done” — vezi `jobs.finish` — ca frontend-ul să
+    citească rezultatul prin același tipar de interogare
+    (`GET /scop-core/job/{job_id}`) ca la modul „capitol”, cu aceleași chei în
+    corpul jobului.
+    """
+    cfg = req.config if isinstance(req.config, dict) else {}
+    continut = req.continut if isinstance(req.continut, dict) else {}
+
+    are_storage_path = bool(req.gazda_storage_path)
+    are_filename = bool(req.gazda_filename)
+    if are_storage_path != are_filename:
+        raise HTTPException(
+            status_code=422,
+            detail="Trimite fie ambele — gazda_storage_path și gazda_filename —, fie niciunul.",
+        )
+
+    gazda_path: Path | None = None
+    document_path: Path | None = None
+    try:
+        if are_storage_path:
+            if Path(req.gazda_filename).suffix.lower() != ".docx":
+                raise HTTPException(status_code=422, detail="Documentul gazdă trebuie să fie .docx")
+            try:
+                gazda_path = download_upload(req.gazda_storage_path)
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+            except Exception:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Documentul gazdă încărcat nu a fost găsit în storage — reîncarcă fișierul.",
+                )
+            try:
+                valideaza_docx(gazda_path)
+            except DocumentInvalid as e:
+                raise HTTPException(status_code=422, detail=str(e))
+
+        try:
+            document_path, sumar = await run_scope_document_pipeline(gazda_path, cfg, continut)
+        except ValueError as e:
+            # Cele două erori deliberate ale lui `scope.genereaza` (sau orice
+            # altă configurare structurală invalidă din `cfg`) — mesajul lor
+            # nu conține nicio cale de fișier, sigur de arătat direct.
+            raise HTTPException(status_code=422, detail=str(e))
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                "scop-core /genereaza (document) FAILED: %s\n%s", e, traceback.format_exc()
+            )
+            raise HTTPException(status_code=500, detail="Generarea documentului de scop a eșuat.")
+
+        client_brut = continut.get("client")
+        nume_client = client_brut.get("nume") if isinstance(client_brut, dict) else None
+        stem = "".join(c if c.isalnum() else "_" for c in (nume_client or "Document")).strip("_")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"Scop_CORE_{stem or 'Document'}_{timestamp}.docx"
+
+        user_email = getattr(user, "email", None) or "anonymous"
+        try:
+            storage_path = upload_file(
+                document_path, tool="scop-core", filename=filename, user_email=user_email,
+            )
+        except Exception as e:
+            logger.error("scop-core /genereaza (document) upload FAILED: %s", e)
+            raise HTTPException(
+                status_code=500,
+                detail="Documentul a fost generat, dar încărcarea în storage a eșuat.",
+            )
+        with open(document_path, "rb") as f:
+            docx_b64 = base64.b64encode(f.read()).decode()
+
+        job_id = jobs.create_job(user_email)
+        jobs.finish(
+            job_id,
+            filename=filename,
+            docx_b64=docx_b64,
+            storage_path=storage_path,
+            gazda_filename=None,
+            gazda_b64=None,
+            gazda_storage_path=None,
+            summary=sumar,
+            cuprins_avertisment=None,
+        )
+        return {"job_id": job_id}
+    finally:
+        if gazda_path is not None:
+            gazda_path.unlink(missing_ok=True)
+        if document_path is not None:
+            document_path.unlink(missing_ok=True)
+
+
 @router.post("/scop-core/genereaza")
 async def genereaza_scop_core(
     req: GenerateRequest,
@@ -203,7 +335,27 @@ async def genereaza_scop_core(
 
     Funcționează și cu `elemente: []`, fără niciun apel prealabil la
     `/scop-core/propune` — pasul de propunere e opțional în flux.
+
+    `req.mod == "document"` deleagă la `_genereaza_document` — vezi
+    docstring-ul de sus al fișierului pentru diferențele dintre cele două
+    moduri.
     """
+    if req.mod == "document":
+        return await _genereaza_document(req, user)
+
+    if req.mod != "capitol":
+        raise HTTPException(
+            status_code=422,
+            detail="Mod necunoscut — valorile acceptate sunt „capitol” și „document”.",
+        )
+
+    if not req.gazda_storage_path or not req.gazda_filename:
+        raise HTTPException(
+            status_code=422,
+            detail="Documentul gazdă (gazda_storage_path și gazda_filename) este obligatoriu "
+                   "pentru modul „capitol”.",
+        )
+
     if Path(req.gazda_filename).suffix.lower() != ".docx":
         raise HTTPException(status_code=422, detail="Documentul gazdă trebuie să fie .docx")
 
