@@ -453,6 +453,7 @@ export async function postScopCoreGenereaza(params: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      mod: "capitol",
       gazda_storage_path: params.gazdaStoragePath,
       gazda_filename: params.gazdaFilename,
       client: params.client,
@@ -463,6 +464,129 @@ export async function postScopCoreGenereaza(params: {
     }),
   }) as Promise<{ job_id: string }>;
 }
+
+// --- scop-core: modul „document” (documentul complet, 11 capitole) -----
+// Vezi `backend/skills/scop_core/scope.py` (structura documentului) și
+// `backend/pipelines/scop_core_pipeline.py::run_scope_document_pipeline` (conversia
+// tolerantă dict → dataclass). Generarea rulează SINCRON pe server (fără pas lent), dar
+// rezultatul e împachetat tot într-un job „done”, deci se citește prin `getScopCoreJob`
+// exact ca la modul „capitol” — vezi `ScopCoreJob` mai jos, comun ambelor moduri.
+
+export type ScopCoreDocConfig = {
+  client: {
+    nume: string;
+    nume_complet: string;
+    domeniu: string;
+    entitati: string[];
+    observatii: string;
+  };
+  document: {
+    titlu: string;
+    subtitlu: string;
+    versiune: string;
+    elaborat_de: string;
+    furnizor: string;
+  };
+  document_frate: {
+    exista: boolean;
+    titlu: string;
+    arie_acoperita: string;
+    coduri: string[];
+  };
+  sectiuni_core: { toate: boolean; doar: string[]; fara: string[] };
+  capitole: {
+    context: boolean;
+    abordare: boolean;
+    beneficii: boolean;
+    acoperire: boolean;
+    delimitare: boolean;
+    premise: boolean;
+    confirmari: boolean;
+    sinteza: boolean;
+    validare: boolean;
+  };
+  stil: {
+    document_gazda: string;
+    antet: string;
+    forma_acoperire: "apdn" | "trei-grupe";
+    fara_diacritice: boolean;
+  };
+};
+
+export type ScopCoreDocSuplimentar = {
+  titlu: string;
+  intro: string;
+  puncte: string[];
+  fluxuri: { cod: string; flux: string; presupune: string }[];
+  nota: string;
+  in_modul: string | null;
+  incadrare?: string;
+};
+
+export type ScopCoreDocCerinta = {
+  zona: string;
+  cerinta: string;
+  raspuns: string;
+  incadrare: "A" | "P" | "D" | "N";
+};
+
+export type ScopCoreDocContinut = {
+  client: {
+    nume: string;
+    nume_complet: string;
+    domeniu: string;
+    entitati: string[];
+    observatii: string;
+    situatie_actuala: { actual: string; solutie: string }[];
+    obiective: string[];
+  };
+  suplimentare: ScopCoreDocSuplimentar[];
+  acoperire: ScopCoreDocCerinta[];
+  delimitare: { zona: string; tratat_in: string; interfatare: string }[];
+  flux_operational: { etapa: string; ce_se_intampla: string; rezultat: string }[];
+  ordine_cap4: string[];
+  beneficii: string[];
+  confirmari: { aspect: string; motiv: string }[];
+};
+
+export async function postScopCoreGenereazaDocument(params: {
+  gazdaStoragePath: string | null;
+  gazdaFilename: string | null;
+  config: ScopCoreDocConfig;
+  continut: ScopCoreDocContinut;
+}): Promise<{ job_id: string }> {
+  return apiFetch(`${PROXY}/scop-core/genereaza`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      mod: "document",
+      gazda_storage_path: params.gazdaStoragePath,
+      gazda_filename: params.gazdaFilename,
+      config: params.config,
+      continut: params.continut,
+    }),
+  }) as Promise<{ job_id: string }>;
+}
+
+export type ScopCoreDocumentSummary = {
+  capitole_scrise: number;
+  capitole: string[];
+  module_core: number;
+  elemente_suplimentare_primite: number;
+  elemente_suplimentare_plasate: number;
+  elemente_suplimentare_respinse: number;
+  cerinte_primite: number;
+  cerinte_plasate: number;
+  cerinte_respinse: number;
+  cerinte_pe_incadrare: { A: number; P: number; D: number; N: number };
+  delimitare_randuri_plasate: number;
+  delimitare_randuri_respinse: number;
+  flux_operational_randuri_plasate: number;
+  flux_operational_randuri_respinse: number;
+  confirmari_plasate: number;
+  confirmari_respinse: number;
+  avertisment: string;
+};
 
 export type ScopCoreSummary = {
   sectiuni: number;
@@ -495,7 +619,9 @@ export type ScopCoreJob = {
   gazda_filename?: string | null;
   gazda_b64?: string | null;
   gazda_storage_path?: string | null;
-  summary?: ScopCoreSummary;
+  /** Formă diferită după mod — `ScopCoreSummary` la „capitol”, `ScopCoreDocumentSummary` la
+   * „document”. Apelantul știe în ce mod a trimis cererea și tratează câmpul corespunzător. */
+  summary?: ScopCoreSummary | ScopCoreDocumentSummary;
   cuprins_avertisment?: string | null;
   error?: string;
 };
