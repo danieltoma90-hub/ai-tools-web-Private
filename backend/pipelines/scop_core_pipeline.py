@@ -43,6 +43,23 @@ suplimentar atașat unui modul exclus; ordinea capitolului 4 incompletă sau cu
 element necunoscut) NU se înghit aici — se lasă să treacă neschimbate, ca
 routerul să le transforme într-un 422 cu mesaj clar, nu într-o pierdere tăcută
 de conținut dintr-o ofertă comercială.
+
+Marcajul `scope.PLACEHOLDER` ("[ de completat ]") e comportamentul corect al
+lui `scope.genereaza` pentru skill-ul local, unde omul completează manual
+golurile direct în Word — dar pe web nu există acel pas manual, iar
+documentul rezultat e o ofertă comercială care poate ajunge direct la un
+client plătitor. Un capitol pe care ecranul nu are cum să-l umple cu conținut
+real trebuie OPRIT (comutatorul lui din `capitole` rămâne pe `False`), nu
+completat cu marcaje — dar câteva goluri (situația actuală/obiectivele
+clientului, tabelul de delimitare fără rânduri) nu au comutator propriu și
+tot pot ajunge scrise cu placeholder dacă formularul nu le-a completat.
+`_gaseste_placeholdere`, mai jos, e plasa de siguranță de după construcție:
+citește documentul deja scris, paragraf cu paragraf ȘI celulă de tabel cu
+celulă de tabel, și numără fiecare apariție rămasă a marcajului — rezultatul
+ajunge în `sumar` (`placeholder_numar`, `placeholder_capitole`) și în
+`avertisment`, ca utilizatorul să vadă înainte să trimită fișierul mai
+departe, nu să descopere ulterior că a trimis un `[ de completat ]` unui
+client.
 """
 from __future__ import annotations
 
@@ -53,6 +70,9 @@ import tempfile
 from pathlib import Path
 
 import docx
+from docx.oxml.ns import qn
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 from skills.scop_core import capitol, extractie, insereaza, scope, stil
 from skills.scop_core.charisma_core import SECTIUNI, Flux
@@ -622,6 +642,80 @@ def _cfg_pregatit(cfg: object, gazda_path: Path | None) -> dict:
     return rezultat
 
 
+def _blocuri_document(doc):
+    """Iterează paragrafele și tabelele documentului, în ordinea din corp (`w:body`).
+
+    `doc.paragraphs` și `doc.tables` (python-docx) sunt liste plate și
+    separate — nu păstrează ordinea relativă dintre ele, deci din ele nu se
+    poate afla sub ce titlu de capitol se află un anumit tabel. Aici se
+    citește direct elementul XML al corpului, care chiar păstrează acea
+    ordine, și se învelește fiecare copil relevant (paragraf sau tabel) în
+    tipul lui python-docx corespunzător — restul copiilor (ex. `w:sectPr`,
+    proprietățile secțiunii) se ignoră, n-au text de căutat în ei."""
+    for copil in doc.element.body.iterchildren():
+        if copil.tag == qn("w:p"):
+            yield Paragraph(copil, doc)
+        elif copil.tag == qn("w:tbl"):
+            yield Table(copil, doc)
+
+
+def _gaseste_placeholdere(doc) -> tuple[int, list[str]]:
+    """Caută marcajul `scope.PLACEHOLDER` care a ajuns totuși în documentul construit.
+
+    Plasa de siguranță din docstring-ul de sus al fișierului: rulează DUPĂ ce
+    `scope.genereaza` a scris deja documentul și numără fiecare apariție
+    rămasă a marcajului, atât în paragrafe (situația actuală, obiectivele,
+    beneficiile, acoperirea, punctele de confirmat pot ajunge scrise cu el)
+    cât și în celule de tabel (delimitarea față de documentul-frate, sinteza)
+    — un tabel NU apare deloc în `doc.paragraphs`, de-aici nevoia de
+    `_blocuri_document` mai sus, care le vede pe amândouă în ordine.
+
+    Întoarce `(numar_total, capitole)`. `capitole` e lista titlurilor de
+    capitol/subcapitol (cel mai recent „Heading 1” SAU „Heading 2” văzut până
+    la acel punct — orice conține markerul, la orice nivel din cele două) sub
+    care a apărut cel puțin un marker, în ordinea întâlnirii, fiecare o
+    singură dată chiar dacă markerul apare de mai multe ori acolo. Text scris
+    ÎNAINTE de primul heading (coperta) primește eticheta convențională de mai
+    jos — nu ar trebui să se întâmple în practică (coperta scrie numele
+    clientului, nu texte libere), dar tot trebuie să aibă o etichetă, nu una
+    lipsă."""
+    capitol_curent = "(înainte de primul capitol)"
+    capitole_vazute: set[str] = set()
+    capitole: list[str] = []
+    numar_total = 0
+
+    def _numara(text: str) -> None:
+        nonlocal numar_total
+        aparitii = text.count(scope.PLACEHOLDER)
+        if not aparitii:
+            return
+        numar_total += aparitii
+        if capitol_curent not in capitole_vazute:
+            capitole_vazute.add(capitol_curent)
+            capitole.append(capitol_curent)
+
+    for bloc in _blocuri_document(doc):
+        if isinstance(bloc, Paragraph):
+            stil_nume = bloc.style.name if bloc.style is not None else ""
+            if stil_nume in ("Heading 1", "Heading 2") and bloc.text.strip():
+                capitol_curent = bloc.text.strip()
+            _numara(bloc.text)
+        elif isinstance(bloc, Table):
+            for rand in bloc.rows:
+                # O celulă îmbinată orizontal apare de mai multe ori în
+                # `rand.cells` (câte o dată per coloană de grilă acoperită) —
+                # fără deduplicare după celula XML reală, un singur marker
+                # s-ar număra de mai multe ori.
+                vazute_tc: set[int] = set()
+                for celula in rand.cells:
+                    if id(celula._tc) in vazute_tc:
+                        continue
+                    vazute_tc.add(id(celula._tc))
+                    _numara(celula.text)
+
+    return numar_total, capitole
+
+
 async def run_scope_document_pipeline(
     gazda_path: Path | None,
     cfg: dict,
@@ -650,8 +744,12 @@ async def run_scope_document_pipeline(
 
     Întoarce `(document_path, sumar)`. `sumar` alimentează UI-ul: capitolele
     scrise, modulele CORE incluse, elementele suplimentare plasate, cerințele
-    pe fiecare încadrare A/P/D/N și avertismentele (rânduri respinse la
-    conversie, nu erorile deliberate de mai sus)."""
+    pe fiecare încadrare A/P/D/N, avertismentele (rânduri respinse la
+    conversie, nu erorile deliberate de mai sus) și `placeholder_numar`/
+    `placeholder_capitole` — rezultatul lui `_gaseste_placeholdere` pe
+    documentul chiar scris, plasa de siguranță din docstring-ul de sus al
+    fișierului; un `placeholder_numar` nenul are mereu și un mesaj dedicat,
+    primul, în `avertisment`."""
     if on_step:
         on_step("parsing")
 
@@ -691,6 +789,7 @@ async def run_scope_document_pipeline(
         p.text.strip() for p in doc_citit.paragraphs
         if p.style is not None and p.style.name == "Heading 1" and p.text.strip()
     ]
+    placeholder_numar, placeholder_capitole = _gaseste_placeholdere(doc_citit)
 
     sc = cfg_pregatit.get("sectiuni_core", {})
     sectiuni = capitol.alege_sectiuni(
@@ -706,6 +805,12 @@ async def run_scope_document_pipeline(
     acoperire_brute = continut.get("acoperire")
 
     avertismente: list[str] = []
+    if placeholder_numar:
+        avertismente.append(
+            f"ATENȚIE — documentul conține {placeholder_numar} marcaj(e) „{scope.PLACEHOLDER}” "
+            "necompletat(e); nu îl trimite clientului așa. Apare în: "
+            + "; ".join(placeholder_capitole) + "."
+        )
     if suplimentare_respinse:
         avertismente.append(
             f"{suplimentare_respinse} element(e) suplimentar(e) primite din browser nu au putut fi "
@@ -754,6 +859,8 @@ async def run_scope_document_pipeline(
         "flux_operational_randuri_respinse": flux_respinse,
         "confirmari_plasate": len(confirmari),
         "confirmari_respinse": confirmari_respinse,
+        "placeholder_numar": placeholder_numar,
+        "placeholder_capitole": placeholder_capitole,
         "avertisment": " ".join(avertismente),
     }
     return document_path, sumar

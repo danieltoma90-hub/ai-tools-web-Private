@@ -16,7 +16,13 @@ import ComutatoareCapitole, { type CheieCapitol } from "./ComutatoareCapitole";
 import TabelEditabil, { type ColoanaTabel } from "./TabelEditabil";
 import OrdineCap4, { type OrdineItem } from "./OrdineCap4";
 import SectiuneSuplimentaraCard from "./SectiuneSuplimentaraCard";
-import type { SuplimentarUI, CerintaUI, DelimitareRandUI, FluxRandUI } from "./tipuri";
+import type {
+  SuplimentarUI,
+  CerintaUI,
+  DelimitareRandUI,
+  FluxRandUI,
+  SituatieActualaRandUI,
+} from "./tipuri";
 
 type State = "idle" | "processing" | "done" | "error";
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -67,6 +73,12 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
   const [domeniu, setDomeniu] = useState("");
   const [entitatiText, setEntitatiText] = useState("");
   const [observatii, setObservatii] = useState("");
+  // Situația actuală (2.2) și obiectivele (2.3) — spre deosebire de restul câmpurilor
+  // clientului, astea două nu au un fallback text scurt dacă lipsesc: `scope._cap_context`
+  // scrie direct `scope.PLACEHOLDER` în capitol. Fără interfață pentru ele, orice document
+  // generat le lăsa necompletate — defectul care a dus la acest ecran (vezi Fix 1 din raport).
+  const [situatieActualaRows, setSituatieActualaRows] = useState<SituatieActualaRandUI[]>([]);
+  const [obiectiveText, setObiectiveText] = useState("");
 
   // --- Documentul gazdă (opțional) -----------------------------------------------------
   const [gazdaFile, setGazdaFile] = useState<File | null>(null);
@@ -194,6 +206,17 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
     new Set(titluriProprii.filter((t, i) => titluriProprii.indexOf(t) !== i))
   );
 
+  // --- Situația actuală (tabel, 2.2) ----------------------------------------------------
+  function adaugaSituatieActuala() {
+    setSituatieActualaRows((rs) => [...rs, { id: idNou(), actual: "", solutie: "" }]);
+  }
+  function modificaSituatieActuala(id: string, cheie: keyof SituatieActualaRandUI, valoare: string) {
+    setSituatieActualaRows((rs) => rs.map((r) => (r.id === id ? { ...r, [cheie]: valoare } : r)));
+  }
+  function stergeSituatieActuala(id: string) {
+    setSituatieActualaRows((rs) => rs.filter((r) => r.id !== id));
+  }
+
   // --- Delimitare (tabel) --------------------------------------------------------------
   function adaugaDelimitare() {
     setDelimitareRows((rs) => [...rs, { id: idNou(), zona: "", tratat_in: "", interfatare: "" }]);
@@ -240,13 +263,20 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
 
   // --- Derivate ----------------------------------------------------------------------------
   const frateExista = frateTitlu.trim().length > 0;
-  // Delimitarea are conținut fillable din acest ecran doar dacă titlul documentului-frate E
-  // completat ȘI există cel puțin un rând — fără rânduri, `_cap_delimitare` ar scrie un tabel
-  // cu un singur rând placeholder, exact ce trebuie evitat.
+  const delimitareRandCompletate = delimitareRows.filter(
+    (r) => r.zona.trim() && r.tratat_in.trim() && r.interfatare.trim()
+  ).length;
+  // Odată declarat documentul-frate, capitolul de delimitare rămâne activ necondiționat —
+  // utilizatorul l-a cerut explicit prin acea declarație, și nu se mai dezactivă tăcut dacă
+  // rândurile lipsesc (asta ar însemna să dispară din document fără nicio explicație). În loc
+  // să lăsăm `_cap_delimitare` să completeze tăcut un tabel-schelet cu „[ de completat ]”
+  // pentru rândurile lipsă, `potGenera` mai jos BLOCHEAZĂ generarea cât timp nu există cel
+  // puțin un rând complet — utilizatorul nu poate ajunge, din acest ecran, la un document cu
+  // capitolul 6 pe jumătate gol.
   const capitoleEfective: Record<CheieCapitol, boolean> = {
     ...capitoleManual,
     acoperire: acoperireRows.length > 0,
-    delimitare: frateExista && delimitareRows.length > 0,
+    delimitare: frateExista,
     beneficii: false,
     confirmari: false,
   };
@@ -257,14 +287,14 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
         : "Se activează automat când adaugi cel puțin o cerință în matricea de acoperire, mai jos.",
     delimitare: !frateExista
       ? "Se activează automat când completezi titlul documentului de Producție, mai jos."
-      : delimitareRows.length === 0
-        ? "Completează cel puțin un rând de delimitare mai jos ca să activezi acest capitol."
-        : `Activ automat — ${delimitareRows.length} rând(uri) de delimitare completate.`,
+      : "Activ automat — ai declarat documentul de Producție. Completează cel puțin un rând de " +
+        "delimitare mai jos: fără el, generarea e blocată (butonul de mai jos explică de ce).",
     beneficii: "Fără interfață pentru conținutul acestei liste în acest ecran — dezactivat.",
     confirmari: "Fără interfață pentru conținutul acestei liste în acest ecran — dezactivat.",
   };
 
-  const potGenera = nume.trim().length > 0 && state !== "processing";
+  const delimitareIncompleta = frateExista && delimitareRandCompletate === 0;
+  const potGenera = nume.trim().length > 0 && !delimitareIncompleta && state !== "processing";
 
   function construiesteCerere(): { config: ScopCoreDocConfig; continut: ScopCoreDocContinut } {
     const titluriPropriiById = new Map(suplimentare.map((s) => [s.id, s.titlu.trim()]));
@@ -309,8 +339,10 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
         domeniu: domeniu.trim(),
         entitati: randuriDinText(entitatiText),
         observatii: observatii.trim(),
-        situatie_actuala: [],
-        obiective: [],
+        situatie_actuala: situatieActualaRows
+          .filter((r) => r.actual.trim() && r.solutie.trim())
+          .map((r) => ({ actual: r.actual.trim(), solutie: r.solutie.trim() })),
+        obiective: randuriDinText(obiectiveText),
       },
       suplimentare: suplimentare
         .filter((s) => s.titlu.trim())
@@ -499,6 +531,23 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
           </p>
         )}
 
+        {/* Plasa de siguranță din backend (Fix 2): documentul poate conține totuși marcaje
+            „[ de completat ]” — banner distinct, lipit de butonul de descărcare, ca utilizatorul
+            care e pe cale să trimită fișierul unui client să nu-l poată rata fără să deruleze. */}
+        {!!s && s.placeholder_numar > 0 && (
+          <div className="bg-red-50 border-2 border-red-400 rounded-xl p-4 flex flex-col gap-1.5">
+            <p className="text-sm font-bold text-red-800">
+              ⚠ Documentul conține {s.placeholder_numar} marcaj(e) „[ de completat ]” necompletat(e)
+              — nu îl trimite clientului așa cum e
+            </p>
+            <p className="text-xs text-red-700 leading-relaxed">
+              Apare în: {s.placeholder_capitole.join("; ")}. Caută „[ de completat ]” în Word și
+              completează manual aceste secțiuni înainte să trimiți fișierul, sau revino la
+              formular, adaugă informațiile lipsă și regenerează documentul.
+            </p>
+          </div>
+        )}
+
         <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-2">
           <button
             onClick={() => descarca(result.docxB64, result.filename)}
@@ -519,6 +568,10 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
     { cheie: "cerinta", eticheta: "Cerință", tip: "textarea" },
     { cheie: "raspuns", eticheta: "Răspunsul soluției", tip: "textarea" },
     { cheie: "incadrare", eticheta: "Încadrare", tip: "select", optiuni: OPTIUNI_INCADRARE, clasa: "w-40" },
+  ];
+  const coloaneSituatieActuala: ColoanaTabel<SituatieActualaRandUI>[] = [
+    { cheie: "actual", eticheta: "Situația actuală", tip: "textarea" },
+    { cheie: "solutie", eticheta: "Cum se adresează în Charisma", tip: "textarea" },
   ];
   const coloaneDelimitare: ColoanaTabel<DelimitareRandUI>[] = [
     { cheie: "zona", eticheta: "Zonă", tip: "text", clasa: "w-40" },
@@ -588,6 +641,38 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-500 mb-1">
+            Situația actuală și punctele de îmbunătățire{" "}
+            <span className="font-normal text-slate-400">
+              (opțional — devine subcapitolul 2.2; fără rânduri, capitolul rămâne necompletat)
+            </span>
+          </label>
+          <TabelEditabil
+            randuri={situatieActualaRows}
+            coloane={coloaneSituatieActuala}
+            onAdauga={adaugaSituatieActuala}
+            onModifica={modificaSituatieActuala}
+            onSterge={stergeSituatieActuala}
+            etichetaAdauga="+ Adaugă un rând"
+            golMesaj="Niciun rând încă."
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">
+            Obiectivele urmărite prin implementare{" "}
+            <span className="font-normal text-slate-400">
+              (opțional — devine subcapitolul 2.3, câte unul pe linie)
+            </span>
+          </label>
+          <textarea
+            value={obiectiveText}
+            onChange={(e) => setObiectiveText(e.target.value)}
+            rows={3}
+            placeholder={"Un singur sistem pentru achiziții, stocuri și financiar-contabilitate.\nConformitate fiscală asigurată din platformă."}
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#18257f]"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">
             Observații <span className="font-normal text-slate-400">(opțional)</span>
           </label>
           <textarea
@@ -632,7 +717,9 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
           </h3>
           <p className="text-xs text-slate-500 leading-relaxed mt-1">
             Completată, activează capitolul de delimitare față de documentul-frate — mai jos,
-            cu rândurile lui.
+            cu rândurile lui. Odată declarat documentul-frate, trebuie completat cel puțin un
+            rând: capitolul nu se mai dezactivă de la sine, iar fără niciun rând generarea e
+            blocată.
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -673,7 +760,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
               onModifica={modificaDelimitare}
               onSterge={stergeDelimitare}
               etichetaAdauga="+ Adaugă un rând de delimitare"
-              golMesaj="Niciun rând încă — fără rânduri, capitolul de delimitare nu apare în document."
+              golMesaj="Niciun rând încă — obligatoriu cel puțin unul, altfel generarea e blocată mai jos."
             />
           </div>
         )}
@@ -861,6 +948,13 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
       {!nume.trim() && (
         <p className="text-xs text-amber-700 -mt-2">
           Completează numele clientului pentru a continua — restul câmpurilor sunt opționale.
+        </p>
+      )}
+      {nume.trim().length > 0 && delimitareIncompleta && (
+        <p className="text-xs text-amber-700 -mt-2">
+          Ai declarat documentul de Producție (secțiunea 3) — completează acolo cel puțin un rând
+          de delimitare pentru a continua, altfel capitolul de delimitare ar ieși cu marcaje
+          „[ de completat ]” necompletate.
         </p>
       )}
     </div>

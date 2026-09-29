@@ -961,12 +961,24 @@ async def test_capitole_scrise_lista_titlurile_corecte():
 
 
 async def test_sumarul_document_are_numerele_corecte():
+    # Client, situația actuală, obiectivele, beneficiile și confirmările sunt toate completate
+    # aici — nu doar `suplimentare`/`acoperire`, care sunt obiectul testului — ca documentul
+    # rezultat să nu conțină niciun `scope.PLACEHOLDER` și `avertisment` să rămână gol; altfel
+    # (vezi `test_placeholder_*` mai jos) un client necompletat scrie singur 11 marcaje.
     continut = {
+        "client": {
+            "nume": "ACME SRL",
+            "domeniu": "distribuție",
+            "situatie_actuala": [{"actual": "Actual.", "solutie": "Soluție."}],
+            "obiective": ["Obiectiv."],
+        },
         "suplimentare": [{"titlu": "Sub A", "in_modul": "vanzari"}, {"titlu": "Sub B"}],
         "acoperire": [
             {"zona": "Z", "cerinta": "C1", "raspuns": "R1", "incadrare": "A"},
             {"zona": "Z", "cerinta": "C2", "raspuns": "R2", "incadrare": "N"},
         ],
+        "beneficii": ["Beneficiu."],
+        "confirmari": [{"aspect": "Aspect.", "motiv": "Motiv."}],
     }
     doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
     try:
@@ -977,6 +989,112 @@ async def test_sumarul_document_are_numerele_corecte():
         assert sumar["cerinte_primite"] == 2
         assert sumar["cerinte_plasate"] == 2
         assert sumar["cerinte_pe_incadrare"] == {"A": 1, "P": 0, "D": 0, "N": 1}
+        assert sumar["placeholder_numar"] == 0
+        assert sumar["placeholder_capitole"] == []
         assert sumar["avertisment"] == ""
     finally:
         doc_path.unlink(missing_ok=True)
+
+
+# --- detectarea marcajelor „[ de completat ]” rămase (plasa de siguranță, Fix 2) ---
+# Defectul raportat: documentul generat cu un payload minim, realist conținea
+# `scope.PLACEHOLDER` în trei locuri — 2.2/2.3 (paragrafe, din client necompletat) și
+# capitolul 6 de delimitare (celule de tabel, din tabelul-schelet fără rânduri). Cel din
+# urmă a fost cel scăpat inițial — testele de mai jos acoperă explicit ambele forme.
+
+async def test_placeholder_avertizeaza_cand_situatia_actuala_si_obiectivele_lipsesc():
+    """Payload minim, realist: doar numele și domeniul clientului — exact cazul din raport.
+    2.2 și 2.3 nu au comutator propriu în `capitole`, deci se scriu necondiționat; fără
+    `situatie_actuala`/`obiective`, `scope._cap_context` le umple cu `scope.PLACEHOLDER`."""
+    continut = {"client": {"nume": "ACME SRL", "domeniu": "distribuție"}}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert sumar["placeholder_numar"] >= 2
+        assert any("2.2" in c and "actuală" in c for c in sumar["placeholder_capitole"])
+        assert any("2.3" in c and "biective" in c for c in sumar["placeholder_capitole"])
+        assert "ATENȚIE" in sumar["avertisment"]
+        assert scope.PLACEHOLDER in sumar["avertisment"]
+        assert "2.2" in sumar["avertisment"] and "2.3" in sumar["avertisment"]
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_placeholder_avertizeaza_pentru_celule_de_tabel_delimitare_fara_randuri():
+    """Cazul scăpat inițial: `document_frate.exista=True` dar niciun rând de delimitare —
+    `scope._cap_delimitare` construiește un tabel-schelet cu două celule `scope.PLACEHOLDER`
+    (zona și punctul de interfațare). Paragrafele NU le-ar fi văzut — trebuie citite celulele."""
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["document_frate"] = {"exista": True, "titlu": "Scop Producție",
+                             "arie_acoperita": "Producția", "coduri": []}
+    continut = {"client": {"nume": "ACME SRL"}}  # fără `delimitare`
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, cfg, continut)
+    try:
+        assert sumar["placeholder_numar"] >= 2
+        assert any("Delimitarea" in c for c in sumar["placeholder_capitole"])
+        assert "Delimitarea" in sumar["avertisment"]
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_placeholder_numar_zero_cand_totul_e_completat():
+    """Payload complet — client (inclusiv situația actuală/obiectivele), delimitarea cu
+    rânduri reale — nu produce niciun marcaj și `avertisment` nu-l mai menționează."""
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["document_frate"] = {"exista": True, "titlu": "Scop Producție",
+                             "arie_acoperita": "Producția", "coduri": []}
+    continut = {
+        "client": {
+            "nume": "ACME SRL", "domeniu": "distribuție",
+            "situatie_actuala": [{"actual": "Actual.", "solutie": "Soluție."}],
+            "obiective": ["Obiectiv."],
+        },
+        "delimitare": [{"zona": "Z", "tratat_in": "Documentul-frate", "interfatare": "Punct."}],
+        "beneficii": ["Beneficiu."],
+        "confirmari": [{"aspect": "Aspect.", "motiv": "Motiv."}],
+        "acoperire": [{"zona": "Z", "cerinta": "C.", "raspuns": "R.", "incadrare": "A"}],
+    }
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, cfg, continut)
+    try:
+        assert sumar["placeholder_numar"] == 0
+        assert sumar["placeholder_capitole"] == []
+        assert scope.PLACEHOLDER not in sumar["avertisment"]
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+def test_gaseste_placeholdere_numara_paragrafe_si_celule_de_tabel_separat():
+    """Test unitar direct pe `_gaseste_placeholdere` (nu prin întregul pipeline): un
+    document construit manual, cu marcajul o dată într-un paragraf sub un Heading 2 și de
+    două ori în celule ale unui tabel sub un Heading 1 distinct — verifică atât numărul
+    total, cât și etichetele de capitol, pentru fiecare formă separat."""
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Introducere fără marcaj.")
+    doc.add_paragraph("1. Capitol cu paragraf", style="Heading 1")
+    doc.add_paragraph("2.1. Subcapitol cu marcaj", style="Heading 2")
+    doc.add_paragraph(f"Text: {scope.PLACEHOLDER}")
+    doc.add_paragraph("2. Capitol cu tabel", style="Heading 1")
+    tabel = doc.add_table(rows=1, cols=2)
+    tabel.rows[0].cells[0].text = scope.PLACEHOLDER
+    tabel.rows[0].cells[1].text = scope.PLACEHOLDER
+
+    numar, capitole = pipeline._gaseste_placeholdere(doc)
+
+    assert numar == 3
+    assert capitole == ["2.1. Subcapitol cu marcaj", "2. Capitol cu tabel"]
+
+
+def test_gaseste_placeholdere_gol_cand_documentul_nu_are_marcaje():
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("1. Capitol curat", style="Heading 1")
+    doc.add_paragraph("Text fără nimic de completat.")
+    tabel = doc.add_table(rows=1, cols=1)
+    tabel.rows[0].cells[0].text = "Conținut real."
+
+    numar, capitole = pipeline._gaseste_placeholdere(doc)
+
+    assert numar == 0
+    assert capitole == []

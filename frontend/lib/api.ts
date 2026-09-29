@@ -585,6 +585,14 @@ export type ScopCoreDocumentSummary = {
   flux_operational_randuri_respinse: number;
   confirmari_plasate: number;
   confirmari_respinse: number;
+  /** Câte marcaje „[ de completat ]” au rămas totuși în documentul generat — plasa de
+   * siguranță din backend (`pipelines.scop_core_pipeline._gaseste_placeholdere`). Zero
+   * înseamnă documentul e curat; peste zero trebuie afișat pregnant, lângă linkul de
+   * descărcare — vezi `placeholder_capitole` pentru capitolele afectate. */
+  placeholder_numar: number;
+  /** Titlurile de capitol/subcapitol sub care a apărut cel puțin un marker, în ordinea
+   * întâlnirii în document — gol dacă `placeholder_numar` e 0. */
+  placeholder_capitole: string[];
   avertisment: string;
 };
 

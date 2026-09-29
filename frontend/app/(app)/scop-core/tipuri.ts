@@ -27,6 +27,15 @@ export type DelimitareRandUI = {
   interfatare: string;
 };
 
+/** Un rând al tabelului „Situația actuală și punctele de îmbunătățire” (subcapitolul 2.2) —
+ * etichetele coloanelor de mai jos sunt cele cu care capitolul chiar se randează în document
+ * (`stil.tabel_doua_coloane(doc, ["Situația actuală", "Cum se adresează în Charisma"], ...)`). */
+export type SituatieActualaRandUI = {
+  id: string;
+  actual: string;
+  solutie: string;
+};
+
 export type FluxRandUI = {
   id: string;
   etapa: string;
