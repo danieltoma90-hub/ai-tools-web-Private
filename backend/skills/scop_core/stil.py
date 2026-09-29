@@ -16,6 +16,35 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, RGBColor
 
+RADACINA = pathlib.Path(__file__).resolve().parents[2]
+
+# Gazde candidate, in ordinea preferintei. Sunt documente de client care pot fi mutate sau
+# inlocuite, deci prima existenta cistiga, iar in lipsa tuturor se porneste de la un document
+# nou — mai bine un rezultat cu stiluri implicite decat o eroare de fisier lipsa. Pe server
+# (backend/skills/scop_core/stil.py, copia acestui fisier) `_DIR_PRODUCTIE` nu exista deloc —
+# `_gazda_implicita` degradeaza atunci direct la `None`, ceea ce e comportamentul corect acolo:
+# fara upload de gazda, nu exista nicio candidata locala de la care sa se imprumute stilurile.
+_DIR_PRODUCTIE = RADACINA / "Document de Scop" / "input" / "1-structura-Charisma-PRODUCTIE"
+GAZDE_CANDIDATE = (
+    _DIR_PRODUCTIE / "Descriere_Solutie_Ofertata_Productie_Teldo.docx",
+    _DIR_PRODUCTIE / "Descriere_Solutie_Ofertata_Productie_Carmangeria_Godac.docx",
+)
+
+
+def _gazda_implicita():
+    """Prima gazda candidata existenta, sau oricare .docx din folderul de structura."""
+    for cale in GAZDE_CANDIDATE:
+        if cale.is_file():
+            return cale
+    if _DIR_PRODUCTIE.is_dir():
+        for cale in sorted(_DIR_PRODUCTIE.glob("*.docx")):
+            if not cale.name.startswith("~$"):
+                return cale
+    return None
+
+
+GAZDA_IMPLICITA = _gazda_implicita()
+
 ANTET_TABEL = ("Cod", "Flux", "Ce presupune")
 ANTET_TABEL_DELIMITARI = ("Element", "Precizare")
 CULOARE_ANTET = "1F3864"     # aceeași cu Heading 1 al gazdei
@@ -79,26 +108,42 @@ def _elimina_imagini_orfane(doc) -> None:
         del rels[rId]
 
 
-def document_din_gazda(cale_gazda):
+def document_din_gazda(cale_gazda=None):
     """Deschide gazda ca template și îi golește corpul, păstrând sectPr.
 
-    ``cale_gazda`` este obligatorie: în fluxul web documentul gazdă este
-    întotdeauna cel încărcat de utilizator, nu există niciun fallback local
-    care să aibă sens pe server.
+    `cale_gazda` e opțională: fără ea (sau `None`), se folosește prima gazdă
+    candidată existentă din `GAZDE_CANDIDATE` (vezi `_gazda_implicita`), cu
+    degradare la un document nou, cu stilurile implicite din python-docx,
+    dacă nicio candidată nu există pe disc — mai bine un rezultat cu stiluri
+    implicite decât o eroare de fișier lipsă (pe server, unde nu există nicio
+    candidată locală, acesta e mereu cazul: gazda vine exclusiv din upload).
+    O cale explicită dar inexistentă e altă situație: acolo chiar e o
+    greșeală a apelantului, deci ridică `FileNotFoundError`, nu degradează
+    tăcut.
+
+    Deschiderea propriu-zisă trece prin `deschide_docx`, care ridică
+    `DocumentInvalid` — cu mesaj curat, fără nicio cale de fișier — dacă
+    fișierul există dar nu e un `.docx` valid (pachet corupt, `.xlsx`
+    redenumit etc.); esențial când `cale_gazda` vine dintr-un upload de
+    utilizator, ca mesajul să nu ajungă cu o cale de server în față.
 
     Imaginile din corpul gazdei (ex. logo pe copertă) devin orfane odată
     golit corpul — vezi `_elimina_imagini_orfane`, apelată la final, ca
-    fișierul capitolului rezultat să nu care mai departe conținut al gazdei
-    pe care nimic nu-l mai referă.
+    fișierul rezultat să nu care mai departe conținut al gazdei pe care
+    nimic nu-l mai referă (capitolul a scăzut astfel de la 390 KB la 115 KB
+    pe o gazdă reală).
     """
-    if not cale_gazda:
-        raise ValueError(
-            "Documentul gazdă este obligatoriu — nu există o gazdă implicită "
-            "în fluxul web. Încarcă documentul gazdă și transmite calea lui."
-        )
-    cale = pathlib.Path(cale_gazda)
-    if not cale.is_file():
-        raise FileNotFoundError(f"Documentul gazdă nu există: {cale}")
+    if cale_gazda:
+        cale = pathlib.Path(cale_gazda)
+        if not cale.is_file():
+            raise FileNotFoundError(f"Documentul gazdă nu există: {cale}")
+    else:
+        cale = _gazda_implicita()
+        if cale is None:
+            # Fara gazda disponibila: document nou, cu stilurile implicite python-docx.
+            doc = Document()
+            doc._cale_gazda = None
+            return doc
 
     doc = deschide_docx(cale)
     # Reținută pentru bullets(): golirea corpului de mai jos șterge singurul loc
@@ -421,6 +466,47 @@ def tabel_fluxuri(doc, fluxuri):
     return t
 
 
+def tabel(doc, antet: list[str], randuri, latimi=None, bold_prima_coloana: bool = True):
+    """Tabel generic, în aceeași ținută ca `tabel_fluxuri`: cap alb pe fundal închis.
+
+    Folosit de skills/generare-scope-core/ pentru tabelele care nu sunt de fluxuri
+    (situația actuală, delimitări, sinteză, semnături).
+    """
+    t = doc.add_table(rows=1, cols=len(antet))
+    try:
+        t.style = "Table Grid"
+    except KeyError:
+        _borduri_grila(t)
+    t.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+    for celula, titlu in zip(t.rows[0].cells, antet):
+        celula.text = ""
+        run = celula.paragraphs[0].add_run(titlu)
+        run.bold = True
+        run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        _umbreste(celula, CULOARE_ANTET)
+
+    for rand in randuri:
+        celule = t.add_row().cells
+        for i, valoare in enumerate(rand):
+            celule[i].text = str(valoare)
+            if bold_prima_coloana and i == 0 and celule[i].paragraphs[0].runs:
+                celule[i].paragraphs[0].runs[0].bold = True
+
+    if latimi:
+        for row in t.rows:
+            for i, lat in enumerate(latimi):
+                row.cells[i].width = Cm(lat)
+
+    doc.add_paragraph()
+    return t
+
+
+def tabel_doua_coloane(doc, antet: list[str], randuri):
+    """Scurtătură pentru tabelele de tip «situația actuală / cum se adresează»."""
+    return tabel(doc, antet, randuri, latimi=[8.3, 8.3])
+
+
 def tabel_delimitari(doc, delimitari):
     """Tabel de delimitări de scop pe 2 coloane, un rând per intrare.
 
@@ -457,3 +543,51 @@ def tabel_delimitari(doc, delimitari):
 
     doc.add_paragraph()
     return t
+
+
+# Transliterare fara diacritice: cerere de redactare, nu de continut. Se aplica la randare, ca
+# textul-sursa sa ramana corect scris pentru clientii care vor diacritice.
+_FARA_DIACRITICE = str.maketrans({
+    "ă": "a", "Ă": "A", "â": "a", "Â": "A", "î": "i", "Î": "I",
+    "ș": "s", "Ș": "S", "ş": "s", "Ş": "S",     # si varianta cu sedila, din fonturi mai vechi
+    "ț": "t", "Ț": "T", "ţ": "t", "Ţ": "T",
+})
+
+
+def elimina_diacritice(text: str) -> str:
+    """Inlocuieste diacriticele romanesti cu literele de baza."""
+    return text.translate(_FARA_DIACRITICE)
+
+
+def transliterare_document(doc) -> int:
+    """Scoate diacriticele din tot documentul: corp, tabele, anteturi, subsoluri, forme.
+
+    Parcurge nodurile w:t, deci ajunge si in casetele de text si in formele de pe coperta, unde
+    `doc.paragraphs` nu intra. Intoarce numarul de noduri modificate.
+    """
+    parti = [doc.element.body]
+    for sec in doc.sections:
+        for zona in (sec.header, sec.footer, sec.first_page_header, sec.first_page_footer,
+                     sec.even_page_header, sec.even_page_footer):
+            if zona is not None:
+                parti.append(zona._element)
+
+    schimbate = 0
+    for parte in parti:
+        for nod in parte.iter(qn("w:t")):
+            if not nod.text:
+                continue
+            nou = elimina_diacritice(nod.text)
+            if nou != nod.text:
+                nod.text = nou
+                schimbate += 1
+
+    props = doc.core_properties
+    for camp in ("title", "subject", "comments", "keywords", "category"):
+        valoare = getattr(props, camp, None)
+        if valoare:
+            curat = elimina_diacritice(valoare)
+            if curat != valoare:
+                setattr(props, camp, curat)
+                schimbate += 1
+    return schimbate

@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Asamblarea capitolului standard CORE din secțiunile de conținut."""
+"""Asamblarea capitolului standard CORE din secțiunile de conținut.
+
+Utilitar comun: consumat de skills/scop-core-capitol/ și skills/generare-scope-core/,
+și, ca `backend/skills/scop_core/capitol.py`, de tool-ul web `scop-core`."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -96,7 +99,8 @@ def alege_sectiuni(fara=None, doar=None) -> list[Sectiune]:
 def construieste(doc, sectiuni, numar: int = 5, nivel: int = 1,
                  client: str = "[NUME CLIENT]",
                  elemente: list[Element] | None = None,
-                 delimitari: list[Delimitare] | None = None) -> None:
+                 delimitari: list[Delimitare] | None = None,
+                 dupa_sectiune=None) -> None:
     """Scrie capitolul în `doc`, deja pregătit cu stilurile gazdei.
 
     `elemente` — elemente suplimentare față de standard, cu plasarea deja
@@ -115,6 +119,12 @@ def construieste(doc, sectiuni, numar: int = 5, nivel: int = 1,
     standard și după orice element „propriu” — vezi coada de mai jos. La fel
     ca la `elemente`, `delimitari=None` și `delimitari=[]` nu ating pasul
     respectiv: nicio secțiune „Delimitări de scop” nu apare, nici măcar goală.
+
+    `dupa_sectiune(doc, sectiune)` — hook opțional, apelat imediat după tabelul de fluxuri al
+    fiecărei secțiuni (vezi `scrie_sectiune`). Permite consumatorilor care compun capitolul 4
+    într-o ordine proprie (ex. `skills/generare-scope-core/scope.py`) să insereze conținut
+    propriu *în interiorul* modulului, nu la coada capitolului — mecanism distinct de `elemente`,
+    folosit de consumatori diferiți; nimic împiedică folosirea amândurora deodată.
     """
     elemente = elemente or []
     delimitari = delimitari or []
@@ -143,41 +153,12 @@ def construieste(doc, sectiuni, numar: int = 5, nivel: int = 1,
     stil.para(doc, introducere)
 
     for i, s in enumerate(sectiuni, start=1):
-        stil.heading(doc, f"{numar}.{i}. {s.titlu}", nivel + 1)
-
-        stil.para(doc, "Scop", bold=True)
-        stil.para(doc, s.scop)
-
-        stil.para(doc, "Funcționalitate", bold=True)
-        stil.para(doc, s.functionalitate)
-
-        # Beneficiile lipsesc la configurare / migrare — activități de proiect, nu
-        # module de produs; șablonul nu are pentru ele. Blocul se sare complet, nu
-        # se scrie un titlu gol.
-        if s.beneficii:
-            stil.para(doc, "Beneficii", bold=True)
-            for b in s.beneficii:
-                stil.para(doc, b.titlu, bold=True)
-                stil.para(doc, b.text)
-
-        # `detaliere` lipsește la nomenclatoare — conținutul ei stă în `grupe`.
-        # Fără gardă, eticheta bold ar rămâne singură, fără nicio bulină sub ea.
-        if s.detaliere:
-            stil.para(doc, "Detaliere funcționalități", bold=True)
-            stil.bullets(doc, s.detaliere)
-        # Nomenclatoare are patru grupe cu sub-titlu propriu (Catalog articole,
-        # Parteneri, Liste de prețuri, Coduri de bare). Restul secțiunilor au
-        # `grupe` goală și bucla nu produce nimic.
-        for g in s.grupe:
-            stil.para(doc, g.titlu, bold=True)
-            stil.bullets(doc, g.puncte)
-
-        stil.para(doc, "Fluxurile de operațiuni care se vor implementa:", bold=True)
-        stil.tabel_fluxuri(doc, s.fluxuri)
+        eticheta = f"{numar}.{i}"
+        scrie_sectiune(doc, s, eticheta, nivel, dupa_sectiune)
 
         elemente_sectiune = [el for el in elemente if el.plasare == s.cheie]
         for j, el in enumerate(elemente_sectiune, start=1):
-            _scrie_element(doc, el, f"{numar}.{i}.{j}. {el.titlu}", nivel + 2)
+            _scrie_element(doc, el, f"{eticheta}.{j}. {el.titlu}", nivel + 2)
 
     # Elemente cu secțiune proprie: cele marcate explicit "propriu" și cele a
     # căror secțiune țintă nu e printre `sectiuni` (vezi docstring-ul de mai
@@ -196,3 +177,46 @@ def construieste(doc, sectiuni, numar: int = 5, nivel: int = 1,
         numar_delimitari = NUMAR_SECTIUNI_CANONICE + len(elemente_proprii) + 1
         stil.heading(doc, f"{numar}.{numar_delimitari}. Delimitări de scop", nivel + 1)
         stil.tabel_delimitari(doc, delimitari)
+
+
+def scrie_sectiune(doc, s, eticheta: str, nivel: int = 1, dupa_sectiune=None) -> None:
+    """Scrie o singură secțiune CORE, sub eticheta dată (ex. „4.3").
+
+    Extras din `construieste` ca să poată fi apelată și de consumatorii care compun capitolul 4
+    într-o ordine proprie, intercalând secțiuni care nu vin din SECTIUNI (vezi
+    `skills/generare-scope-core/scope.py::_cap_solutie`).
+    """
+    stil.heading(doc, f"{eticheta}. {s.titlu}", nivel + 1)
+
+    stil.para(doc, "Scop", bold=True)
+    stil.para(doc, s.scop)
+
+    stil.para(doc, "Funcționalitate", bold=True)
+    stil.para(doc, s.functionalitate)
+
+    # Beneficiile lipsesc la configurare / migrare — activități de proiect, nu
+    # module de produs; șablonul nu are pentru ele. Blocul se sare complet, nu
+    # se scrie un titlu gol.
+    if s.beneficii:
+        stil.para(doc, "Beneficii", bold=True)
+        for b in s.beneficii:
+            stil.para(doc, b.titlu, bold=True)
+            stil.para(doc, b.text)
+
+    # `detaliere` lipsește la nomenclatoare — conținutul ei stă în `grupe`.
+    # Fără gardă, eticheta bold ar rămâne singură, fără nicio bulină sub ea.
+    if s.detaliere:
+        stil.para(doc, "Detaliere funcționalități", bold=True)
+        stil.bullets(doc, s.detaliere)
+    # Nomenclatoare are patru grupe cu sub-titlu propriu (Catalog articole,
+    # Parteneri, Liste de prețuri, Coduri de bare). Restul secțiunilor au
+    # `grupe` goală și bucla nu produce nimic.
+    for g in s.grupe:
+        stil.para(doc, g.titlu, bold=True)
+        stil.bullets(doc, g.puncte)
+
+    stil.para(doc, "Fluxurile de operațiuni care se vor implementa:", bold=True)
+    stil.tabel_fluxuri(doc, s.fluxuri)
+
+    if dupa_sectiune is not None:
+        dupa_sectiune(doc, s)
