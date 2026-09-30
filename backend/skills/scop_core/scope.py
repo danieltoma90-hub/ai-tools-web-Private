@@ -34,6 +34,7 @@ class Suplimentar:
     nota: str = ""
     in_modul: str | None = None
     incadrare: str = "Inclus"
+    capturi: list[tuple[str, str]] = field(default_factory=list)   # (cale, legenda)
 
 
 @dataclass(frozen=True)
@@ -195,6 +196,8 @@ def _scrie_suplimentar_propriu(doc, e: Suplimentar, eticheta: str) -> None:
         stil.bullets(doc, e.puncte)
     if e.fluxuri:
         stil.tabel_fluxuri(doc, e.fluxuri)
+    for cale, legenda in e.capturi:
+        stil.captura(doc, cale, legenda)
     if e.nota:
         stil.para(doc, e.nota)
 
@@ -226,6 +229,8 @@ def _cap_solutie(doc, client: Client, sectiuni, suplimentare: list[Suplimentar],
                 stil.bullets(doc_, e.puncte)
             if e.fluxuri:
                 stil.tabel_fluxuri(doc_, e.fluxuri)
+            for cale, legenda in e.capturi:
+                stil.captura(doc_, cale, legenda)
             if e.nota:
                 stil.para(doc_, e.nota)
 
@@ -449,22 +454,16 @@ def _cap_validare(doc, client: Client, nr: int) -> None:
                [[semnatura, semnatura]], latimi=[8.3, 8.3], bold_prima_coloana=False)
 
 
-def _rescrie_antetul(doc, text: str | None) -> None:
-    """Înlocuiește antetul moștenit din gazdă.
+def _rescrie_antet_subsol(doc, cfg_stil: dict, client: Client, versiune: str) -> None:
+    """Rescrie antetul și linia de subsol moștenite din gazdă.
 
-    Gazda e documentul-frate, deci antetul ei numește aria lui („Modul Producție"). Lăsat așa,
-    documentul CORE ar purta pe fiecare pagină titlul altui document.
+    Gazda e un document de client: antetul îi numește aria, iar subsolul îi poartă numele. Lăsate
+    așa, documentul nou le tipărește pe fiecare pagină.
     """
-    if not text:
-        return
-    for sec in doc.sections:
-        for antet in (sec.header, sec.first_page_header, sec.even_page_header):
-            if antet is None or not antet.paragraphs:
-                continue
-            for par in antet.paragraphs:
-                for r in list(par.runs):
-                    r._element.getparent().remove(r._element)
-            antet.paragraphs[-1].text = text
+    subsol = cfg_stil.get("subsol")
+    if subsol is None:
+        subsol = f"{client.nume}  |  Charisma ERP  |  v{versiune}"
+    stil.rescrie_antet_subsol(doc, text_antet=cfg_stil.get("antet"), text_subsol=subsol)
 
 
 # --------------------------------------------------------------------------- asamblare
@@ -489,8 +488,10 @@ def genereaza(cfg: dict, cale_iesire, client: Client | None = None,
     )
 
     gazda = (cfg.get("stil", {}) or {}).get("document_gazda") or None
+    stil.reseteaza_contorul_figurilor()
     doc = stil.document_din_gazda(gazda)
-    _rescrie_antetul(doc, (cfg.get("stil", {}) or {}).get("antet"))
+    _rescrie_antet_subsol(doc, cfg.get("stil", {}) or {}, client,
+                          d.get("versiune", "1.0") if (d := cfg.get("document", {})) else "1.0")
 
     d = cfg.get("document", {})
     stil.para(doc, d.get("titlu", "Descrierea soluției ofertate"), bold=True)

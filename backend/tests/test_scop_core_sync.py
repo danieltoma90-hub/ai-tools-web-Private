@@ -27,6 +27,9 @@ COPIA = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_core" / "
 SURSA_STIL = pathlib.Path("d:/AI_Claude/tools/shared/docx_scop.py")
 COPIA_STIL = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_core" / "stil.py"
 
+SURSA_SCOPE = pathlib.Path("d:/AI_Claude/skills/generare-scope-core/scope.py")
+COPIA_SCOPE = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_core" / "scope.py"
+
 SURSA_CAPITOL = pathlib.Path("d:/AI_Claude/tools/shared/capitol_core.py")
 COPIA_CAPITOL = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_core" / "capitol.py"
 
@@ -81,6 +84,22 @@ def test_capitol_nu_a_divergat():
     docstring-ul modulului) — restul conținutului trebuie să fie identic."""
     assert _hash_fara_antet(COPIA_CAPITOL) == _hash_fara_antet(SURSA_CAPITOL), (
         "capitol.py diferă de tools/shared/capitol_core.py (dincolo de "
+        "blocul de import, care e singura diferență acceptată). "
+        "Conținutul se editează în sursă și se copiază aici."
+    )
+
+
+@pytest.mark.skipif(not SURSA_SCOPE.is_file(), reason="repo-ul sursă nu e accesibil aici")
+def test_scope_nu_a_divergat():
+    """`scope.py` importă din pachetul local prin `sys.path`, copia de aici
+    prin import relativ — doar blocul de import diferă.
+
+    Testul lipsea când `docx_scop.py` a luat-o înainte cu rescrierea de
+    antet+subsol și inserarea capturilor: driftul din `stil.py` a fost prins,
+    al lui `scope.py` nu. De aici încolo, e prins.
+    """
+    assert _hash_fara_antet(COPIA_SCOPE) == _hash_fara_antet(SURSA_SCOPE), (
+        "scope.py diferă de skills/generare-scope-core/scope.py (dincolo de "
         "blocul de import, care e singura diferență acceptată). "
         "Conținutul se editează în sursă și se copiază aici."
     )

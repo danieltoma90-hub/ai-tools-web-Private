@@ -11,10 +11,11 @@ import pathlib
 
 from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Cm, RGBColor
+from docx.shared import Cm, Pt, RGBColor
 
 RADACINA = pathlib.Path(__file__).resolve().parents[2]
 
@@ -566,11 +567,7 @@ def transliterare_document(doc) -> int:
     `doc.paragraphs` nu intra. Intoarce numarul de noduri modificate.
     """
     parti = [doc.element.body]
-    for sec in doc.sections:
-        for zona in (sec.header, sec.footer, sec.first_page_header, sec.first_page_footer,
-                     sec.even_page_header, sec.even_page_footer):
-            if zona is not None:
-                parti.append(zona._element)
+    parti += [c._element for c in _containere_antet_subsol(doc)]
 
     schimbate = 0
     for parte in parti:
@@ -591,3 +588,103 @@ def transliterare_document(doc) -> int:
                 setattr(props, camp, curat)
                 schimbate += 1
     return schimbate
+
+
+def _containere_antet_subsol(doc, antet: bool = True, subsol: bool = True):
+    """Containerele reale de antet/subsol, sarind secțiunile legate de precedenta.
+
+    Aceeasi regula ca in `texte_antet_subsol` si `curata_antet_subsol`: o secțiune legata nu are
+    parte proprie, iar atingerea ei ar forța crearea uneia noi.
+    """
+    for sectiune in doc.sections:
+        if antet and not sectiune.header.is_linked_to_previous:
+            yield sectiune.header
+        if subsol and not sectiune.footer.is_linked_to_previous:
+            yield sectiune.footer
+
+
+def _paragrafe_container(container):
+    """Paragrafele unui antet/subsol, inclusiv cele din celulele tabelelor.
+
+    Sablonul TotalSoft tine linia de identificare intr-un tabel de subsol, nu intr-un paragraf
+    simplu — o parcurgere care s-ar opri la `container.paragraphs` ar rata exact numele clientului.
+    """
+    for p in container.paragraphs:
+        yield p
+    for tabel in container.tables:
+        for row in tabel.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    yield p
+
+
+def _are_camp(paragraf) -> bool:
+    """Paragraful conține un camp Word (numerotare de pagina, referinta)."""
+    return bool(paragraf._p.findall(".//" + qn("w:instrText")))
+
+
+def _scrie_linia(container, text: str) -> bool:
+    """Scrie `text` in primul paragraf fara camp din container. Intoarce True daca a scris."""
+    for par in _paragrafe_container(container):
+        if _are_camp(par):
+            continue
+        par.add_run(text)
+        return True
+    return False
+
+
+def rescrie_antet_subsol(doc, text_antet=None, text_subsol=None) -> None:
+    """Inlocuieste liniile moștenite din gazda cu cele ale documentului curent.
+
+    Gazda e un document de client: antetul ii numeste aria, iar subsolul ii poarta numele si
+    versiunea. Lasate asa, documentul nou le tipareste pe fiecare pagina. Se goleste cu
+    `curata_antet_subsol` (care pastreaza tabelele, logourile si codurile de camp) si se scrie
+    linia noua in primul paragraf fara camp, ca numerotarea paginii sa ramana intacta.
+    """
+    if text_antet is None and text_subsol is None:
+        return
+    curata_antet_subsol(doc)
+    if text_antet:
+        for container in _containere_antet_subsol(doc, antet=True, subsol=False):
+            _scrie_linia(container, text_antet)
+    if text_subsol:
+        for container in _containere_antet_subsol(doc, antet=False, subsol=True):
+            _scrie_linia(container, text_subsol)
+
+
+_CONTOR_FIGURI = {"n": 0}
+
+
+def reseteaza_contorul_figurilor() -> None:
+    """Contorul de figuri e per document; se reseteaza la inceputul fiecarei generari."""
+    _CONTOR_FIGURI["n"] = 0
+
+
+def captura(doc, cale, legenda: str = "", latime_cm: float = 16.0):
+    """Insereaza o captura de ecran, centrata, cu legenda numerotata dedesubt.
+
+    Latimea implicita umple zona utila a paginii A4 cu marginile sablonului. Legenda foloseste
+    stilul `Caption` daca gazda il are; altfel un paragraf italic mic, ca sa nu depindem de un
+    stil care poate lipsi.
+    """
+    import pathlib
+
+    cale = pathlib.Path(cale)
+    if not cale.is_file():
+        raise FileNotFoundError(f"Captura nu exista: {cale}")
+
+    par = doc.add_paragraph()
+    par.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    par.add_run().add_picture(str(cale), width=Cm(latime_cm))
+
+    if legenda:
+        _CONTOR_FIGURI["n"] += 1
+        try:
+            leg = doc.add_paragraph(style="Caption")
+        except KeyError:
+            leg = doc.add_paragraph()
+        leg.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = leg.add_run(f"Figura {_CONTOR_FIGURI['n']}. {legenda}")
+        run.italic = True
+        run.font.size = Pt(8.5)
+    return par
