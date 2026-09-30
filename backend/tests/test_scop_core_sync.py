@@ -35,8 +35,18 @@ COPIA_CAPITOL = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_c
 
 
 def _hash(p: pathlib.Path) -> str:
-    return hashlib.sha256(p.read_bytes()).hexdigest()
+    """Hash peste conținut, cu sfârșiturile de linie normalizate.
 
+    Cele două repo-uri au politici diferite: ai-tools-web are un
+    ``.gitattributes`` cu ``*.py text eol=lf``, repo-ul sursă nu are, deci
+    ``core.autocrlf`` îi lasă fișierele cu CRLF. Un ``git checkout``
+    re-materializează copia cu LF, iar o comparație pe octeți bruți ar pica
+    pe ceva care nu e conținut. Testul păzește conținutul, nu artefactele de
+    checkout — o singură linie de cod schimbată tot îl face să pice.
+    """
+    text = p.read_text(encoding="utf-8")
+    text = text.replace(chr(13) + chr(10), chr(10)).replace(chr(13), chr(10))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 def _hash_fara_antet(p: pathlib.Path) -> str:
     """Hash peste conținutul fișierului, excluzând liniile de import/`sys.path`
