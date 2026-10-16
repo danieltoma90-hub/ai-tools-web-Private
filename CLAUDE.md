@@ -139,6 +139,7 @@ Verificare rapidă: `curl -H "apikey: <cheia>" "https://zjmtqitymnrmmmsfoolp.sup
 - [x] Pagina Repository (istoricul documentelor)
 - [x] Invite useri (email link, doar @totalsoft.ro)
 - [x] Auth callback pentru link-uri invite
+- [x] „Am uitat parola” (16.10.2026): buton pe /login → `/login/parola-uitata` (email) → `/api/auth/recover` (Supabase `/auth/v1/recover`, `redirect_to` = `/auth/callback`, aceeași adresă aprobată ca la invitații; același mesaj și pentru adresele fără cont) → linkul din email ajunge în `/auth/callback` cu `type=recovery` → `/auth/parola-noua` → `/api/auth/reset-password` (`PUT /auth/v1/user` cu jetonul din link, min. 8 caractere) → intră direct în cont. Linkurile expirate (resetare sau invitație) duc la „Am uitat parola”. Tot așa își pot crea parola și cei invitați care n-au avut niciodată una. Textul emailului se schimbă din Supabase → Authentication → Emails.
 
 ## Probleme rezolvate (să nu se repete)
 

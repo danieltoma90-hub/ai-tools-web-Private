@@ -12,9 +12,16 @@ export default function AuthCallback() {
 
     if (error || !access_token) {
       setMsg("Link invalid sau expirat.");
+      // linkul (de resetare sau de invitație) a expirat: utilizatorul își cere singur unul nou
       setTimeout(() => {
-        window.location.href = "/login?error=invalid_credentials";
+        window.location.href = "/login/parola-uitata?eroare=link_expirat";
       }, 2000);
+      return;
+    }
+
+    // linkul de resetare a parolei („Am uitat parola”): întâi parola nouă, apoi intrarea în cont
+    if (params.get("type") === "recovery") {
+      window.location.replace(`/auth/parola-noua#${hash}`);
       return;
     }
 

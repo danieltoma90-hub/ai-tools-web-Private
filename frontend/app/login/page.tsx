@@ -58,6 +58,12 @@ export default async function LoginPage({
             Intră în cont
           </button>
         </form>
+        <a
+          href="/login/parola-uitata"
+          className="block w-full text-center border border-[#18257f]/30 text-[#18257f] py-2 rounded-lg text-sm font-medium hover:bg-[#18257f]/5 mt-3"
+        >
+          Am uitat parola
+        </a>
       </div>
     </div>
   );
