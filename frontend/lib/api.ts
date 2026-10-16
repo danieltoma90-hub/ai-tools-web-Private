@@ -149,26 +149,6 @@ export async function pollMinutaJob(jobId: string): Promise<{
   }>;
 }
 
-export async function postMinutaFree(
-  storagePath: string,
-  filename: string,
-  optiuni?: OptiuniMinutaApi
-): Promise<{
-  job_id: string;
-  est_minutes?: number;
-  chunks?: number;
-}> {
-  const form = new FormData();
-  form.append("storage_path", storagePath);
-  form.append("filename", filename);
-  appendOptiuni(form, optiuni);
-  return apiFetch(`${PROXY}/minuta-free`, { method: "POST", body: form }) as Promise<{
-    job_id: string;
-    est_minutes?: number;
-    chunks?: number;
-  }>;
-}
-
 export type EstimateResponse = {
   estimate_id: string;
   est_tokens: number;
@@ -656,4 +636,67 @@ export type ScopCoreJob = {
 
 export async function getScopCoreJob(jobId: string): Promise<ScopCoreJob> {
   return apiFetch(`${PROXY}/scop-core/job/${jobId}`) as Promise<ScopCoreJob>;
+}
+
+// ── Grupuri de utilizatori și accesul pe module ─────────────────────────────
+
+export type AccesEu = {
+  email: string;
+  grup: { id: string; nume: string };
+  module: string[];
+  admin: boolean;
+};
+
+export type Grup = { id: string; nume: string; module: string[] };
+
+export type UtilizatorAcces = {
+  email: string;
+  activ: boolean;
+  ultima_conectare: string;
+  grup: string;
+  explicit: boolean;
+  admin: boolean;
+};
+
+export type ConfigAcces = {
+  module: Record<string, string>;
+  grupuri: Grup[];
+  grup_implicit: string;
+  utilizatori?: UtilizatorAcces[];
+};
+
+export async function getAccesEu(): Promise<AccesEu> {
+  return apiFetch(`${PROXY}/acces/eu`) as Promise<AccesEu>;
+}
+
+export async function getConfigAcces(): Promise<ConfigAcces> {
+  return apiFetch(`${PROXY}/acces/config`) as Promise<ConfigAcces>;
+}
+
+function trimiteJson(method: string, path: string, body: unknown) {
+  return apiFetch(`${PROXY}/${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function creeazaGrup(nume: string, module: string[]): Promise<ConfigAcces> {
+  return trimiteJson("POST", "acces/grupuri", { nume, module }) as Promise<ConfigAcces>;
+}
+
+export async function actualizeazaGrup(id: string, nume: string, module: string[]): Promise<ConfigAcces> {
+  return trimiteJson("PUT", `acces/grupuri/${encodeURIComponent(id)}`, { nume, module }) as Promise<ConfigAcces>;
+}
+
+export async function stergeGrup(id: string): Promise<ConfigAcces> {
+  return apiFetch(`${PROXY}/acces/grupuri/${encodeURIComponent(id)}`, { method: "DELETE" }) as Promise<ConfigAcces>;
+}
+
+export async function seteazaMembru(email: string, grup: string): Promise<{ ok: boolean }> {
+  return trimiteJson("PUT", "acces/membri", { email, grup }) as Promise<{ ok: boolean }>;
+}
+
+export async function seteazaGrupImplicit(grup: string): Promise<ConfigAcces> {
+  return trimiteJson("PUT", "acces/grup-implicit", { grup }) as Promise<ConfigAcces>;
 }

@@ -9,7 +9,8 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 
 import jobs
-from auth import verify_token
+from auth import verify_token  # noqa: F401
+from acces import cere_modul
 from pipelines.training_pipeline import estimate_training_job, run_training_pipeline
 from storage import download_upload, upload_file
 
@@ -35,7 +36,7 @@ def estimate_training(
     tip: str = "core",
     zile: int = 3,
     cu_specificatie: bool = False,
-    user=Depends(verify_token),
+    user=Depends(cere_modul("training")),
 ):
     """Cum se raportează conținutul standard la durata cerută."""
     _valideaza(tip, zile)
@@ -102,7 +103,7 @@ async def generate_training(
     client: str = Form(""),
     storage_path: str = Form(""),
     file: UploadFile | None = File(None),
-    user=Depends(verify_token),
+    user=Depends(cere_modul("training")),
 ):
     """Generează agenda. Specificația e opțională la CORE, obligatorie la Producție.
 
@@ -151,7 +152,7 @@ async def generate_training(
 
 
 @router.get("/training/job/{job_id}")
-async def get_training_job(job_id: str, user=Depends(verify_token)):
+async def get_training_job(job_id: str, user=Depends(cere_modul("training"))):
     job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job negăsit sau expirat")

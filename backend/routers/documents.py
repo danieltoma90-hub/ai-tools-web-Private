@@ -1,10 +1,21 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+import acces
 from auth import verify_token
 from storage import ALLOWED_TOOLS, list_files, get_signed_urls, get_storage_usage, delete_file
 
 router = APIRouter()
+
+
+def _permise(files: list[dict], user) -> list[dict]:
+    """Doar documentele modulelor la care utilizatorul are acces (grupul lui)."""
+    email, cfg = acces.email_din(user), acces.incarca_config()
+    return [
+        f for f in files
+        # folderul din Storage e primul segment al căii: {tool}/{email}/{fișier}
+        if acces.acces_la_tool(email, f.get("tool") or f.get("storage_path", "").split("/", 1)[0], cfg)
+    ]
 
 
 @router.get("/storage/usage")
@@ -17,7 +28,7 @@ def storage_usage(user=Depends(verify_token)):
 def dashboard_summary(user=Depends(verify_token)):
     """Datele paginii Acasă într-un singur apel: o singură listare (refolosită
     și la usage) și URL-uri semnate doar pentru cele 5 documente recente."""
-    files = list_files()
+    files = _permise(list_files(), user)
 
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
     week_count = 0
@@ -65,10 +76,12 @@ def get_documents(
     """
     if tool is not None and tool not in ALLOWED_TOOLS:
         raise HTTPException(status_code=422, detail=f"Tool necunoscut: {tool}")
+    if tool is not None and not acces.acces_la_tool(acces.email_din(user), tool):
+        raise HTTPException(status_code=403, detail="Nu ai acces la documentele acestui modul.")
     if limit is not None and limit < 1:
         raise HTTPException(status_code=422, detail="limit trebuie să fie cel puțin 1")
 
-    files = list_files(tool=tool)
+    files = _permise(list_files(tool=tool), user)
     if limit is not None:
         files = files[:limit]
     paths = [f.get("storage_path", "") for f in files]
@@ -96,6 +109,8 @@ def delete_document(storage_path: str, user=Depends(verify_token)):
     """Șterge un document din Supabase Storage.
     Utilizatorul poate șterge doar propriile documente (email-ul este în path).
     """
+    if not acces.acces_la_tool(acces.email_din(user), storage_path.split("/", 1)[0]):
+        raise HTTPException(status_code=403, detail="Nu ai acces la documentele acestui modul.")
     # verify_token returnează obiect supabase User, nu dict — .get() ar crăpa
     user_email = getattr(user, "email", None) or ""
     # Verifică că path-ul conține email-ul utilizatorului curent

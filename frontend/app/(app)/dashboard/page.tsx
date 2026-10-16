@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { getDashboardSummary, type DashboardSummary } from "@/lib/api";
+import { poateFolosi, useAcces } from "@/lib/acces";
 
 const CACHE_KEY = "dashboard-summary-v1";
 const REFRESH_INTERVAL_MS = 30_000; // refresh periodic cat timp tabul e vizibil
@@ -62,6 +63,7 @@ function formatDate(iso: string) {
 }
 
 export default function Dashboard() {
+  const { acces, eroare: eroareAcces } = useAcces();
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [stale, setStale] = useState(false);
   const loadingRef = useRef(false);
@@ -144,7 +146,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-        {TOOLS.map((t) => (
+        {TOOLS.filter((t) => !!eroareAcces || poateFolosi(acces, t.tool)).map((t) => (
           <div
             key={t.tool}
             className="bg-white rounded-xl border border-[#e2e5f0] p-4"

@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { MODUL_TOOL, poateFolosi, useAcces } from "@/lib/acces";
 import { getDocuments, deleteDocument, getStorageUsage } from "@/lib/api";
 
 type Doc = {
@@ -104,6 +105,7 @@ function cleanupSuggestions(docs: Doc[]): Suggestion[] {
 }
 
 export default function RepositoryPage() {
+  const { acces, eroare: eroareAcces } = useAcces();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -181,7 +183,7 @@ export default function RepositoryPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {["toate", ...FILTRE].map((f) => (
+          {["toate", ...FILTRE.filter((f) => !!eroareAcces || poateFolosi(acces, MODUL_TOOL[f]))].map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}

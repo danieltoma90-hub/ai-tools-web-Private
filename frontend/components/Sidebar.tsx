@@ -2,14 +2,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/lib/auth";
+import { poateFolosi, useAcces } from "@/lib/acces";
 
-const items = [
+// `modul` = skill-ul de care ține pagina; meniul arată doar ce permite grupul utilizatorului
+const items: { href: string; icon: string; label: string; modul?: string }[] = [
   { href: "/dashboard", icon: "🏠", label: "Acasă" },
-  { href: "/minuta", icon: "📝", label: "Minută" },
-  { href: "/mockup", icon: "🎨", label: "Mockup" },
-  { href: "/scenarii", icon: "🧪", label: "Scenarii" },
-  { href: "/scop-core", icon: "📄", label: "Scop CORE" },
-  { href: "/training", icon: "🎓", label: "Training" },
+  { href: "/minuta", icon: "📝", label: "Minută", modul: "minuta" },
+  { href: "/mockup", icon: "🎨", label: "Mockup", modul: "mockup" },
+  { href: "/scenarii", icon: "🧪", label: "Scenarii", modul: "scenarii" },
+  { href: "/scop-core", icon: "📄", label: "Scop CORE", modul: "scop-core" },
+  { href: "/training", icon: "🎓", label: "Training", modul: "training" },
   { href: "/repository", icon: "📁", label: "Repository" },
 ];
 
@@ -41,6 +43,9 @@ function NavLink({
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { acces, eroare } = useAcces();
+  // dacă accesul nu poate fi aflat (server pornind), arătăm tot — serverul verifică oricum
+  const vizibile = items.filter((it) => !it.modul || !!eroare || poateFolosi(acces, it.modul));
 
   return (
     <aside className="w-[180px] bg-[#18257f] flex flex-col py-5 shrink-0">
@@ -52,10 +57,12 @@ export default function Sidebar() {
       </Link>
 
       <nav className="flex flex-col">
-        {items.map((it) => (
+        {vizibile.map((it) => (
           <NavLink
             key={it.href}
-            {...it}
+            href={it.href}
+            icon={it.icon}
+            label={it.label}
             active={pathname === it.href}
           />
         ))}
@@ -63,6 +70,14 @@ export default function Sidebar() {
 
       <div className="flex-1" />
 
+      {acces?.admin && (
+        <NavLink
+          href="/grupuri"
+          icon="👥"
+          label="Grupuri"
+          active={pathname === "/grupuri"}
+        />
+      )}
       <NavLink
         href="/invite"
         icon="👤"

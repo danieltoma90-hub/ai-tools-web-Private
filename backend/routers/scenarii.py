@@ -9,7 +9,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 import jobs
-from auth import verify_token
+from auth import verify_token  # noqa: F401
+from acces import cere_modul
 from pipelines.scenarii_pipeline import estimate_scenarii_job, run_scenarii_pipeline
 from storage import download_upload, upload_file
 
@@ -30,7 +31,7 @@ class GenerateRequest(BaseModel):
 @router.post("/scenarii/estimate")
 async def estimate_scenarii(
     req: EstimateRequest,
-    user=Depends(verify_token),
+    user=Depends(cere_modul("scenarii")),
 ):
     """Pas 1: fișierul e deja în Supabase Storage (upload direct din browser).
 
@@ -96,7 +97,7 @@ async def _run_job(job_id: str, input_path: Path, orig_filename: str, engine: st
 async def generate_scenarii(
     req: GenerateRequest,
     background_tasks: BackgroundTasks,
-    user=Depends(verify_token),
+    user=Depends(cere_modul("scenarii")),
 ):
     """Pas 2: pornește generarea (Claude sau Groq gratuit) pe fișierul din estimare."""
     if req.engine not in ("claude", "groq"):
@@ -121,7 +122,7 @@ async def generate_scenarii(
 
 
 @router.get("/scenarii/job/{job_id}")
-async def get_scenarii_job(job_id: str, user=Depends(verify_token)):
+async def get_scenarii_job(job_id: str, user=Depends(cere_modul("scenarii"))):
     job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job negăsit sau expirat")

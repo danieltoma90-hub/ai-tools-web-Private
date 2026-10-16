@@ -52,7 +52,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 import jobs
-from auth import verify_token
+from auth import verify_token  # noqa: F401
+from acces import cere_modul
 from pipelines.scop_core_pipeline import (
     DocumentInvalid,
     propune_job,
@@ -108,7 +109,7 @@ class GenerateRequest(BaseModel):
 @router.post("/scop-core/propune")
 async def propune_scop_core(
     req: PropuneRequest,
-    user=Depends(verify_token),
+    user=Depends(cere_modul("scop-core")),
 ):
     """Descarcă documentul suplimentar deja încărcat în storage, îl
     segmentează prin model și întoarce elementele propuse — utilizatorul le
@@ -328,7 +329,7 @@ async def _genereaza_document(req: GenerateRequest, user) -> dict:
 async def genereaza_scop_core(
     req: GenerateRequest,
     background_tasks: BackgroundTasks,
-    user=Depends(verify_token),
+    user=Depends(cere_modul("scop-core")),
 ):
     """Pornește jobul de fundal care construiește capitolul CORE — și,
     opțional, îl inserează într-o copie a documentului gazdă.
@@ -389,7 +390,7 @@ async def genereaza_scop_core(
 
 
 @router.get("/scop-core/job/{job_id}")
-async def get_scop_core_job(job_id: str, user=Depends(verify_token)):
+async def get_scop_core_job(job_id: str, user=Depends(cere_modul("scop-core"))):
     job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job negăsit sau expirat")

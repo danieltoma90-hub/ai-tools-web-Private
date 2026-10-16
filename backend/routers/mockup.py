@@ -8,7 +8,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 import jobs
-from auth import verify_token
+from auth import verify_token  # noqa: F401
+from acces import cere_modul
 from pipelines.mockup_pipeline import estimate_mockup_job, run_mockup_pipeline
 from storage import download_upload, upload_file
 
@@ -31,7 +32,7 @@ class GenerateRequest(BaseModel):
 @router.post("/mockup/estimate")
 async def estimate_mockup(
     req: EstimateRequest,
-    user=Depends(verify_token),
+    user=Depends(cere_modul("mockup")),
 ):
     """Pas 1: fișierul e deja în Supabase Storage (upload direct din browser).
 
@@ -97,7 +98,7 @@ async def _run_job(job_id: str, input_path: Path, orig_filename: str, use_ai: bo
 async def generate_mockup(
     req: GenerateRequest,
     background_tasks: BackgroundTasks,
-    user=Depends(verify_token),
+    user=Depends(cere_modul("mockup")),
 ):
     """Pas 2: pornește generarea (cu sau fără AI) pe fișierul din estimare."""
     est = jobs.pop_estimate(req.estimate_id)
@@ -121,7 +122,7 @@ async def generate_mockup(
 
 
 @router.get("/mockup/job/{job_id}")
-async def get_mockup_job(job_id: str, user=Depends(verify_token)):
+async def get_mockup_job(job_id: str, user=Depends(cere_modul("mockup"))):
     job = jobs.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job negăsit sau expirat")

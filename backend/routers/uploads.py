@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+import acces
 from auth import verify_token
 from storage import create_upload_url
 
@@ -21,6 +22,9 @@ async def sign_upload(req: SignRequest, user=Depends(verify_token)):
 
     Ocolește limita de 4,5MB a proxy-ului Vercel: fișierul nu mai trece prin el.
     """
+    modul = acces.TOOL_MODUL.get(req.tool)
+    if modul and not acces.are_acces(acces.email_din(user), modul):
+        raise HTTPException(status_code=403, detail=f"Nu ai acces la modulul „{acces.MODULE[modul]}”.")
     try:
         return create_upload_url(req.tool, req.filename)
     except ValueError as e:
