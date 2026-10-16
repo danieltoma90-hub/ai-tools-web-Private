@@ -44,15 +44,33 @@ async function postFile(path: string, file: File) {
   return apiFetch(`${PROXY}/${path}`, { method: "POST", body: form });
 }
 
+/** Opțiunile minutei: marcajele pentru revizie, limba și — doar cu Claude — structura și detaliul. */
+export type OptiuniMinutaApi = {
+  marcaje: boolean;
+  limba: string;
+  structura?: string;
+  detaliu?: string;
+};
+
+function appendOptiuni(form: FormData, o?: OptiuniMinutaApi) {
+  if (!o) return;
+  form.append("marcaje", o.marcaje ? "1" : "0");
+  form.append("limba", o.limba);
+  if (o.structura) form.append("structura", o.structura);
+  if (o.detaliu) form.append("detaliu", o.detaliu);
+}
+
 export async function postMinuta(
   storagePath: string,
   filename: string,
-  contextPath?: string
+  contextPath?: string,
+  optiuni?: OptiuniMinutaApi
 ): Promise<{ job_id: string }> {
   const form = new FormData();
   form.append("storage_path", storagePath);
   form.append("filename", filename);
   if (contextPath) form.append("context_path", contextPath);
+  appendOptiuni(form, optiuni);
   return apiFetch(`${PROXY}/minuta`, { method: "POST", body: form }) as Promise<{
     job_id: string;
   }>;
@@ -133,7 +151,8 @@ export async function pollMinutaJob(jobId: string): Promise<{
 
 export async function postMinutaFree(
   storagePath: string,
-  filename: string
+  filename: string,
+  optiuni?: OptiuniMinutaApi
 ): Promise<{
   job_id: string;
   est_minutes?: number;
@@ -142,6 +161,7 @@ export async function postMinutaFree(
   const form = new FormData();
   form.append("storage_path", storagePath);
   form.append("filename", filename);
+  appendOptiuni(form, optiuni);
   return apiFetch(`${PROXY}/minuta-free`, { method: "POST", body: form }) as Promise<{
     job_id: string;
     est_minutes?: number;

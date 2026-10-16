@@ -6,6 +6,7 @@ import ProcessingSpinner from "@/components/ProcessingSpinner";
 import ResultPanel from "@/components/ResultPanel";
 import HistoryPanel from "@/components/HistoryPanel";
 import ContextStep from "@/components/ContextStep";
+import OptiuniMinutaPanel, { OPTIUNI_IMPLICITE, type OptiuniMinuta } from "@/components/OptiuniMinuta";
 import {
   uploadSourceFile,
   postMinuta,
@@ -50,6 +51,7 @@ export default function MinutaPage() {
     previewHtml: string;
   } | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
+  const [optiuni, setOptiuni] = useState<OptiuniMinuta>(OPTIUNI_IMPLICITE);
   const cancelledRef = useRef(false);
 
   /** Urcă transcriptul direct în storage, cu o reîncercare dacă serverul dormea. */
@@ -81,7 +83,8 @@ export default function MinutaPage() {
       const { job_id } = await postMinuta(
         storagePath,
         file.name,
-        contextPath || undefined
+        contextPath || undefined,
+        optiuni
       );
 
       const job = await pollJob(() => pollMinutaJob(job_id), {
@@ -122,8 +125,10 @@ export default function MinutaPage() {
 
       let job_id: string;
       let est_minutes: number | undefined;
+      // Free: doar marcajele și limba — structura Fit-Gap și detaliul complet nu încap în cota gratuită
+      const optiuniFree = { marcaje: optiuni.marcaje, limba: optiuni.limba };
       try {
-        ({ job_id, est_minutes } = await postMinutaFree(storagePath, file.name));
+        ({ job_id, est_minutes } = await postMinutaFree(storagePath, file.name, optiuniFree));
       } catch (initErr) {
         // Render free tier se adoarme dupa inactivitate — retry automat dupa 5s
         const msg = initErr instanceof Error ? initErr.message : "";
@@ -131,7 +136,7 @@ export default function MinutaPage() {
           setFreeLabel("Server pornit, se retransmite automat...");
           await new Promise((r) => setTimeout(r, 5000));
           if (cancelledRef.current) return;
-          ({ job_id, est_minutes } = await postMinutaFree(storagePath, file.name));
+          ({ job_id, est_minutes } = await postMinutaFree(storagePath, file.name, optiuniFree));
         } else {
           throw initErr;
         }
@@ -248,6 +253,12 @@ export default function MinutaPage() {
                 </p>
               )}
             </div>
+            <OptiuniMinutaPanel
+              value={optiuni}
+              onChange={setOptiuni}
+              doarDeBaza={mode === "free"}
+              titlu={mode === "ai" ? "Pasul 3 · Opțiuni minută" : "Opțiuni minută"}
+            />
             <button
               onClick={handleGenerate}
               disabled={!file}
