@@ -123,7 +123,7 @@ Soluția activă (revizuită 2026-07-09):
 Verificare rapidă: `curl -H "apikey: <cheia>" "https://zjmtqitymnrmmmsfoolp.supabase.co/rest/v1/keepalive?select=id&limit=1"` (așteptat 200 + `[{"id":1}]`) și istoricul jobului din cron-job.org (trebuie verde).
 
 ## Useri Supabase
-- **Admin**: `daniel.toma@totalsoft.ro` / `claudiu`
+- **Admin**: `daniel.toma@totalsoft.ro` — parola NU se ține în repo (o păstrează Daniel separat; se schimbă din pagina Cont)
 - Adăugare useri noi: pagina `/invite` din app (trimite email cu link, doar `@totalsoft.ro`)
 - Sau manual din Supabase Dashboard → Authentication → Users → Add user
 
@@ -132,7 +132,8 @@ Verificare rapidă: `curl -H "apikey: <cheia>" "https://zjmtqitymnrmmmsfoolp.sup
 - [x] Middleware auth (JWT expiry check)
 - [x] Proxy server-side pentru backend calls
 - [x] Pagina Minută (upload Excel → Word + preview HTML)
-- [x] Minută — metoda din minutele VEDAŞ (AI_Claude): transcrierea pregătită în blocuri „[hh:mm:ss] Vorbitor: text” (`skills/minuta/scripts/transcript_prep.py`, −52–55% text), reguli de redactare (`prompts/reguli_*.md`), opțiuni în pagină: marcaje [DEDUCȚIE]/[COMPLETARE]/[CLARIFICARE NEEDED] cu legendă, limba RO/EN, structura Fit-Gap pe formatul F.05 (`prompts/extract_fitgap.md`, `scripts/fitgap.py`), detaliu complet (16.000 tokeni). Free primește doar marcajele și limba (cota Groq). Verificarea cu dicționare Hunspell NU e pe site: turca are nevoie de ~700 MB RAM, Render free are 512 MB
+- [x] Grupuri de utilizatori și acces pe module (`backend/acces.py`, `routers/grupuri.py`, pagina `/grupuri`, doar admini): un grup per utilizator; „Echipa ERP” = toate modulele (`*`, și cele viitoare), „TotalSoft” = doar Minută (grup implicit pentru utilizatorii noi). Configurația e în Supabase Storage, bucket privat `config`, fișierul `grupuri.json`; la prima pornire, utilizatorii activi (conectați cel puțin o dată) intră în Echipa ERP. Se reconstruiește DOAR la 404 — o eroare de Storage nu suprascrie configurația. Admini = env `ADMIN_EMAILS` (implicit daniel.toma@totalsoft.ro). Fiecare rută de tool cere modulul ei (`cere_modul`), Repository/Acasă arată doar documentele modulelor permise; meniul și paginile se filtrează din `/api/acces/eu`.
+- [x] Minută — metoda din minutele VEDAŞ (AI_Claude): transcrierea pregătită în blocuri „[hh:mm:ss] Vorbitor: text” (`skills/minuta/scripts/transcript_prep.py`, −52–55% text), reguli de redactare (`prompts/reguli_*.md`), opțiuni în pagină: marcaje [DEDUCȚIE]/[COMPLETARE]/[CLARIFICARE NEEDED] cu legendă, limba RO/EN, structura Fit-Gap pe formatul F.05 (`prompts/extract_fitgap.md`, `scripts/fitgap.py`), detaliu complet (16.000 tokeni). Varianta Free (Groq) a fost scoasă din site pe 16.10.2026 (ruta `/minuta-free` și UI); `pipelines/minuta_free_pipeline.py` rămâne în cod, inactiv. Verificarea cu dicționare Hunspell NU e pe site: turca are nevoie de ~700 MB RAM, Render free are 512 MB
 - [x] Pagina Mockup (upload Excel → Word + HTML)
 - [x] Pagina Scenarii (upload Excel → Excel output)
 - [x] Pagina Repository (istoricul documentelor)
