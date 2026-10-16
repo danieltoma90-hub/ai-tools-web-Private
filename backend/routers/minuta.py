@@ -30,6 +30,30 @@ CONTEXT_TEMPLATE = SKILL_DIR / "template" / "Context_Proiect_Template.docx"
 router = APIRouter()
 ALLOWED_EXTENSIONS = {".vtt", ".docx"}
 
+sys.path.insert(0, str(SKILL_DIR / "scripts"))
+from limba import LANGS  # noqa: E402
+from reguli import DETALII, STRUCTURI  # noqa: E402
+
+
+def _optiuni(marcaje: str, limba: str, structura: str = "standard", detaliu: str = "standard") -> dict:
+    """Opțiunile din pagină, validate. Implicit: marcaje pentru revizie, română, structura standard."""
+    limba, structura, detaliu = (limba or "ro").lower(), (structura or "standard").lower(), (detaliu or "standard").lower()
+    if limba not in LANGS:
+        raise HTTPException(status_code=422, detail=f"Limba minutei trebuie să fie una din {LANGS}")
+    if structura not in STRUCTURI:
+        raise HTTPException(status_code=422, detail=f"Structura trebuie să fie una din {STRUCTURI}")
+    if detaliu not in DETALII:
+        raise HTTPException(status_code=422, detail=f"Detaliul trebuie să fie unul din {DETALII}")
+    return {"marcaje": (marcaje or "").strip().lower() not in ("", "0", "false", "nu", "off"),
+            "limba": limba, "structura": structura, "detaliu": detaliu}
+
+
+def _nume_fisier(stem: str, timestamp: str, optiuni: dict | None) -> str:
+    optiuni = optiuni or {}
+    prefix = "Minutes" if optiuni.get("limba") == "en" else "Minuta"
+    sufix = "_FitGap" if optiuni.get("structura") == "fitgap" else ""
+    return f"{prefix}_{stem}{sufix}_{timestamp}.docx"
+
 
 @router.get("/minuta/context-template")
 def download_context_template(user=Depends(verify_token)):
@@ -112,6 +136,7 @@ async def _run_job(
     stem: str,
     timestamp: str,
     context_storage_path: str = "",
+    optiuni: dict | None = None,
 ) -> None:
     context_path: Path | None = None
     try:
@@ -125,8 +150,9 @@ async def _run_job(
         docx_path, preview_html = await run_minuta_pipeline(
             input_path, api_key, context_path=context_path,
             on_step=lambda step: jobs.set_step(job_id, step),
+            **(optiuni or {}),
         )
-        filename = f"Minuta_{stem}_{timestamp}.docx"
+        filename = _nume_fisier(stem, timestamp, optiuni)
         user_email = (jobs.get_job(job_id) or {}).get("user_email", "anonymous")
         storage_path = upload_file(docx_path, tool="minuta", filename=filename, user_email=user_email)
         with open(docx_path, "rb") as f:
@@ -191,9 +217,14 @@ async def generate_minuta(
     storage_path: str = Form(""),
     filename: str = Form(""),
     context_path: str = Form(""),
+    marcaje: str = Form("1"),
+    limba: str = Form("ro"),
+    structura: str = Form("standard"),
+    detaliu: str = Form("standard"),
     user=Depends(verify_token),
 ):
     """Pornește procesarea minutei în fundal și returnează un job_id imediat."""
+    optiuni = _optiuni(marcaje, limba, structura, detaliu)
     input_path, nume = await _preia_fisierul(storage_path, filename, file)
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -207,7 +238,7 @@ async def generate_minuta(
     user_email = getattr(user, "email", None) or "anonymous"
     job_id = jobs.create_job(user_email)
     background_tasks.add_task(
-        _run_job, job_id, input_path, api_key, stem, timestamp, context_path
+        _run_job, job_id, input_path, api_key, stem, timestamp, context_path, optiuni
     )
 
     return {"job_id": job_id}
@@ -228,13 +259,18 @@ async def _run_free_job(
     api_key: str,
     stem: str,
     timestamp: str,
+    optiuni: dict | None = None,
 ) -> None:
     async def _on_step(step: str) -> None:
         jobs.set_step(job_id, step)
 
     try:
-        docx_path, preview_html = await run_minuta_free_pipeline(input_path, api_key, on_step=_on_step)
-        filename = f"Minuta_{stem}_{timestamp}.docx"
+        optiuni = optiuni or {}
+        docx_path, preview_html = await run_minuta_free_pipeline(
+            input_path, api_key, on_step=_on_step,
+            marcaje=optiuni.get("marcaje", False), limba=optiuni.get("limba", "ro"),
+        )
+        filename = _nume_fisier(stem, timestamp, optiuni)
         user_email = (jobs.get_job(job_id) or {}).get("user_email", "anonymous")
         storage_path = upload_file(docx_path, tool="minuta", filename=filename, user_email=user_email)
         with open(docx_path, "rb") as f:
@@ -259,10 +295,13 @@ async def generate_minuta_free(
     file: UploadFile | None = File(None),
     storage_path: str = Form(""),
     filename: str = Form(""),
+    marcaje: str = Form("1"),
+    limba: str = Form("ro"),
     user=Depends(verify_token),
 ):
     """Pornește generarea minutei free (Groq/Llama) în fundal și returnează job_id."""
     try:
+        optiuni = _optiuni(marcaje, limba)
         input_path, filename_raw = await _preia_fisierul(storage_path, filename, file)
 
         api_key = os.environ.get("GROQ_API_KEY")
@@ -288,7 +327,7 @@ async def generate_minuta_free(
         user_email = getattr(user, "email", None) or "anonymous"
 
         job_id = jobs.create_job(user_email)
-        background_tasks.add_task(_run_free_job, job_id, input_path, api_key, stem, timestamp)
+        background_tasks.add_task(_run_free_job, job_id, input_path, api_key, stem, timestamp, optiuni)
         return {
             "job_id": job_id,
             "est_minutes": est["est_minutes"],

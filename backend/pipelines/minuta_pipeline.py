@@ -22,6 +22,15 @@ TEMPLATE_PATH = SKILL_DIR / "template" / "F05_minuta_template.docx"
 sys.path.insert(0, str(SKILL_DIR / "scripts"))
 from build_minuta import build_minuta
 from context_parser import parse_context
+from fitgap import fitgap_sections
+from limba import LEGEND, PREVIEW, TEXT, docx_to_en
+from reguli import build_rules, with_legend
+from transcript_prep import prepare_transcript
+
+DEFAULT_MAX_TOKENS = 4096
+# detaliul complet și structura Fit-Gap scriu toată ședința: ~12.000 de cuvinte încap în 16.000 de tokeni,
+# iar 16.000 rămâne sub pragul de la care SDK-ul Anthropic cere streaming (~21.000)
+LONG_MAX_TOKENS = 16000
 
 
 def extract_vtt_text(vtt_path: Path) -> str:
@@ -43,18 +52,22 @@ def extract_docx_text(docx_path: Path) -> str:
 
 
 async def _call_claude(
-    client: AsyncAnthropic, prompt_file: str, transcript: str, context: str = ""
+    client: AsyncAnthropic, prompt_file: str, transcript: str, context: str = "",
+    extra: str = "", max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
     # Contextul precede transcriptul: numele, rolurile si glosarul trebuie citite
     # inainte de discutie, ca sa corecteze ce a stalcit transcrierea automata.
+    # Regulile de redactare (optiunile din pagina) vin imediat dupa prompt.
     parts = [prompt]
+    if extra:
+        parts.append(extra)
     if context:
         parts.append(context)
     parts.append(f"---TRANSCRIPT---\n{transcript}")
     response = await client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4096,
+        max_tokens=max_tokens,
         messages=[{"role": "user", "content": "\n\n".join(parts)}],
     )
     return response.content[0].text
@@ -90,30 +103,39 @@ def _parse_json_from_response(text: str) -> dict | list:
     raise ValueError(f"Nu s-a putut parsa JSON din răspunsul Claude (primii 200 chars): {text[:200]}")
 
 
-async def _extract_metadata(client: AsyncAnthropic, transcript: str, context: str = "") -> dict:
-    raw = await _call_claude(client, "extract_meeting_metadata.md", transcript, context)
+async def _extract_metadata(client: AsyncAnthropic, transcript: str, context: str = "", extra: str = "") -> dict:
+    raw = await _call_claude(client, "extract_meeting_metadata.md", transcript, context, extra)
     return _parse_json_from_response(raw)
 
 
-async def _extract_sections(client: AsyncAnthropic, transcript: str, context: str = "") -> dict:
-    raw = await _call_claude(client, "extract_sections.md", transcript, context)
+async def _extract_sections(
+    client: AsyncAnthropic, transcript: str, context: str = "", extra: str = "",
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+) -> dict:
+    raw = await _call_claude(client, "extract_sections.md", transcript, context, extra, max_tokens)
     return _parse_json_from_response(raw)
 
 
-async def _extract_action_items(client: AsyncAnthropic, transcript: str, context: str = "") -> list:
-    raw = await _call_claude(client, "extract_action_items.md", transcript, context)
+async def _extract_action_items(client: AsyncAnthropic, transcript: str, context: str = "", extra: str = "") -> list:
+    raw = await _call_claude(client, "extract_action_items.md", transcript, context, extra)
     return _parse_json_from_response(raw)
 
 
-async def _extract_followup(client: AsyncAnthropic, transcript: str, context: str) -> dict:
+async def _extract_followup(client: AsyncAnthropic, transcript: str, context: str, extra: str = "") -> dict:
     """Stadiul actiunilor deschise din context, dupa aceasta sedinta."""
-    raw = await _call_claude(client, "extract_followup.md", transcript, context)
+    raw = await _call_claude(client, "extract_followup.md", transcript, context, extra)
     return _parse_json_from_response(raw)
 
 
-async def _extract_profile(client: AsyncAnthropic, transcript: str, context: str = "") -> dict:
+async def _extract_profile(client: AsyncAnthropic, transcript: str, context: str = "", extra: str = "") -> dict:
     """Profilul beneficiarului, cerintele lui explicite si punctele ramase deschise."""
-    raw = await _call_claude(client, "extract_profile_requirements.md", transcript, context)
+    raw = await _call_claude(client, "extract_profile_requirements.md", transcript, context, extra)
+    return _parse_json_from_response(raw)
+
+
+async def _extract_fitgap(client: AsyncAnthropic, transcript: str, context: str = "", extra: str = "") -> dict:
+    """Conținutul pe capitolele Fit-Gap (rezumat, subiecte, probleme, soluție, acțiuni, riscuri, concluzie)."""
+    raw = await _call_claude(client, "extract_fitgap.md", transcript, context, extra, LONG_MAX_TOKENS)
     return _parse_json_from_response(raw)
 
 
@@ -144,7 +166,8 @@ def _block_to_html(block: dict) -> str:
     return ""
 
 
-def _build_preview_html(data: dict) -> str:
+def _build_preview_html(data: dict, limba: str = "ro") -> str:
+    P = PREVIEW[limba]
     meta = data.get("meta", {})
     sectiuni = data.get("sectiuni", [])
     pasi = data.get("pasi_urmatori", [])
@@ -154,8 +177,8 @@ def _build_preview_html(data: dict) -> str:
         f"<tr><td style='font-weight:600;padding:6px 10px;background:#f2f6fb;width:130px;border:1px solid #dde3ed'>{escape(lbl)}</td>"
         f"<td style='padding:6px 10px;border:1px solid #dde3ed'>{escape(str(meta.get(key, '') or ''))}</td></tr>"
         for lbl, key in [
-            ("Data", "data"), ("Client", "nume_client"), ("Subiect", "subiect"),
-            ("Inițiator", "initiator"), ("Locație", "locatia"), ("Durată", "durata"),
+            (P["data"], "data"), (P["client"], "nume_client"), (P["subiect"], "subiect"),
+            (P["initiator"], "initiator"), (P["locatia"], "locatia"), (P["durata"], "durata"),
         ]
         if meta.get(key)
     )
@@ -163,7 +186,7 @@ def _build_preview_html(data: dict) -> str:
     body = ""
     sec_idx = 1
     if context:
-        body += f"<h3>{sec_idx}. Context și Scop</h3>"
+        body += f"<h3>{sec_idx}. {P['context']}</h3>"
         for blk in context:
             body += _block_to_html(blk)
         sec_idx += 1
@@ -175,7 +198,7 @@ def _build_preview_html(data: dict) -> str:
         sec_idx += 1
 
     if pasi:
-        body += f"<h3>{sec_idx}. Pași următori</h3><ol>"
+        body += f"<h3>{sec_idx}. {P['pasi']}</h3><ol>"
         for p in pasi:
             resp = escape(p.get("responsabil", ""))
             act = escape(p.get("actiune", ""))
@@ -200,7 +223,7 @@ def _build_preview_html(data: dict) -> str:
   ul,ol{{padding-left:22px}} li{{margin:3px 0}}
 </style>
 </head><body>
-<h2>MINUTA INTALNIRII</h2>
+<h2>{P['titlu']}</h2>
 <p style="color:#2E5496;font-size:1.1em;font-weight:600;margin:2px 0">{subiect}</p>
 <p style="color:#555;margin:0 0 12px">{client}</p>
 <table>{meta_rows}</table>
@@ -208,7 +231,7 @@ def _build_preview_html(data: dict) -> str:
 </body></html>"""
 
 
-def _profile_section(profile: dict | None) -> dict | None:
+def _profile_section(profile: dict | None, limba: str = "ro") -> dict | None:
     """„Profilul beneficiarului" — cine e clientul, ca tabel."""
     if not isinstance(profile, dict):
         return None
@@ -220,12 +243,12 @@ def _profile_section(profile: dict | None) -> dict | None:
     if not rows:
         return None
     return {
-        "titlu": "Profilul beneficiarului",
-        "blocuri": [{"type": "table_2col", "header": ["Aspect", "Detaliu"], "rows": rows}],
+        "titlu": TEXT[limba]["profil"],
+        "blocuri": [{"type": "table_2col", "header": TEXT[limba]["profil_header"], "rows": rows}],
     }
 
 
-def _requirements_section(profile: dict | None) -> dict | None:
+def _requirements_section(profile: dict | None, limba: str = "ro") -> dict | None:
     """„Cerințe exprimate de beneficiar" — ce a cerut clientul, separat de rest."""
     if not isinstance(profile, dict):
         return None
@@ -237,12 +260,12 @@ def _requirements_section(profile: dict | None) -> dict | None:
     if not rows:
         return None
     return {
-        "titlu": "Cerințe și așteptări exprimate de beneficiar",
-        "blocuri": [{"type": "table_2col", "header": ["Zonă", "Cerință exprimată"], "rows": rows}],
+        "titlu": TEXT[limba]["cerinte"],
+        "blocuri": [{"type": "table_2col", "header": TEXT[limba]["cerinte_header"], "rows": rows}],
     }
 
 
-def _open_points_section(profile: dict | None) -> dict | None:
+def _open_points_section(profile: dict | None, limba: str = "ro") -> dict | None:
     """„Puncte rămase deschise" — ce NU s-a decis. Separat de pașii următori:
     acolo stau sarcini atribuite, aici întrebări fără răspuns."""
     if not isinstance(profile, dict):
@@ -251,12 +274,12 @@ def _open_points_section(profile: dict | None) -> dict | None:
     if not items:
         return None
     return {
-        "titlu": "Puncte rămase deschise",
+        "titlu": TEXT[limba]["deschise"],
         "blocuri": [{"type": "bullets", "items": items}],
     }
 
 
-def _followup_section(followup: dict | None) -> dict | None:
+def _followup_section(followup: dict | None, limba: str = "ro") -> dict | None:
     """Sectiunea „Stadiul actiunilor anterioare", ca tabel. None daca nu e cazul."""
     if not isinstance(followup, dict):
         return None
@@ -268,16 +291,16 @@ def _followup_section(followup: dict | None) -> dict | None:
         rows.append([
             item.get("actiune", ""),
             item.get("responsabil", "") or "—",
-            item.get("stare", "Nediscutată"),
+            item.get("stare", TEXT[limba]["nediscutata"]),
             detaliu,
         ])
     if not rows:
         return None
     return {
-        "titlu": "Stadiul acțiunilor anterioare",
+        "titlu": TEXT[limba]["followup"],
         "blocuri": [{
             "type": "table",
-            "header": ["Acțiune", "Responsabil", "Stare", "Detaliu"],
+            "header": TEXT[limba]["followup_header"],
             "rows": rows,
         }],
     }
@@ -311,6 +334,10 @@ async def run_minuta_pipeline(
     api_key: str,
     context_path: Path | None = None,
     on_step=None,
+    marcaje: bool = False,
+    limba: str = "ro",
+    structura: str = "standard",
+    detaliu: str = "standard",
 ) -> tuple[Path, str]:
     """Pipeline complet: transcript (.vtt sau .docx) → (docx_path, preview_html).
 
@@ -318,69 +345,85 @@ async def run_minuta_pipeline(
     numele/rolurile si glosarul din el corecteaza transcrierea, deciziile deja
     luate nu mai sunt raportate ca noi, iar minuta primeste in plus sectiunea
     „Stadiul actiunilor anterioare".
+
+    Optiunile din pagina: marcaje [DEDUCȚIE]/[COMPLETARE]/[CLARIFICARE NEEDED] cu legenda lor,
+    limba minutei (ro/en), structura (standard sau capitolele Fit-Gap, tot pe formatul F.05) si
+    detaliul (standard sau complet — toata sedinta, nu un rezumat).
     """
-    if transcript_path.suffix.lower() == ".vtt":
-        text = extract_vtt_text(transcript_path)
-    else:
-        text = extract_docx_text(transcript_path)
+    # blocuri „[hh:mm:ss] Vorbitor: text” — jumatate din textul brut, cu ora pastrata
+    text = prepare_transcript(transcript_path)
 
     project_ctx = parse_context(context_path) if context_path else None
     context_block = project_ctx.as_prompt_block() if project_ctx else ""
+    extra = build_rules(marcaje, limba, detaliu)
+    legend = LEGEND[limba] if marcaje else None
 
     client = AsyncAnthropic(api_key=api_key)
 
-    # Extragerile rulează în paralel — reduce timpul de la ~90s la ~30s
-    tasks = [
-        _extract_metadata(client, text, context_block),
-        _extract_sections(client, text, context_block),
-        _extract_action_items(client, text, context_block),
-        _extract_profile(client, text, context_block),
-    ]
-    # A cincea extragere doar daca exista actiuni deschise de urmarit
-    track_followup = bool(project_ctx and project_ctx.actiuni_deschise)
-    if track_followup:
-        tasks.append(_extract_followup(client, text, context_block))
+    if structura == "fitgap":
+        meta_raw, fitgap = await _cu_raportare([
+            _extract_metadata(client, text, context_block, extra),
+            _extract_fitgap(client, text, context_block, extra),
+        ], on_step)
+        meta = _meta_din(meta_raw)
+        data = {
+            "meta": meta,
+            "titlu_minuta": (fitgap.get("title_lines") or [""])[0] if isinstance(fitgap, dict) else "",
+            "sectiuni": fitgap_sections(fitgap, limba, legend),
+            "pasi_urmatori": [],  # actiunile sunt in capitolul „Acțiuni de urmărire"
+            "include_signature": False,
+        }
+    else:
+        # Extragerile rulează în paralel — reduce timpul de la ~90s la ~30s
+        sections_tokens = LONG_MAX_TOKENS if detaliu == "complet" else DEFAULT_MAX_TOKENS
+        tasks = [
+            _extract_metadata(client, text, context_block, extra),
+            _extract_sections(client, text, context_block, extra, sections_tokens),
+            _extract_action_items(client, text, context_block, extra),
+            _extract_profile(client, text, context_block, extra),
+        ]
+        # A cincea extragere doar daca exista actiuni deschise de urmarit
+        track_followup = bool(project_ctx and project_ctx.actiuni_deschise)
+        if track_followup:
+            tasks.append(_extract_followup(client, text, context_block, extra))
 
-    results = await _cu_raportare(tasks, on_step)
-    meta_raw, sections, action_raw, profile = results[0], results[1], results[2], results[3]
-    followup = results[4] if track_followup else None
+        results = await _cu_raportare(tasks, on_step)
+        meta_raw, sections, action_raw, profile = results[0], results[1], results[2], results[3]
+        followup = results[4] if track_followup else None
 
-    # Claude returnează {"meta": {...}, "_observatii": [...]} — extragem doar interiorul
-    meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
-    # Codul de proiect = descrierea meeting-ului (nu un cod generat)
-    if isinstance(meta, dict):
-        # Codul de proiect il stabileste modelul; il completam din subiect doar
-        # daca lipseste, ca antetul sa nu ramana gol.
-        if not meta.get("cod_proiect"):
-            meta["cod_proiect"] = meta.get("subiect", "")
-    # Claude returnează {"pasi_urmatori": [...]} — extragem lista
-    action_items = action_raw.get("pasi_urmatori", action_raw) if isinstance(action_raw, dict) else action_raw
+        meta = _meta_din(meta_raw)
+        # Claude returnează {"pasi_urmatori": [...]} — extragem lista
+        action_items = action_raw.get("pasi_urmatori", action_raw) if isinstance(action_raw, dict) else action_raw
 
-    # Ordinea de citire a minutei: cine e beneficiarul → ce s-a închis din trecut
-    # → ce s-a discutat acum → ce a cerut clientul → ce a rămas nerezolvat.
-    sectiuni = list(sections.get("sectiuni", []))
+        # Ordinea de citire a minutei: cine e beneficiarul → ce s-a închis din trecut
+        # → ce s-a discutat acum → ce a cerut clientul → ce a rămas nerezolvat.
+        sectiuni = list(sections.get("sectiuni", []))
 
-    profil = _profile_section(profile)
-    cerinte = _requirements_section(profile)
-    deschise = _open_points_section(profile)
-    followup_section = _followup_section(followup)
+        profil = _profile_section(profile, limba)
+        cerinte = _requirements_section(profile, limba)
+        deschise = _open_points_section(profile, limba)
+        followup_section = _followup_section(followup, limba)
 
-    if followup_section:
-        sectiuni.insert(0, followup_section)
-    if profil:
-        sectiuni.insert(0, profil)
-    if cerinte:
-        sectiuni.append(cerinte)
-    if deschise:
-        sectiuni.append(deschise)
+        if followup_section:
+            sectiuni.insert(0, followup_section)
+        if profil:
+            sectiuni.insert(0, profil)
+        if cerinte:
+            sectiuni.append(cerinte)
+        if deschise:
+            sectiuni.append(deschise)
 
-    data = {
-        "meta": meta,
-        "context_si_scop": sections.get("context_si_scop"),
-        "sectiuni": sectiuni,
-        "pasi_urmatori": action_items if isinstance(action_items, list) else [],
-        "include_signature": False,
-    }
+        context_si_scop = sections.get("context_si_scop")
+        if legend:
+            context_si_scop = with_legend(context_si_scop, legend)
+
+        data = {
+            "meta": meta,
+            "context_si_scop": context_si_scop,
+            "sectiuni": sectiuni,
+            "pasi_urmatori": action_items if isinstance(action_items, list) else [],
+            "include_signature": False,
+        }
 
     if on_step:
         on_step("building")
@@ -394,6 +437,19 @@ async def run_minuta_pipeline(
     output_path = Path(tempfile.mktemp(suffix=".docx"))
     build_minuta(json_path, output_path, template_path=TEMPLATE_PATH)
     json_path.unlink()
+    if limba == "en":
+        docx_to_en(output_path)
 
-    preview_html = _build_preview_html(data)
+    preview_html = _build_preview_html(data, limba)
     return output_path, preview_html
+
+
+def _meta_din(meta_raw) -> dict:
+    """Claude returnează {"meta": {...}, "_observatii": [...]} — extragem doar interiorul."""
+    meta = meta_raw.get("meta", meta_raw) if isinstance(meta_raw, dict) else meta_raw
+    if isinstance(meta, dict):
+        # Codul de proiect il stabileste modelul; il completam din subiect doar
+        # daca lipseste, ca antetul sa nu ramana gol.
+        if not meta.get("cod_proiect"):
+            meta["cod_proiect"] = meta.get("subiect", "")
+    return meta

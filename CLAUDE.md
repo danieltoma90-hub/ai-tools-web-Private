@@ -132,6 +132,7 @@ Verificare rapidă: `curl -H "apikey: <cheia>" "https://zjmtqitymnrmmmsfoolp.sup
 - [x] Middleware auth (JWT expiry check)
 - [x] Proxy server-side pentru backend calls
 - [x] Pagina Minută (upload Excel → Word + preview HTML)
+- [x] Minută — metoda din minutele VEDAŞ (AI_Claude): transcrierea pregătită în blocuri „[hh:mm:ss] Vorbitor: text” (`skills/minuta/scripts/transcript_prep.py`, −52–55% text), reguli de redactare (`prompts/reguli_*.md`), opțiuni în pagină: marcaje [DEDUCȚIE]/[COMPLETARE]/[CLARIFICARE NEEDED] cu legendă, limba RO/EN, structura Fit-Gap pe formatul F.05 (`prompts/extract_fitgap.md`, `scripts/fitgap.py`), detaliu complet (16.000 tokeni). Free primește doar marcajele și limba (cota Groq). Verificarea cu dicționare Hunspell NU e pe site: turca are nevoie de ~700 MB RAM, Render free are 512 MB
 - [x] Pagina Mockup (upload Excel → Word + HTML)
 - [x] Pagina Scenarii (upload Excel → Excel output)
 - [x] Pagina Repository (istoricul documentelor)

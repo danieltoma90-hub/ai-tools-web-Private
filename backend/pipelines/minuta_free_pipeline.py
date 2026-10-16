@@ -32,6 +32,9 @@ TEMPLATE_PATH = SKILL_DIR / "template" / "F05_minuta_template.docx"
 
 sys.path.insert(0, str(SKILL_DIR / "scripts"))
 from build_minuta import build_minuta
+from limba import LEGEND, PREVIEW, docx_to_en
+from reguli import build_rules, with_legend
+from transcript_prep import prepare_transcript
 
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
@@ -161,11 +164,14 @@ def shrink_for_413(content: str, error_msg: str) -> str:
 
 
 async def _call_groq(
-    client: AsyncGroq, prompt_file: str, content: str, state: dict, out_tokens: int
+    client: AsyncGroq, prompt_file: str, content: str, state: dict, out_tokens: int,
+    extra: str = "",
 ) -> str:
     """state["model"] = modelul curent; la limita zilnica trece pe urmatorul din lant.
     La 413 (o singura cerere peste TPM) continutul se micsoreaza si se reincearca."""
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
+    if extra:
+        prompt = f"{prompt}\n\n{extra}"
 
     last_error: Exception | None = None
     for attempt in range(5):
@@ -275,7 +281,8 @@ def _block_to_html(block: dict) -> str:
     return ""
 
 
-def _build_preview_html(data: dict) -> str:
+def _build_preview_html(data: dict, limba: str = "ro") -> str:
+    P = PREVIEW[limba]
     meta = data.get("meta", {})
     sectiuni = data.get("sectiuni", [])
     pasi = data.get("pasi_urmatori", [])
@@ -285,8 +292,8 @@ def _build_preview_html(data: dict) -> str:
         f"<tr><td style='font-weight:600;padding:6px 10px;background:#f2f6fb;width:130px;border:1px solid #dde3ed'>{escape(lbl)}</td>"
         f"<td style='padding:6px 10px;border:1px solid #dde3ed'>{escape(str(meta.get(key, '') or ''))}</td></tr>"
         for lbl, key in [
-            ("Data", "data"), ("Client", "nume_client"), ("Subiect", "subiect"),
-            ("Inițiator", "initiator"), ("Locație", "locatia"), ("Durată", "durata"),
+            (P["data"], "data"), (P["client"], "nume_client"), (P["subiect"], "subiect"),
+            (P["initiator"], "initiator"), (P["locatia"], "locatia"), (P["durata"], "durata"),
         ]
         if meta.get(key)
     )
@@ -294,7 +301,7 @@ def _build_preview_html(data: dict) -> str:
     body = ""
     sec_idx = 1
     if context:
-        body += f"<h3>{sec_idx}. Context și Scop</h3>"
+        body += f"<h3>{sec_idx}. {P['context']}</h3>"
         for blk in context:
             body += _block_to_html(blk)
         sec_idx += 1
@@ -306,7 +313,7 @@ def _build_preview_html(data: dict) -> str:
         sec_idx += 1
 
     if pasi:
-        body += f"<h3>{sec_idx}. Pași următori</h3><ol>"
+        body += f"<h3>{sec_idx}. {P['pasi']}</h3><ol>"
         for p in pasi:
             resp = escape(p.get("responsabil", ""))
             act = escape(p.get("actiune", ""))
@@ -331,7 +338,7 @@ def _build_preview_html(data: dict) -> str:
   ul,ol{{padding-left:22px}} li{{margin:3px 0}}
 </style>
 </head><body>
-<h2>MINUTA INTALNIRII</h2>
+<h2>{P['titlu']}</h2>
 <p style="color:#2E5496;font-size:1.1em;font-weight:600;margin:2px 0">{subiect}</p>
 <p style="color:#555;margin:0 0 12px">{client_name}</p>
 <table>{meta_rows}</table>
@@ -346,10 +353,7 @@ def estimate_free_job(transcript_path: Path) -> dict:
 
     Returneaza {"chunks", "calls", "est_tokens", "est_minutes", "fits_free_tier"}.
     """
-    if transcript_path.suffix.lower() == ".vtt":
-        text = extract_vtt_text(transcript_path)
-    else:
-        text = extract_docx_text(transcript_path)
+    text = prepare_transcript(transcript_path)
 
     chunk_chars = _chunk_size_chars()
     chunks = max(1, len(_split_chunks(text, chunk_chars)))
@@ -376,16 +380,20 @@ async def run_minuta_free_pipeline(
     transcript_path: Path,
     api_key: str,
     on_step=None,  # callable async(step: str) pentru progres UI
+    marcaje: bool = False,
+    limba: str = "ro",
 ) -> tuple[Path, str]:
     """Map-reduce cu Groq: transcript (.vtt/.docx) → (docx_path, preview_html).
 
     Acoperire completa a transcriptului. ~1 apel/minut → un meeting de 1h
     (10-12 bucati) dureaza ~12 minute.
     """
-    if transcript_path.suffix.lower() == ".vtt":
-        text = extract_vtt_text(transcript_path)
-    else:
-        text = extract_docx_text(transcript_path)
+    # blocuri „[hh:mm:ss] Vorbitor: text”, cu ora păstrată pentru trimiterile din minută
+    text = prepare_transcript(transcript_path)
+    # Regulile intră doar unde se scrie textul minutei (metadata, sinteza), nu în notițele
+    # intermediare: fiecare token de regulă ar micșora bucățile de transcriere din limita TPM.
+    meta_rules = build_rules(False, limba)
+    reduce_rules = build_rules(marcaje, limba)
 
     chunk_chars = _chunk_size_chars()
     chunks = _split_chunks(text, chunk_chars)
@@ -400,7 +408,7 @@ async def run_minuta_free_pipeline(
     meta_raw = await _call_groq(
         client, "extract_meeting_metadata.md",
         f"---TRANSCRIPT (inceput)---\n{text[:int(chunk_chars * 0.7)]}",
-        state, OUT_TOKENS["metadata"],
+        state, OUT_TOKENS["metadata"], meta_rules,
     )
     meta_raw = _parse_json(meta_raw)
 
@@ -429,7 +437,8 @@ async def run_minuta_free_pipeline(
     if on_step:
         await on_step("synthesis")
     # notitele trebuie sa incapa alaturi de prompt si de output-ul mare al sintezei
-    reduce_input_budget = _min_tpm() - PROMPT_RESERVE_TOKENS - OUT_TOKENS["reduce"]
+    reduce_input_budget = (_min_tpm() - PROMPT_RESERVE_TOKENS - OUT_TOKENS["reduce"]
+                           - int(len(reduce_rules) / ROMANIAN_CHARS_PER_TOKEN))
     notes = _compress_notes(
         notes, max_chars=int(reduce_input_budget * ROMANIAN_CHARS_PER_TOKEN * 0.9)
     )
@@ -438,7 +447,7 @@ async def run_minuta_free_pipeline(
         for i, n in enumerate(notes, start=1)
     )
     final_raw = await _call_groq(
-        client, "reduce_synthesis.md", notes_text, state, OUT_TOKENS["reduce"]
+        client, "reduce_synthesis.md", notes_text, state, OUT_TOKENS["reduce"], reduce_rules
     )
     final = _parse_json(final_raw)
 
@@ -453,9 +462,13 @@ async def run_minuta_free_pipeline(
             meta["cod_proiect"] = meta.get("subiect", "")
     action_items = final.get("pasi_urmatori", [])
 
+    context_si_scop = final.get("context_si_scop")
+    if marcaje:
+        context_si_scop = with_legend(context_si_scop, LEGEND[limba])
+
     data = {
         "meta": meta,
-        "context_si_scop": final.get("context_si_scop"),
+        "context_si_scop": context_si_scop,
         "sectiuni": final.get("sectiuni", []),
         "pasi_urmatori": action_items if isinstance(action_items, list) else [],
         "include_signature": False,
@@ -470,5 +483,7 @@ async def run_minuta_free_pipeline(
     output_path = Path(tempfile.mktemp(suffix=".docx"))
     build_minuta(json_path, output_path, template_path=TEMPLATE_PATH)
     json_path.unlink()
+    if limba == "en":
+        docx_to_en(output_path)
 
-    return output_path, _build_preview_html(data)
+    return output_path, _build_preview_html(data, limba)
