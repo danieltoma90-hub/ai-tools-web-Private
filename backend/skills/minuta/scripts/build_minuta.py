@@ -28,6 +28,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 if sys.stderr.encoding and sys.stderr.encoding.lower() not in ("utf-8", "utf8"):
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 
 from docx import Document
@@ -467,7 +468,42 @@ def _build_footer_text(meta: dict) -> str:
     return f"Minuta Intalnirii | {client}" if client else "Minuta Intalnirii"
 
 
-def build_minuta(json_path: Path, output_path: Path, template_path: Path | None = None) -> None:
+AUTOR_IMPLICIT = "TotalSoft"   # când nu se știe cine a generat minuta
+CLIENT_IMPLICIT = "TotalSoft"  # în titlul fișierului, când minuta nu are clientul identificat
+
+_MARCAJ = re.compile(
+    r"\s*\[(?:DEDUCȚIE|COMPLETARE|CLARIFICARE NEEDED|INFERENCE|ADDED|CLARIFICATION NEEDED)\b[^\]]*\]")
+
+
+def _fara_marcaje(text: str) -> str:
+    """Textul fără marcajele de revizie ([DEDUCȚIE: …], [CLARIFICATION NEEDED] etc.)."""
+    return re.sub(r"\s{2,}", " ", _MARCAJ.sub("", text or "")).strip(" –-")
+
+
+def titlu_document(meta: dict) -> str:
+    """Titlul din proprietățile fișierului: „Minuta Intalnirii – <client> – <subiect>”, cu clientul
+    identificat în minută sau „TotalSoft” dacă lipsește (docx_to_en îl trece în „Meeting Minutes – …”)."""
+    client = _fara_marcaje(meta.get("nume_client", "")) or CLIENT_IMPLICIT
+    subiect = _fara_marcaje(meta.get("subiect", ""))
+    return " – ".join(x for x in ("Minuta Intalnirii", client, subiect) if x)
+
+
+def _set_core_properties(doc, autor: str, titlu: str, subiect: str) -> None:
+    """Proprietățile fișierului (autor, titlu, date) — altfel rămân cele din șablon, care provine
+    dintr-un alt document (alt autor, titlul unui proces-verbal pentru alt client)."""
+    acum = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+    cp = doc.core_properties
+    cp.author = autor
+    cp.last_modified_by = autor
+    cp.title = titlu
+    cp.subject = subiect
+    cp.created = acum
+    cp.modified = acum
+    cp.revision = 1
+
+
+def build_minuta(json_path: Path, output_path: Path, template_path: Path | None = None,
+                 autor: str = AUTOR_IMPLICIT) -> None:
     if template_path is None:
         template_path = Path(__file__).parent.parent / "template" / "F05_minuta_template.docx"
     if not template_path.exists():
@@ -521,6 +557,7 @@ def build_minuta(json_path: Path, output_path: Path, template_path: Path | None 
     if data.get("include_signature"):
         _add_signature_block(doc)
 
+    _set_core_properties(doc, autor or AUTOR_IMPLICIT, titlu_document(meta), _fara_marcaje(subiect))
     doc.save(str(output_path))
     print(f"Minuta generată: {output_path}")
 
@@ -530,9 +567,11 @@ def main() -> int:
     parser.add_argument("json_input", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--template", type=Path, default=None)
+    parser.add_argument("--autor", default=AUTOR_IMPLICIT,
+                        help=f"autorul trecut în proprietățile fișierului (implicit: {AUTOR_IMPLICIT})")
     args = parser.parse_args()
     try:
-        build_minuta(args.json_input, args.output, args.template)
+        build_minuta(args.json_input, args.output, args.template, args.autor)
         return 0
     except Exception as e:
         print(f"Eroare: {e}", file=sys.stderr)

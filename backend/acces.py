@@ -67,6 +67,20 @@ def email_din(user: Any) -> str:
     return (email or "").strip().lower()
 
 
+def nume_utilizator(user: Any) -> str:
+    """Numele afișat al utilizatorului autentificat (de exemplu autorul documentelor generate):
+    numele din profil, dacă există, altfel din email („daniel.toma@totalsoft.ro” → „Daniel Toma”),
+    iar fără niciunul „TotalSoft”."""
+    profil = user.get("user_metadata") if isinstance(user, dict) else getattr(user, "user_metadata", None)
+    if isinstance(profil, dict):
+        for cheie in ("full_name", "name", "nume"):
+            nume = " ".join(str(profil.get(cheie) or "").split())
+            if nume:
+                return nume
+    parti = [p for p in re.split(r"[._+-]+", email_din(user).split("@")[0]) if p]
+    return " ".join(p[:1].upper() + p[1:] for p in parti) or "TotalSoft"
+
+
 # ── citire / scriere ─────────────────────────────────────────────────────────
 
 _lock = threading.Lock()

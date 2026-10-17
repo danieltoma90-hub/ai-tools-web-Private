@@ -338,8 +338,11 @@ async def run_minuta_pipeline(
     limba: str = "ro",
     structura: str = "standard",
     detaliu: str = "standard",
+    autor: str = "TotalSoft",
 ) -> tuple[Path, str]:
     """Pipeline complet: transcript (.vtt sau .docx) → (docx_path, preview_html).
+
+    autor: numele trecut ca autor în proprietățile documentului (utilizatorul care generează minuta).
 
     context_path: fisierul optional de Context Proiect (.docx). Cand e prezent,
     numele/rolurile si glosarul din el corecteaza transcrierea, deciziile deja
@@ -435,7 +438,7 @@ async def run_minuta_pipeline(
         json_path = Path(f.name)
 
     output_path = Path(tempfile.mktemp(suffix=".docx"))
-    build_minuta(json_path, output_path, template_path=TEMPLATE_PATH)
+    build_minuta(json_path, output_path, template_path=TEMPLATE_PATH, autor=autor)
     json_path.unlink()
     if limba == "en":
         docx_to_en(output_path)

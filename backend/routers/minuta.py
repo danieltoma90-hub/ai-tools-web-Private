@@ -19,7 +19,7 @@ from fastapi import (
 from fastapi.responses import FileResponse
 
 import jobs
-from acces import cere_modul
+from acces import cere_modul, nume_utilizator
 from pipelines.minuta_pipeline import run_minuta_pipeline
 from storage import download_document, download_upload, list_files, upload_file
 
@@ -136,6 +136,7 @@ async def _run_job(
     timestamp: str,
     context_storage_path: str = "",
     optiuni: dict | None = None,
+    autor: str = "TotalSoft",
 ) -> None:
     context_path: Path | None = None
     try:
@@ -149,6 +150,7 @@ async def _run_job(
         docx_path, preview_html = await run_minuta_pipeline(
             input_path, api_key, context_path=context_path,
             on_step=lambda step: jobs.set_step(job_id, step),
+            autor=autor,
             **(optiuni or {}),
         )
         filename = _nume_fisier(stem, timestamp, optiuni)
@@ -237,7 +239,8 @@ async def generate_minuta(
     user_email = getattr(user, "email", None) or "anonymous"
     job_id = jobs.create_job(user_email)
     background_tasks.add_task(
-        _run_job, job_id, input_path, api_key, stem, timestamp, context_path, optiuni
+        _run_job, job_id, input_path, api_key, stem, timestamp, context_path, optiuni,
+        nume_utilizator(user),
     )
 
     return {"job_id": job_id}
