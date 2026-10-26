@@ -146,6 +146,28 @@ def _plain_text(path: Path) -> str:
     return "\n".join(p.text for p in Document(str(path)).paragraphs if p.text.strip())
 
 
+# ora de la începutul unui bloc, „[00:12:30] ”
+_ORA_BLOC = re.compile(r"^\[(\d{2}:\d{2}:\d{2})\]", re.M)
+
+
+def prepare_transcripts(fisiere: list[tuple[Path, str]]) -> str:
+    """Una sau mai multe înregistrări ale aceleiași zile, într-o singură transcriere.
+
+    Teams împarte adesea o zi de ședințe în mai multe înregistrări (o pauză, altă sală, altă
+    ședință cu aceeași companie). Fiecare înregistrare primește un antet cu numele ei, iar ora din
+    blocuri primește în față numărul înregistrării — „[(2) 00:12:03]” —, ca minuta să poată trimite
+    la momentul exact chiar dacă ora se repetă de la o înregistrare la alta. O singură înregistrare
+    rămâne exact ca la `prepare_transcript`.
+    """
+    if len(fisiere) == 1:
+        return prepare_transcript(fisiere[0][0])
+    parti = []
+    for k, (cale, nume) in enumerate(fisiere, 1):
+        text = _ORA_BLOC.sub(lambda m: f"[({k}) {m.group(1)}]", prepare_transcript(cale))
+        parti.append(f"=== Înregistrarea {k} din {len(fisiere)}: „{nume}” ===\n{text}")
+    return "\n\n".join(parti)
+
+
 def prepare_transcript(path: Path) -> str:
     """Textul de dat modelului: un bloc pe rând, „[hh:mm:ss] Vorbitor: text”."""
     cues = read_vtt(path) if path.suffix.lower() == ".vtt" else read_docx(path)

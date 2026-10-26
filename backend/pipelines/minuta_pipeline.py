@@ -23,9 +23,9 @@ sys.path.insert(0, str(SKILL_DIR / "scripts"))
 from build_minuta import build_minuta
 from context_parser import parse_context
 from fitgap import fitgap_sections
-from limba import LEGEND, PREVIEW, TEXT, docx_to_en
+from limba import PREVIEW, TEXT, docx_to_en, legenda
 from reguli import build_rules, with_legend
-from transcript_prep import prepare_transcript
+from transcript_prep import prepare_transcripts
 
 DEFAULT_MAX_TOKENS = 4096
 # detaliul complet și structura Fit-Gap scriu toată ședința: ~12.000 de cuvinte încap în 16.000 de tokeni,
@@ -339,6 +339,8 @@ async def run_minuta_pipeline(
     structura: str = "standard",
     detaliu: str = "standard",
     autor: str = "TotalSoft",
+    inregistrari: list[tuple[Path, str]] | None = None,
+    notite: str = "",
 ) -> tuple[Path, str]:
     """Pipeline complet: transcript (.vtt sau .docx) → (docx_path, preview_html).
 
@@ -352,14 +354,25 @@ async def run_minuta_pipeline(
     Optiunile din pagina: marcaje [DEDUCȚIE]/[COMPLETARE]/[CLARIFICARE NEEDED] cu legenda lor,
     limba minutei (ro/en), structura (standard sau capitolele Fit-Gap, tot pe formatul F.05) si
     detaliul (standard sau complet — toata sedinta, nu un rezumat).
+
+    inregistrari: toate înregistrările aceleiași zile, în ordine, ca (cale, nume) — prima e
+    `transcript_path`; fără ea, minuta se face doar din `transcript_path`. notite: notițele luate de
+    echipă în ședință, sursă alături de transcriere (corectează nume, cifre, atribuiri), cu marcajul
+    lor în legendă când se cer marcaje.
     """
     # blocuri „[hh:mm:ss] Vorbitor: text” — jumatate din textul brut, cu ora pastrata
-    text = prepare_transcript(transcript_path)
+    fisiere = inregistrari or [(transcript_path, transcript_path.stem)]
+    text = prepare_transcripts(fisiere)
 
     project_ctx = parse_context(context_path) if context_path else None
     context_block = project_ctx.as_prompt_block() if project_ctx else ""
-    extra = build_rules(marcaje, limba, detaliu)
-    legend = LEGEND[limba] if marcaje else None
+    notite = (notite or "").strip()
+    if notite:
+        # după contextul proiectului, înaintea transcrierii: corectează ce a stâlcit transcrierea
+        context_block = "\n\n".join(
+            b for b in (context_block, f"---NOTIȚELE ECHIPEI DIN ȘEDINȚĂ---\n{notite}") if b)
+    extra = build_rules(marcaje, limba, detaliu, notite=bool(notite), inregistrari=len(fisiere))
+    legend = legenda(limba, bool(notite)) if marcaje else None
 
     client = AsyncAnthropic(api_key=api_key)
 

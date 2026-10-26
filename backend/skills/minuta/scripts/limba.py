@@ -21,6 +21,20 @@ LEGEND = {
           "**[CLARIFICATION NEEDED]** = unclear in the transcript, to be confirmed.",
 }
 
+# marcajul pentru ce vine din notițele echipei, adăugat la legendă doar când minuta le-a folosit
+LEGEND_NOTITE = {
+    "ro": " **[NOTIȚE]** = confirmat, corectat sau completat din notițele luate de echipa TotalSoft în "
+          "ședință; unde transcrierea spune altceva, forma ei este dată în marcaj.",
+    "en": " **[NOTES]** = confirmed, corrected or completed from the notes taken by the TotalSoft team in "
+          "the meeting; where the transcript says otherwise, its form is given in the marker.",
+}
+
+
+def legenda(limba: str = "ro", notite: bool = False) -> str:
+    """Legenda marcajelor din „Context și scop”; cu notițe, și marcajul lor."""
+    return LEGEND[limba] + (LEGEND_NOTITE[limba] if notite else "")
+
+
 # titlurile și antetele secțiunilor pe care le construiește aplicația (nu modelul)
 TEXT = {
     "ro": {

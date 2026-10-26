@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import logging
 import os
 import sys
@@ -28,6 +29,10 @@ CONTEXT_TEMPLATE = SKILL_DIR / "template" / "Context_Proiect_Template.docx"
 
 router = APIRouter()
 ALLOWED_EXTENSIONS = {".vtt", ".docx"}
+# înregistrările aceleiași zile peste prima: Teams împarte o zi de ședințe în mai multe fișiere
+MAX_INREGISTRARI_SUPLIMENTARE = 4
+# notițele echipei din ședință: câteva pagini de text, nu un al doilea transcript
+MAX_NOTITE = 30_000
 
 sys.path.insert(0, str(SKILL_DIR / "scripts"))
 from limba import LANGS  # noqa: E402
@@ -137,8 +142,13 @@ async def _run_job(
     context_storage_path: str = "",
     optiuni: dict | None = None,
     autor: str = "TotalSoft",
+    alte_inregistrari: list[tuple[Path, str]] | None = None,
+    notite: str = "",
 ) -> None:
+    """Rulează minuta în fundal. `alte_inregistrari` — fișierele aceleiași zile de după
+    `input_path`, ca (cale locală, nume original); `notite` — notițele echipei din ședință."""
     context_path: Path | None = None
+    alte_inregistrari = alte_inregistrari or []
     try:
         if context_storage_path:
             try:
@@ -147,10 +157,13 @@ async def _run_job(
                 # Contextul e un plus, nu o conditie: daca nu poate fi citit,
                 # minuta se genereaza fara el in loc sa esueze.
                 logger.warning("context %s indisponibil: %s", context_storage_path, e)
+        inregistrari = [(input_path, stem)] + alte_inregistrari if alte_inregistrari else None
         docx_path, preview_html = await run_minuta_pipeline(
             input_path, api_key, context_path=context_path,
             on_step=lambda step: jobs.set_step(job_id, step),
             autor=autor,
+            inregistrari=inregistrari,
+            notite=notite,
             **(optiuni or {}),
         )
         filename = _nume_fisier(stem, timestamp, optiuni)
@@ -170,6 +183,8 @@ async def _run_job(
         jobs.fail(job_id, str(e) or type(e).__name__)
     finally:
         input_path.unlink(missing_ok=True)
+        for cale, _ in alte_inregistrari:
+            cale.unlink(missing_ok=True)
         if context_path is not None:
             context_path.unlink(missing_ok=True)
 
@@ -211,6 +226,39 @@ async def _preia_fisierul(
         return Path(tmp.name), file.filename
 
 
+async def _preia_inregistrarile(brut: str) -> list[tuple[Path, str]]:
+    """Înregistrările aceleiași zile de după prima, din JSON-ul
+    `[{"storage_path": ..., "filename": ...}]` trimis de pagină. Fiecare e urcată de browser
+    direct în storage, ca prima; aici se descarcă, cu aceleași verificări de extensie."""
+    if not (brut or "").strip():
+        return []
+    try:
+        lista = json.loads(brut)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Lista înregistrărilor suplimentare nu e validă")
+    if not isinstance(lista, list) or not all(isinstance(x, dict) for x in lista):
+        raise HTTPException(status_code=422, detail="Lista înregistrărilor suplimentare nu e validă")
+    if len(lista) > MAX_INREGISTRARI_SUPLIMENTARE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"O minută reunește cel mult {MAX_INREGISTRARI_SUPLIMENTARE + 1} înregistrări",
+        )
+    preluate: list[tuple[Path, str]] = []
+    try:
+        for x in lista:
+            storage_path = x.get("storage_path")
+            if not isinstance(storage_path, str) or not storage_path.strip():
+                raise HTTPException(status_code=422,
+                                    detail="O înregistrare suplimentară nu are fișierul încărcat")
+            nume = x.get("filename") if isinstance(x.get("filename"), str) else ""
+            preluate.append(await _preia_fisierul(storage_path, nume, None))
+    except HTTPException:
+        for cale, _ in preluate:
+            cale.unlink(missing_ok=True)
+        raise
+    return [(cale, Path(nume).stem) for cale, nume in preluate]
+
+
 @router.post("/minuta")
 async def generate_minuta(
     background_tasks: BackgroundTasks,
@@ -222,15 +270,33 @@ async def generate_minuta(
     limba: str = Form("ro"),
     structura: str = Form("standard"),
     detaliu: str = Form("standard"),
+    notite: str = Form(""),
+    inregistrari: str = Form(""),
     user=Depends(cere_modul("minuta")),
 ):
-    """Pornește procesarea minutei în fundal și returnează un job_id imediat."""
+    """Pornește procesarea minutei în fundal și returnează un job_id imediat.
+
+    `notite` — notițele echipei din ședință, opționale; `inregistrari` — JSON cu celelalte
+    înregistrări ale aceleiași zile (`storage_path`, `filename`), reunite în aceeași minută."""
     optiuni = _optiuni(marcaje, limba, structura, detaliu)
+    notite = (notite or "").strip()
+    if len(notite) > MAX_NOTITE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Notițele au {len(notite)} de caractere — cel mult {MAX_NOTITE} pe minută",
+        )
     input_path, nume = await _preia_fisierul(storage_path, filename, file)
+    try:
+        alte_inregistrari = await _preia_inregistrarile(inregistrari)
+    except HTTPException:
+        input_path.unlink(missing_ok=True)
+        raise
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         input_path.unlink(missing_ok=True)
+        for cale, _ in alte_inregistrari:
+            cale.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY lipsă pe server")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -240,7 +306,7 @@ async def generate_minuta(
     job_id = jobs.create_job(user_email)
     background_tasks.add_task(
         _run_job, job_id, input_path, api_key, stem, timestamp, context_path, optiuni,
-        nume_utilizator(user),
+        nume_utilizator(user), alte_inregistrari=alte_inregistrari, notite=notite,
     )
 
     return {"job_id": job_id}

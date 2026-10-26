@@ -14,10 +14,22 @@ STRUCTURI = ("standard", "fitgap")
 DETALII = ("standard", "complet")
 
 
-def build_rules(marcaje: bool = False, limba: str = "ro", detaliu: str = "standard") -> str:
+def build_rules(marcaje: bool = False, limba: str = "ro", detaliu: str = "standard",
+                notite: bool = False, inregistrari: int = 1) -> str:
+    """Regulile date modelului după promptul de extragere.
+
+    notite: există notițele echipei din ședință — sursă alături de transcriere, cu marcajul lor
+    când se cer marcaje. inregistrari: câte înregistrări ale aceleiași zile reunește transcrierea.
+    """
     files = ["reguli_redactare.md"]
+    if inregistrari > 1:
+        files.append("reguli_inregistrari.md")
+    if notite:
+        files.append("reguli_notite.md")
     if marcaje:
         files.append("reguli_marcaje.md")
+        if notite:
+            files.append("reguli_notite_marcaje.md")
     if detaliu == "complet":
         files.append("detaliu_complet.md")
     if limba == "en":

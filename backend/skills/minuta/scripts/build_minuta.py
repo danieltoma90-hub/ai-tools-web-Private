@@ -472,7 +472,8 @@ AUTOR_IMPLICIT = "TotalSoft"   # când nu se știe cine a generat minuta
 CLIENT_IMPLICIT = "TotalSoft"  # în titlul fișierului, când minuta nu are clientul identificat
 
 _MARCAJ = re.compile(
-    r"\s*\[(?:DEDUCȚIE|COMPLETARE|CLARIFICARE NEEDED|INFERENCE|ADDED|CLARIFICATION NEEDED)\b[^\]]*\]")
+    r"\s*\[(?:DEDUCȚIE|COMPLETARE|CLARIFICARE NEEDED|NOTIȚE|INFERENCE|ADDED|CLARIFICATION NEEDED|NOTES)\b"
+    r"[^\]]*\]")
 
 
 def _fara_marcaje(text: str) -> str:
