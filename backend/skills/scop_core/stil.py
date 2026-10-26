@@ -201,6 +201,11 @@ def texte_antet_subsol(doc) -> tuple[str, str]:
     return "\n".join(antet), "\n".join(subsol)
 
 
+def _are_camp(paragraf) -> bool:
+    """Paragraful conține un camp Word (numerotare de pagina, referinta)."""
+    return bool(paragraf._p.findall(".//" + qn("w:instrText")))
+
+
 def _goleste_paragrafele(paragrafe) -> None:
     """Golește textul vizibil (`.text`) al fiecărui run din `paragrafe`.
 
@@ -215,6 +220,12 @@ def _goleste_paragrafele(paragrafe) -> None:
     corupere.
     """
     for p in paragrafe:
+        if _are_camp(p):
+            # paragraful poarta numerotarea paginii. Golirea i-ar scoate si textul literal dintre
+            # campuri — „Pag. " si „ / " — lasand PAGE si NUMPAGES lipite: pagina 1 dintr-un
+            # document de 46 s-ar tipari „146". Se lasa intact; linia noua se scrie oricum in
+            # primul paragraf FARA camp.
+            continue
         for run in p.runs:
             if run.text:
                 run.text = ""
@@ -259,6 +270,31 @@ def curata_antet_subsol(doc) -> None:
             _goleste_container(sectiune.header)
         if not sectiune.footer.is_linked_to_previous:
             _goleste_container(sectiune.footer)
+
+
+def scrie_text(paragraf, text: str) -> None:
+    """Înlocuiește conținutul unui paragraf existent, păstrându-i formatarea primului run.
+
+    Folosit la curățarea per client, unde un pasaj din conținutul CORE partajat se rescrie în
+    documentul gata construit. Runurile de după primul se elimină: corectorul Word sparge frazele
+    în multe runuri, iar scrierea doar în primul ar lăsa restul textului vechi pe loc.
+    """
+    # Un paragraf fara runuri proprii, dar cu text in interior, isi tine textul intr-un
+    # `w:hyperlink` — asa arata intrarile de cuprins. `add_run` ar adauga textul nou LANGA cel
+    # vechi, lasand „5.11. Titlul vechi	225.11. Titlul nou	22". Esecul zgomotos e preferabil:
+    # apelantul trebuie sa inlocuiasca pe elementele `w:t`, pastrand tabul si campul de pagina.
+    if not paragraf.runs:
+        interior = [t for t in paragraf._p.iter(qn("w:t")) if (t.text or "").strip()]
+        if interior:
+            raise ValueError(
+                "paragraf fara runuri proprii, cu text in hyperlink (probabil o intrare de "
+                "cuprins): scrie direct in elementele w:t, nu prin scrie_text")
+    for r in list(paragraf.runs)[1:]:
+        r._element.getparent().remove(r._element)
+    if paragraf.runs:
+        paragraf.runs[0].text = text
+    else:
+        paragraf.add_run(text)
 
 
 def heading(doc, text: str, nivel: int) -> None:
@@ -618,11 +654,6 @@ def _paragrafe_container(container):
                     yield p
 
 
-def _are_camp(paragraf) -> bool:
-    """Paragraful conține un camp Word (numerotare de pagina, referinta)."""
-    return bool(paragraf._p.findall(".//" + qn("w:instrText")))
-
-
 def _scrie_linia(container, text: str) -> bool:
     """Scrie `text` in primul paragraf fara camp din container. Intoarce True daca a scris."""
     for par in _paragrafe_container(container):
@@ -660,12 +691,15 @@ def reseteaza_contorul_figurilor() -> None:
     _CONTOR_FIGURI["n"] = 0
 
 
-def captura(doc, cale, legenda: str = "", latime_cm: float = 16.0):
+def captura(doc, cale, legenda: str = "", latime_cm: float = 16.0, eticheta: str = "Figura"):
     """Insereaza o captura de ecran, centrata, cu legenda numerotata dedesubt.
 
     Latimea implicita umple zona utila a paginii A4 cu marginile sablonului. Legenda foloseste
     stilul `Caption` daca gazda il are; altfel un paragraf italic mic, ca sa nu depindem de un
     stil care poate lipsi.
+
+    `eticheta` e cuvantul dinaintea numarului; implicit „Figura", iar documentele redactate in
+    engleza trec „Figure". Numerotarea ramane aceeasi, pe contorul per document.
     """
     import pathlib
 
@@ -684,7 +718,182 @@ def captura(doc, cale, legenda: str = "", latime_cm: float = 16.0):
         except KeyError:
             leg = doc.add_paragraph()
         leg.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = leg.add_run(f"Figura {_CONTOR_FIGURI['n']}. {legenda}")
+        run = leg.add_run(f"{eticheta} {_CONTOR_FIGURI['n']}. {legenda}")
         run.italic = True
         run.font.size = Pt(8.5)
     return par
+
+
+MARCAJ_DESCHIS = "«"
+MARCAJ_INCHIS = "»"
+CULOARE_MARCAJ = "FFF2CC"
+
+
+def umbreste_paragraf(paragraf, hexc: str = CULOARE_MARCAJ) -> None:
+    """Pune fundal colorat pe un paragraf intreg, ca sa fie vizibil ca zona de clarificat."""
+    pPr = paragraf._p.get_or_add_pPr()
+    for vechi in pPr.findall(qn("w:shd")):
+        pPr.remove(vechi)
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), hexc)
+    pPr.append(shd)
+
+
+def _celule_unice(rand):
+    vazut, out = set(), []
+    for c in rand.cells:
+        if id(c._tc) not in vazut:
+            vazut.add(id(c._tc))
+            out.append(c)
+    return out
+
+
+def pozitia_curenta(doc) -> int:
+    """Indicele din corp la care se scrie urmatorul element.
+
+    Nu e `len(doc.element.body)`: ultimul copil al corpului e `sectPr`, iar python-docx insereaza
+    inaintea lui. Fara corectia asta, un interval marcat iese decalat cu o pozitie.
+    """
+    copii = list(doc.element.body)
+    return len(copii) - 1 if copii and copii[-1].tag == qn("w:sectPr") else len(copii)
+
+
+def umbreste_bloc(doc, de_la: int, pana_la: int, hexc: str = CULOARE_MARCAJ) -> int:
+    """Umbreste tot ce s-a scris in corpul documentului intre doi indici de element.
+
+    Indicii sunt pozitii in `doc.element.body`, nu in `doc.paragraphs`: altfel tabelele scrise in
+    interval ar ramane necolorate, iar sectiunea ar arata pe jumatate marcata.
+    """
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    n = 0
+    for el in list(doc.element.body)[de_la:pana_la]:
+        if el.tag == qn("w:p"):
+            umbreste_paragraf(Paragraph(el, doc), hexc)
+            n += 1
+        elif el.tag == qn("w:tbl"):
+            for rand in Table(el, doc).rows:
+                for celula in _celule_unice(rand):
+                    for par in celula.paragraphs:
+                        umbreste_paragraf(par, hexc)
+                        n += 1
+    return n
+
+
+def aplica_marcajele(doc, hexc: str = CULOARE_MARCAJ) -> int:
+    """Umbreste tot ce e scris intre « si » si scoate semnele.
+
+    Marcajul se pune in textul-sursa, iar aici se transforma in fundal colorat — asa poate fi
+    marcata o bulina sau o celula de tabel, fara ca modulele de continut sa stie de formatare.
+    """
+    n = 0
+
+    def trateaza(par):
+        nonlocal n
+        t = par.text
+        if MARCAJ_DESCHIS not in t:
+            return
+        for run in par.runs:
+            run.text = run.text.replace(MARCAJ_DESCHIS, "").replace(MARCAJ_INCHIS, "")
+        umbreste_paragraf(par, hexc)
+        n += 1
+
+    for par in doc.paragraphs:
+        trateaza(par)
+    for tabel in doc.tables:
+        for rand in tabel.rows:
+            for celula in _celule_unice(rand):
+                for par in celula.paragraphs:
+                    trateaza(par)
+    return n
+
+
+def _adauga_camp(paragraf, instructiune: str, valoare_initiala: str = "1") -> None:
+    """Adauga un camp Word (PAGE, NUMPAGES) la finalul paragrafului.
+
+    Campul are nevoie de cele trei marcaje — begin, separate, end — si de un rezultat pus in
+    cache intre separate si end: Word il afiseaza pana la prima reimprospatare, iar cititoarele
+    care nu evalueaza campuri il afiseaza mereu.
+    """
+    inceput = OxmlElement("w:r")
+    fc = OxmlElement("w:fldChar")
+    fc.set(qn("w:fldCharType"), "begin")
+    inceput.append(fc)
+
+    cod = OxmlElement("w:r")
+    it = OxmlElement("w:instrText")
+    it.set(qn("xml:space"), "preserve")
+    it.text = f" {instructiune} "
+    cod.append(it)
+
+    separator = OxmlElement("w:r")
+    fs = OxmlElement("w:fldChar")
+    fs.set(qn("w:fldCharType"), "separate")
+    separator.append(fs)
+
+    rezultat = OxmlElement("w:r")
+    t = OxmlElement("w:t")
+    t.text = valoare_initiala
+    rezultat.append(t)
+
+    sfarsit = OxmlElement("w:r")
+    fe = OxmlElement("w:fldChar")
+    fe.set(qn("w:fldCharType"), "end")
+    sfarsit.append(fe)
+
+    for el in (inceput, cod, separator, rezultat, sfarsit):
+        paragraf._p.append(el)
+
+
+def rescrie_numerotarea(doc, sablon: str) -> int:
+    """Rescrie paragrafele de numerotare din subsol dupa un sablon.
+
+    `sablon` contine marcajele `{PAGE}` si `{NUMPAGES}` — de pildă „Page {PAGE} of {NUMPAGES}".
+    Se rescriu doar paragrafele care poarta deja un camp, adica exact cele de numerotare; restul
+    subsolului nu se atinge. Folosit cand gazda e un document in alta limba decat cel generat.
+    """
+    import re as _re
+
+    atinse = 0
+    for container in _containere_antet_subsol(doc, antet=False, subsol=True):
+        for par in _paragrafe_container(container):
+            if not _are_camp(par):
+                continue
+            for run in list(par.runs):
+                run._element.getparent().remove(run._element)
+            for bucata in _re.split(r"(\{PAGE\}|\{NUMPAGES\})", sablon):
+                if bucata == "{PAGE}":
+                    _adauga_camp(par, "PAGE", "1")
+                elif bucata == "{NUMPAGES}":
+                    _adauga_camp(par, "NUMPAGES", "1")
+                elif bucata:
+                    par.add_run(bucata)
+            atinse += 1
+    return atinse
+
+
+CAMPURI_PROPRIETATI = ("title", "subject", "comments", "keywords", "category",
+                       "last_modified_by", "author")
+
+
+def rescrie_proprietati(doc, titlu: str, subiect: str = "", autor: str = "") -> None:
+    """Rescrie proprietatile documentului, ca sa nu ramana cele ale gazdei.
+
+    Gazda e un document al altui client: `dc:title` ii poarta numele si aria. Golirea corpului,
+    a antetului si a subsolului nu atinge `docProps`, iar titlul vechi ramane vizibil in
+    proprietatile fisierului si in panoul de informatii al Word — o scapare pe care nicio
+    verificare pe corpul documentului nu o prinde.
+    """
+    props = doc.core_properties
+    props.title = titlu
+    props.subject = subiect
+    props.author = autor or "TotalSoft S.A."
+    props.last_modified_by = autor or "TotalSoft S.A."
+    for camp in ("comments", "keywords", "category"):
+        try:
+            setattr(props, camp, "")
+        except (AttributeError, ValueError):
+            pass

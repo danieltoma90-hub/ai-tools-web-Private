@@ -35,6 +35,7 @@ class Suplimentar:
     in_modul: str | None = None
     incadrare: str = "Inclus"
     capturi: list[tuple[str, str]] = field(default_factory=list)   # (cale, legenda)
+    tabel_extra: tuple | None = None   # (titlu, antet, randuri): tabel dupa cel de fluxuri
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,10 @@ class Client:
     nume_complet: str = ""
     domeniu: str = ""
     entitati: list[str] = field(default_factory=list)
+    # „societati" cand entitatile sunt persoane juridice distincte, „locatii" cand sunt puncte de
+    # lucru ale aceleiasi societati. Scrie diferit capitolul 2.2: o singura firma nu are „evidenta
+    # contabila pe entitate".
+    tip_entitati: str = "societati"
     situatie_actuala: list[tuple[str, str]] = field(default_factory=list)
     obiective: list[str] = field(default_factory=list)
     observatii: str = ""
@@ -76,36 +81,49 @@ class Client:
 
 
 @dataclass
-class DocumentFrate:
+class ScopCorelat:
+    """Documentul de scop cu care prezentul document se delimiteaza.
+
+    `denumire` e numele sub care apare in text (implicit „scopul de Producție"), ca documentul sa
+    numeasca aria concreta, nu o relatie abstracta.
+    """
     exista: bool = False
     titlu: str = ""
     arie_acoperita: str = ""
     coduri: list[str] = field(default_factory=list)
+    denumire: str = "scopul de Producție"
+
+    @property
+    def denumire_capitalizata(self) -> str:
+        return self.denumire[0].upper() + self.denumire[1:] if self.denumire else ""
 
     @classmethod
-    def din_config(cls, cfg: dict) -> "DocumentFrate":
-        d = cfg.get("document_frate", {})
+    def din_config(cls, cfg: dict) -> "ScopCorelat":
+        # se accepta si cheia veche, ca configurarile existente sa nu se rupa
+        d = cfg.get("scop_corelat") or cfg.get("document_frate") or {}
+        implicit = cls()
         return cls(
             exista=bool(d.get("exista")),
             titlu=d.get("titlu", ""),
             arie_acoperita=d.get("arie_acoperita", ""),
             coduri=list(d.get("coduri", [])),
+            denumire=d.get("denumire") or implicit.denumire,
         )
 
 
 # --------------------------------------------------------------------------- capitole
 
-def _cap1_scop(doc, client: Client, frate: DocumentFrate, nr: int) -> None:
+def _cap1_scop(doc, client: Client, corelat: ScopCorelat, nr: int) -> None:
     stil.heading(doc, f"{nr}. Scopul documentului", 1)
     stil.para(doc,
         f"Prezentul document descrie soluția pe care TotalSoft o propune pentru acoperirea ariilor "
         f"integrate Charisma ERP CORE la {client.nume}. El delimitează scopul funcțional ofertat, "
         f"ce anume se configurează, se dezvoltă și se pune în funcțiune, și constituie baza tehnică "
         f"a ofertei comerciale.")
-    if frate.exista:
+    if corelat.exista:
         stil.para(doc,
-            f"Relația cu documentul-frate. {frate.arie_acoperita or PLACEHOLDER} face obiectul "
-            f"documentului {frate.titlu or PLACEHOLDER}. Cele două documente sunt complementare și "
+            f"Relația cu {corelat.denumire}. {corelat.arie_acoperita or PLACEHOLDER} face obiectul "
+            f"documentului {corelat.titlu or PLACEHOLDER}. Cele două documente sunt complementare și "
             f"nu se suprapun; capitolul de delimitare detaliază explicit granița dintre ele.")
     stil.para(doc,
         "Structura documentului, pe scurt. Capitolele următoare descriu contextul, abordarea și "
@@ -113,21 +131,119 @@ def _cap1_scop(doc, client: Client, frate: DocumentFrate, nr: int) -> None:
         "punctele care necesită confirmare înainte de validarea scopului.")
 
 
+def curata_pentru_client(doc, scoate: list[str] | None, reformulari: list[tuple[str, str]] | None):
+    """Scoate sau rescrie, în documentul gata construit, pasaje din conținutul CORE partajat.
+
+    Unele capabilități standard nu se ofertează unui client anume — la o fermă care vinde la
+    traderi pe bază de contract și listă de preț, nici campaniile de discount, nici plafonul de
+    credit nu au obiect. Ele vin însă din `charisma_core.py`, care alimentează toate documentele,
+    deci nu se pot șterge de la sursă fără a-i afecta pe ceilalți clienți.
+
+    Se lucrează pe textul asamblat al paragrafului sau al celulei, nu pe elementele `w:t`:
+    corectorul Word sparge frazele în runuri, iar o înlocuire pe element ratează orice potrivire
+    care traversează două runuri — și, mai rău, raportează succes.
+
+    Fiecare intrare trebuie să potrivească ceva. Dacă textul din sursa partajată se schimbă,
+    filtrul ar înceta să mai taie, în silență; de aceea lipsa unei potriviri este eroare.
+    """
+    scoate = scoate or []
+    reformulari = reformulari or []
+    gasite = {t: 0 for t in scoate}
+    gasite.update({v: 0 for v, _ in reformulari})
+
+    for p in list(doc.paragraphs):
+        text = p.text
+        taiat = next((t for t in scoate if t in text), None)
+        if taiat:
+            gasite[taiat] += 1
+            p._p.getparent().remove(p._p)
+            continue
+        for vechi, nou in reformulari:
+            if vechi in text:
+                gasite[vechi] += 1
+                text = text.replace(vechi, nou)
+        if text != p.text:
+            stil.scrie_text(p, text)
+
+    for t in doc.tables:
+        for r in t.rows:
+            vazut = set()
+            for c in r.cells:
+                if id(c._tc) in vazut:
+                    continue
+                vazut.add(id(c._tc))
+                text = c.text
+                for vechi, nou in reformulari:
+                    if vechi in text:
+                        gasite[vechi] += 1
+                        text = text.replace(vechi, nou)
+                if text != c.text:
+                    for extra in list(c.paragraphs)[1:]:
+                        extra._element.getparent().remove(extra._element)
+                    stil.scrie_text(c.paragraphs[0], text)
+
+    lipsa = [t for t, n in gasite.items() if n == 0]
+    if lipsa:
+        raise AssertionError("intrări de curățare care nu au potrivit nimic — probabil s-a "
+                             f"schimbat textul din sursa partajată: {lipsa[:3]}")
+
+
+def _cap_lant_valoric(doc, client: Client, lv: dict, nr: int) -> None:
+    """Lanțul valoric al beneficiarului și unde intervine soluția în el.
+
+    Capitolul răspunde la întrebarea „ce câștigă firma", pe verigile activității, nu pe module:
+    arată unde se formează sau se pierde valoarea în fluxul propriu și ce aduce soluția în fiecare
+    punct. Spre deosebire de capitolul de beneficii, care enumeră efecte, acesta le așază pe
+    drumul real al mărfii, de la intrarea în fermă până la valorificare.
+
+    Conținutul vine din modulul de client, prin `LANT_VALORIC`: `intro`, `verigi` (rândurile
+    tabelului) și `blocuri` — subcapitolele de după tabel, fiecare cu titlu, introducere, buline
+    și paragraf de închidere.
+    """
+    stil.heading(doc, f"{nr}. Lanțul valoric {client.nume} și contribuția soluției", 1)
+    stil.para(doc, lv["intro"])
+
+    stil.heading(doc, f"{nr}.1. Verigile lanțului și unde se formează valoarea", 2)
+    stil.tabel(doc, ["Veriga", "Unde se câștigă sau se pierde valoare", "Ce aduce soluția",
+                     "Indicator urmărit"],
+               lv["verigi"], latimi=[3.1, 4.6, 5.4, 3.4])
+
+    for i, bloc in enumerate(lv["blocuri"], start=2):
+        stil.heading(doc, f"{nr}.{i}. {bloc['titlu']}", 2)
+        stil.para(doc, bloc["intro"])
+        stil.bullets(doc, bloc["puncte"])
+        stil.para(doc, bloc["incheiere"])
+
+
 def _cap_context(doc, client: Client, nr: int) -> None:
     stil.heading(doc, f"{nr}. Contextul proiectului", 1)
 
     stil.heading(doc, f"{nr}.1. Profilul activității", 2)
-    stil.para(doc, client.domeniu or PLACEHOLDER)
+    for bucata in (client.domeniu or PLACEHOLDER).split("\n"):
+        if bucata.strip():
+            stil.para(doc, bucata.strip())
 
     if client.e_grup:
-        stil.heading(doc, f"{nr}.2. Structura pe entități", 2)
-        stil.para(doc,
-            "Activitatea se desfășoară pe mai multe societăți, cu roluri distincte:")
-        stil.bullets(doc, client.entitati)
-        stil.para(doc,
-            "Soluția folosește o bază de date comună, cu locații distincte și drepturi de utilizator "
-            "alocate pe locație. Fiecare entitate își păstrează propriile documente, propria "
-            "contabilitate și propriile declarații.")
+        if client.tip_entitati == "locatii":
+            stil.heading(doc, f"{nr}.2. Structura pe locații", 2)
+            stil.para(doc,
+                "Activitatea se desfășoară într-o singură societate, pe mai multe locații, cu "
+                "roluri distincte:")
+            stil.bullets(doc, client.entitati)
+            stil.para(doc,
+                "Soluția folosește o bază de date comună, cu locații distincte și drepturi de "
+                "utilizator alocate pe locație. Documentele operaționale se înregistrează la "
+                "locația care le generează, evidența contabilă rămâne unică la nivelul societății, "
+                "iar situațiile se pot obține pe o singură locație sau centralizat.")
+        else:
+            stil.heading(doc, f"{nr}.2. Structura pe entități", 2)
+            stil.para(doc,
+                "Activitatea se desfășoară pe mai multe societăți, cu roluri distincte:")
+            stil.bullets(doc, client.entitati)
+            stil.para(doc,
+                "Soluția folosește o bază de date comună, cu locații distincte și drepturi de "
+                "utilizator alocate pe locație. Fiecare entitate își păstrează propriile documente, "
+                "propria contabilitate și propriile declarații.")
         urm = 3
     else:
         urm = 2
@@ -196,14 +312,22 @@ def _scrie_suplimentar_propriu(doc, e: Suplimentar, eticheta: str) -> None:
         stil.bullets(doc, e.puncte)
     if e.fluxuri:
         stil.tabel_fluxuri(doc, e.fluxuri)
+    if e.tabel_extra:
+        titlu_tabel, antet, randuri = e.tabel_extra
+        if titlu_tabel:
+            stil.para(doc, titlu_tabel, bold=True)
+        stil.tabel(doc, antet, randuri)
     for cale, legenda in e.capturi:
         stil.captura(doc, cale, legenda)
     if e.nota:
-        stil.para(doc, e.nota)
+        # o nota poate purta mai multe precizari; fiecare linie devine paragraf propriu
+        for bucata in e.nota.split("\n"):
+            if bucata.strip():
+                stil.para(doc, bucata.strip())
 
 
 def _cap_solutie(doc, client: Client, sectiuni, suplimentare: list[Suplimentar], nr: int,
-                 flux=None, ordine=None) -> None:
+                 flux=None, ordine=None, denumire_corelat: str | None = None) -> None:
     """Capitolul 4: standardul CORE, elementele suplimentare și, opțional, fluxul operațional.
 
     `ordine` — lista care dictează ordinea subcapitolelor: chei de secțiune CORE amestecate cu
@@ -229,10 +353,17 @@ def _cap_solutie(doc, client: Client, sectiuni, suplimentare: list[Suplimentar],
                 stil.bullets(doc_, e.puncte)
             if e.fluxuri:
                 stil.tabel_fluxuri(doc_, e.fluxuri)
+            if e.tabel_extra:
+                titlu_tabel, antet, randuri = e.tabel_extra
+                if titlu_tabel:
+                    stil.para(doc_, titlu_tabel, bold=True)
+                stil.tabel(doc_, antet, randuri)
             for cale, legenda in e.capturi:
                 stil.captura(doc_, cale, legenda)
             if e.nota:
-                stil.para(doc_, e.nota)
+                for bucata in e.nota.split("\n"):
+                    if bucata.strip():
+                        stil.para(doc_, bucata.strip())
 
     necunoscute = set(pe_modul) - {s.cheie for s in sectiuni}
     if necunoscute:
@@ -247,9 +378,12 @@ def _cap_solutie(doc, client: Client, sectiuni, suplimentare: list[Suplimentar],
     index = 1
     if flux:
         stil.heading(doc, f"{nr}.{index}. Fluxul operațional acoperit", 2)
+        # „în {denumire}” cere acuzativ, deci merge cu forma nominativa a denumirii; „aparține”
+        # ar cere dativ si ar produce un acord greșit.
+        trimitere = (f" Ce este tratat în {denumire_corelat} este marcat ca atare."
+                     if denumire_corelat else "")
         stil.para(doc,
-            "Tabelul urmărește lanțul acoperit de prezentul document, etapă cu etapă. Ce aparține "
-            "documentului-frate este marcat ca atare.")
+            "Tabelul urmărește lanțul acoperit de prezentul document, etapă cu etapă." + trimitere)
         stil.tabel(doc, ["Etapa", "Ce se întâmplă în Charisma", "Rezultat"], flux,
                    latimi=[3.4, 9.0, 4.2])
         index += 1
@@ -366,26 +500,32 @@ def _cap_acoperire(doc, cerinte: list[Cerinta], nr: int, forma: str = "apdn") ->
                    [[c.zona, c.cerinta, c.raspuns] for c in grup], latimi=[2.6, 5.4, 8.6])
 
 
-def _cap_delimitare(doc, frate: DocumentFrate, zone, nr: int) -> None:
-    """Delimitarea față de documentul-frate.
+def _cap_delimitare(doc, corelat: ScopCorelat, zone, nr: int, intro: str | None = None) -> None:
+    """Delimitarea față de scopul corelat.
 
     `zone` — rânduri (zona, tratată în, punctul de interfațare). Când lipsesc, se construiește
     un tabel-schelet din codurile declarate în configurare.
     """
-    stil.heading(doc, f"{nr}. Delimitarea față de documentul-frate", 1)
-    stil.para(doc,
+    stil.heading(doc, f"{nr}. Delimitarea față de {corelat.denumire}", 1)
+    stil.para(doc, intro or (
         "Cele două documente acoperă arii complementare și au fost construite astfel încât să nu se "
         "suprapună. Tabelul precizează granița și punctele în care cele două scopuri se ating. "
         "Prefixele de cod se repetă între documente, motiv pentru care fiecare trimitere precizează "
-        "documentul din care provine codul.")
+        "documentul din care provine codul."))
     randuri = list(zone) if zone else (
-        [[c, frate.titlu or PLACEHOLDER, PLACEHOLDER] for c in frate.coduri]
-        or [[PLACEHOLDER, frate.titlu or PLACEHOLDER, PLACEHOLDER]])
+        [[c, corelat.titlu or PLACEHOLDER, PLACEHOLDER] for c in corelat.coduri]
+        or [[PLACEHOLDER, corelat.titlu or PLACEHOLDER, PLACEHOLDER]])
     stil.tabel(doc, ["Zona", "Tratată în", "Punctul de interfațare"], randuri,
                latimi=[4.6, 3.6, 8.8])
 
 
-def _cap_premise(doc, nr: int) -> None:
+def _cap_premise(doc, nr: int, extra: dict[str, list[str]] | None = None) -> None:
+    """Premisele standard, plus punctele suplimentare pe client.
+
+    `extra` are cheile „infrastructura”, „date” si „organizare”; punctele se adauga la finalul
+    subcapitolului corespunzator. Fara ele, capitolul iese identic pentru toate documentele.
+    """
+    extra = extra or {}
     stil.heading(doc, f"{nr}. Premise și responsabilități", 1)
     stil.para(doc,
         "Buna funcționare a soluției presupune îndeplinirea următoarelor condiții, care revin în "
@@ -396,14 +536,14 @@ def _cap_premise(doc, nr: int) -> None:
         "pe Windows, care poate fi instalată on-premise sau în cloud.",
         "Imprimante pentru documentele emise, cu consumabilele și formularele aferente.",
         "Conexiune la internet pentru integrările cu ANAF și pentru relația cu băncile.",
-    ])
+    ] + list(extra.get("infrastructura", [])))
     stil.heading(doc, f"{nr}.2. Date și pregătire operațională", 2)
     stil.bullets(doc, [
         "Nomenclatoarele de articole și de parteneri, cu proprietățile și clasificările aferente.",
         "Modelele de contare agreate cu departamentul de contabilitate, pe fiecare tranzacție.",
         "Soldurile, balanța de inițializare, stocurile și registrul de mijloace fixe la data punerii "
         "în funcțiune.",
-    ])
+    ] + list(extra.get("date", [])))
     stil.heading(doc, f"{nr}.3. Organizare", 2)
     stil.bullets(doc, [
         "Utilizator și parolă individuale pentru fiecare operator, cu drepturi pe grupuri.",
@@ -411,7 +551,7 @@ def _cap_premise(doc, nr: int) -> None:
         "Un administrator de aplicație din partea beneficiarului.",
         "Testarea pe fluxuri complete de business; nu se recomandă lucrul în paralel în două sisteme.",
         "Asumarea la nivel de management a noului mod de lucru.",
-    ])
+    ] + list(extra.get("organizare", [])))
 
 
 def _cap_confirmari(doc, puncte: list[tuple[str, str]], nr: int) -> None:
@@ -475,10 +615,15 @@ def genereaza(cfg: dict, cale_iesire, client: Client | None = None,
               acoperire: list[Cerinta] | None = None,
               delimitare: list | None = None,
               flux_operational: list | None = None,
-              ordine_cap4: list | None = None):
+              ordine_cap4: list | None = None,
+              delimitare_intro: str | None = None,
+              premise_extra: dict[str, list[str]] | None = None,
+              lant_valoric: dict | None = None,
+              scoate_buline: list[str] | None = None,
+              reformulari: list[tuple[str, str]] | None = None):
     """Construiește documentul complet și îl salvează. Întoarce calea scrisă."""
     client = client or Client.din_config(cfg)
-    frate = DocumentFrate.din_config(cfg)
+    corelat = ScopCorelat.din_config(cfg)
     suplimentare = suplimentare or []
     cap = cfg.get("capitole", {})
     sc = cfg.get("sectiuni_core", {})
@@ -493,7 +638,18 @@ def genereaza(cfg: dict, cale_iesire, client: Client | None = None,
     _rescrie_antet_subsol(doc, cfg.get("stil", {}) or {}, client,
                           d.get("versiune", "1.0") if (d := cfg.get("document", {})) else "1.0")
 
+    # Numerotarea se rescrie, nu se mosteneste: gazda isi aduce cu ea valorile puse in cache
+    # („Pag. 19 / 1"), care raman vizibile pana cand cineva deschide documentul si da F9.
+    stil.rescrie_numerotarea(doc, (cfg.get("stil", {}) or {}).get(
+        "numerotare", "Pag. {PAGE} / {NUMPAGES}"))
+
     d = cfg.get("document", {})
+    stil.rescrie_proprietati(
+        doc,
+        titlu=f"{d.get('titlu', '')} | {client.nume}".strip(" |"),
+        subiect=d.get("subtitlu", ""),
+        autor=d.get("furnizor", "TotalSoft S.A."),
+    )
     stil.para(doc, d.get("titlu", "Descrierea soluției ofertate"), bold=True)
     stil.para(doc, d.get("subtitlu", "Implementare Charisma ERP CORE"), bold=True)
     stil.para(doc, f"Beneficiar: {client.nume_complet or client.nume}")
@@ -501,29 +657,37 @@ def genereaza(cfg: dict, cale_iesire, client: Client | None = None,
         ["Beneficiar", client.nume_complet or client.nume],
         ["Furnizor", d.get("furnizor", "TotalSoft S.A.")],
         ["Aria acoperită", "Charisma ERP CORE: " + ", ".join(s.titlu for s in sectiuni)],
-        ["Documente corelate", frate.titlu or "—"],
+        ["Documente corelate", corelat.titlu or "—"],
         ["Versiune document", d.get("versiune", "1.0")],
         ["Elaborat de", d.get("elaborat_de", "Echipa de consultanță TotalSoft, Delivery ERP")],
     ], latimi=[4.5, 12.0])
 
     nr = 1
-    _cap1_scop(doc, client, frate, nr); nr += 1
+    _cap1_scop(doc, client, corelat, nr); nr += 1
     if cap.get("context", True):
         _cap_context(doc, client, nr); nr += 1
-    if cap.get("abordare", True):
+    # Abordarea si metodologia descriu munca noastra, nu solutia oferita, deci nu intra
+    # implicit: scopul explica beneficiarului ce acoperim, nu cum lucreaza consultantul.
+    # Lantul valoric sta intre context si solutie: cititorul vede ce castiga, pe verigile
+    # activitatii lui, inainte sa intre in descrierea pe module.
+    if lant_valoric and cap.get("lant_valoric", True):
+        _cap_lant_valoric(doc, client, lant_valoric, nr); nr += 1
+    if cap.get("abordare", False):
         _cap_abordare(doc, nr); nr += 1
     _cap_solutie(doc, client, sectiuni, suplimentare, nr,
-                 flux=flux_operational, ordine=ordine_cap4); nr += 1
+                 flux=flux_operational, ordine=ordine_cap4,
+                 denumire_corelat=corelat.denumire if corelat.exista else None); nr += 1
     if cap.get("beneficii", True):
         _cap_beneficii(doc, beneficii or [], nr); nr += 1
     if cap.get("acoperire", True):
         _cap_acoperire(doc, acoperire or [], nr,
                        forma=(cfg.get('stil', {}) or {}).get('forma_acoperire', 'apdn'))
         nr += 1
-    if cap.get("delimitare", True) and frate.exista:
-        _cap_delimitare(doc, frate, delimitare or [], nr); nr += 1
+    if cap.get("delimitare", True) and corelat.exista:
+        _cap_delimitare(doc, corelat, delimitare or [], nr, intro=delimitare_intro)
+        nr += 1
     if cap.get("premise", True):
-        _cap_premise(doc, nr); nr += 1
+        _cap_premise(doc, nr, premise_extra); nr += 1
     if cap.get("confirmari", True):
         _cap_confirmari(doc, confirmari or [], nr); nr += 1
     if cap.get("sinteza", True):
@@ -534,6 +698,12 @@ def genereaza(cfg: dict, cale_iesire, client: Client | None = None,
     props = doc.core_properties
     props.title = f"{d.get('titlu')} - Charisma ERP CORE | {client.nume}"
     props.subject = f"Scop Charisma ERP CORE - {client.nume}"
+
+    # Curățarea per client se face aici, pe documentul construit, înaintea transliterării:
+    # pasajele vin din conținutul CORE partajat, care nu se poate modifica pentru un singur
+    # client, iar textele căutate sunt scrise cu diacritice.
+    if scoate_buline or reformulari:
+        curata_pentru_client(doc, scoate_buline, reformulari)
 
     if (cfg.get("stil", {}) or {}).get("fara_diacritice"):
         stil.transliterare_document(doc)

@@ -74,7 +74,7 @@ from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
-from skills.scop_core import capitol, extractie, insereaza, scope, stil
+from skills.scop_core import capitol, extractie, insereaza, scope, stil, verifica
 from skills.scop_core.charisma_core import SECTIUNI, Flux
 from skills.scop_core.stil import DocumentInvalid  # re-exportat pentru router,
 # care nu importă `skills.scop_core` direct — vezi docstring-ul de sus.
@@ -433,7 +433,28 @@ def _client_din_dict(brut: object) -> scope.Client:
     kwargs["situatie_actuala"] = _situatie_actuala_din_lista(brut.get("situatie_actuala"))
     kwargs["obiective"] = _lista_stringuri(brut.get("obiective"))
     kwargs["observatii"] = _str_sau_gol(brut.get("observatii"))
+    # „locatii" = o singură societate cu mai multe puncte de lucru: capitolul 2.2 nu mai vorbește
+    # de „evidența contabilă pe entitate". Orice altă valoare rămâne „societati".
+    if _str_sau_gol(brut.get("tip_entitati")) == "locatii":
+        kwargs["tip_entitati"] = "locatii"
     return scope.Client(**kwargs)
+
+
+_CHEI_PREMISE = ("infrastructura", "date", "organizare")
+
+
+def _premise_extra_din_dict(brut: object) -> dict[str, list[str]]:
+    """Punctele de premise adăugate pe client, pe cele trei subcapitole ale capitolului.
+
+    Cheile necunoscute se ignoră; fiecare valoare e o listă de texte nevide."""
+    if not isinstance(brut, dict):
+        return {}
+    rezultat = {}
+    for cheie in _CHEI_PREMISE:
+        puncte = _lista_stringuri(brut.get(cheie))
+        if puncte:
+            rezultat[cheie] = puncte
+    return rezultat
 
 
 def _fluxuri_din_lista(brute: object) -> list[Flux]:
@@ -632,6 +653,16 @@ def _cfg_pregatit(cfg: object, gazda_path: Path | None) -> dict:
     coduri = rezultat["document_frate"].get("coduri")
     rezultat["document_frate"]["coduri"] = list(coduri) if isinstance(coduri, list) else []
 
+    # `scop_corelat` e cheia nouă a lui `document_frate` (scope.py o citește pe ea întâi); pe
+    # lângă câmpurile vechi poartă `denumire`, numele ariei din text („scopul de Producție").
+    if "scop_corelat" in rezultat:
+        corelat = rezultat["scop_corelat"] if isinstance(rezultat["scop_corelat"], dict) else {}
+        coduri = corelat.get("coduri")
+        corelat["coduri"] = list(coduri) if isinstance(coduri, list) else []
+        if not isinstance(corelat.get("denumire"), str) or not corelat["denumire"].strip():
+            corelat.pop("denumire", None)
+        rezultat["scop_corelat"] = corelat
+
     for cheie in ("fara", "doar"):
         valoare = rezultat["sectiuni_core"].get(cheie)
         rezultat["sectiuni_core"][cheie] = (
@@ -716,6 +747,25 @@ def _gaseste_placeholdere(doc) -> tuple[int, list[str]]:
     return numar_total, capitole
 
 
+_PROBLEME_AFISATE = 8
+
+
+def _verifica_documentul(document_path: Path, client: scope.Client) -> list[str]:
+    """Verificările skill-ului local pe documentul chiar scris, ca texte „verificare: detaliu”.
+
+    Prind defectele care au ajuns o dată într-un document livrat: coduri de flux citate, dar
+    nedefinite; afirmații corectate de beneficiari (codul de bare generat automat); fraze dublate;
+    titlul gazdei rămas în proprietățile fișierului; numerotarea paginilor stricată. Pe un
+    document fără probleme lista e goală. O eroare a verificării nu oprește generarea."""
+    nume = client.nume if client.nume and client.nume != scope.PLACEHOLDER else None
+    try:
+        raport = verifica.verifica(document_path, limba=None, client=nume)
+    except Exception as e:  # verificarea e plasă de siguranță, nu condiția documentului
+        logger.warning("Verificarea documentului de scop a eșuat: %s", e)
+        return []
+    return [f"{v}: {d}" for v, d in raport.probleme]
+
+
 async def run_scope_document_pipeline(
     gazda_path: Path | None,
     cfg: dict,
@@ -765,6 +815,8 @@ async def run_scope_document_pipeline(
     ordine_cap4 = _ordine_cap4_din_lista(continut.get("ordine_cap4"))
     beneficii = _lista_stringuri(continut.get("beneficii"))
     confirmari, confirmari_respinse = _confirmari_din_dicturi(continut.get("confirmari"))
+    premise_extra = _premise_extra_din_dict(continut.get("premise_extra"))
+    delimitare_intro = _str_sau_gol(continut.get("delimitare_intro")) or None
 
     cfg_pregatit = _cfg_pregatit(cfg, gazda_path)
 
@@ -777,6 +829,7 @@ async def run_scope_document_pipeline(
             cfg_pregatit, document_path, client=client, suplimentare=suplimentare,
             beneficii=beneficii, confirmari=confirmari, acoperire=acoperire,
             delimitare=delimitare, flux_operational=flux_operational, ordine_cap4=ordine_cap4,
+            premise_extra=premise_extra, delimitare_intro=delimitare_intro,
         )
     except Exception:
         # Include cele două erori deliberate (ValueError) — se curăță fișierul
@@ -790,6 +843,7 @@ async def run_scope_document_pipeline(
         if p.style is not None and p.style.name == "Heading 1" and p.text.strip()
     ]
     placeholder_numar, placeholder_capitole = _gaseste_placeholdere(doc_citit)
+    probleme_verificare = _verifica_documentul(document_path, client)
 
     sc = cfg_pregatit.get("sectiuni_core", {})
     sectiuni = capitol.alege_sectiuni(
@@ -828,7 +882,7 @@ async def run_scope_document_pipeline(
         )
     if delimitare_respinse:
         avertismente.append(
-            f"{delimitare_respinse} rând(uri) din tabelul de delimitare față de documentul-frate nu "
+            f"{delimitare_respinse} rând(uri) din tabelul de delimitare față de scopul corelat nu "
             "au putut fi folosite (zonă, tratare sau interfațare lipsă) și au fost ignorate."
         )
     if flux_respinse:
@@ -840,6 +894,13 @@ async def run_scope_document_pipeline(
         avertismente.append(
             f"{confirmari_respinse} punct(e) de confirmat nu au putut fi folosite (aspect sau motiv "
             "lipsă) și au fost ignorate."
+        )
+    if probleme_verificare:
+        arata = probleme_verificare[:_PROBLEME_AFISATE]
+        rest = len(probleme_verificare) - len(arata)
+        avertismente.append(
+            f"Verificarea documentului a găsit {len(probleme_verificare)} problemă(e): "
+            + "; ".join(arata) + (f"; și încă {rest}." if rest else ".")
         )
 
     sumar = {
@@ -861,6 +922,7 @@ async def run_scope_document_pipeline(
         "confirmari_respinse": confirmari_respinse,
         "placeholder_numar": placeholder_numar,
         "placeholder_capitole": placeholder_capitole,
+        "verificare_probleme": probleme_verificare,
         "avertisment": " ".join(avertismente),
     }
     return document_path, sumar

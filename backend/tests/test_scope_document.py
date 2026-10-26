@@ -92,7 +92,7 @@ def test_toate_capitolele_activate_produce_11_capitole_in_ordine(tmp_path):
         "Scopul documentului", "Contextul proiectului",
         "Abordarea și metodologia de implementare",
         "Soluția ofertată — Charisma ERP CORE", "Beneficiile soluției",
-        "Analiza de acoperire a cerințelor", "Delimitarea față de documentul-frate",
+        "Analiza de acoperire a cerințelor", "Delimitarea față de scopul de Producție",
         "Premise și responsabilități", "Puncte de confirmat înainte de validarea scopului",
         "Sinteza scopului funcțional", "Validarea scopului",
     ]

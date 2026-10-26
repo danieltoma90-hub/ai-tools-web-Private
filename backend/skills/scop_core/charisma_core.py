@@ -177,11 +177,11 @@ SECTIUNI: list[Sectiune] = [
                  "listă nouă se poate genera prin copierea unei liste de referință existente, cu "
                  "aplicarea unui factor de conversie a prețului."),
             Flux("N4", "Coduri de bare",
-                 "Generarea codului de bare la crearea articolului, automată printr-un generator "
-                 "predefinit sau introdusă manual, cu verificarea unicității în sistem; un "
-                 "articol poate avea mai multe coduri de bare, pentru unități de măsură "
-                 "alternative sau pentru furnizori diferiți, tipărite pe etichetă și scanate la "
-                 "recepție."),
+                 "Introducerea manuală a codului de bare pe articol, cu verificarea unicității în "
+                 "sistem la salvare; codul nu se generează automat, ci se preia de pe ambalaj sau "
+                 "de la furnizor. Un articol poate avea mai multe coduri de bare, pentru unități "
+                 "de măsură alternative sau pentru furnizori diferiți, tipărite pe etichetă și "
+                 "scanate la recepție."),
         ],
     ),
     Sectiune(
@@ -212,7 +212,7 @@ SECTIUNI: list[Sectiune] = [
             "Funcționare multi-valută, cu tratamentul specific fiecărui cont (monetar / nemonetar).",
             "Contarea automată a documentelor operaționale, disponibilă instantaneu în rapoartele contabile și în rulajele conturilor; note contabile manuale pentru situații speciale.",
             "Atașarea mai multor dimensiuni de analiză (departamente, proiecte, contracte) pe fiecare notă contabilă, cu rapoarte filtrate pe aceste dimensiuni.",
-            "Rapoarte legale și uzuale: Registru jurnal, Carte mare, Cartea mare-șah, Fișe de cont (multi-perioadă, multi-valută), Jurnal de vânzări / cumpărări, Declarațiile 300, 390, 394, Intrastat, Balanța configurabilă.",
+            "Rapoarte legale și uzuale: Registru jurnal, Carte mare, Cartea mare-șah, Fișe de cont (multi-perioadă, multi-valută), Jurnal de vânzări / cumpărări, declarațiile D300, D390, D394, D406 (SAF-T) și Intrastat, Balanța configurabilă.",
         ],
         fluxuri=[
             Flux("C1", "Definire și management Plan de Conturi",
@@ -240,10 +240,13 @@ SECTIUNI: list[Sectiune] = [
                  "în aplicația TVA la încasare (extensie a sistemului Charisma), a celor trei "
                  "documente de exigibilitate TVA — facturi, încasări/plăți și facturi peste 90 "
                  "de zile — potrivit O.G. nr. 15/2012."),
-            Flux("C6", "Declarații: D300 / D390 / D394 / Intrastat",
+            Flux("C6", "Declarații: D300 / D390 / D394 / D406 (SAF-T) / Intrastat",
                  "Generarea declarațiilor fiscale din rulajele perioadei, cu export în formatul "
                  "cerut de ANAF: decontul de TVA (D300), declarația recapitulativă VIES (D390), "
-                 "declarația informativă (D394) și raportarea Intrastat."),
+                 "declarația informativă privind livrările și achizițiile pe teritoriul național "
+                 "(D394), fișierul standard de control fiscal SAF-T (D406) și raportarea "
+                 "Intrastat. Toate cinci sunt acoperite în standard, în formatele publicate de "
+                 "ANAF."),
         ],
     ),
     Sectiune(
@@ -457,13 +460,14 @@ SECTIUNI: list[Sectiune] = [
                  "de achiziție, tranzacția Înregistrare Factură de Aprovizionare, fără notă de "
                  "intrare-recepție, cu articol de tip serviciu sau cheltuială — de exemplu utilități "
                  "— și cantitate 1."),
-            Flux("A5", "Achiziții externe – Factură de import: Factură de import → DVI → NIR; storno de import",
+            # Traseul lui A5 nu trece prin DVI: declarația vamală este chiar fluxul A6. Cât timp
+            # ambele purtau același traseu, A5 promitea un pas pe care nu îl descrie.
+            Flux("A5", "Achiziții externe – Factură de import: Factură de import → NIR; storno de import",
                  "Înregistrarea manuală a Facturii de import (Achiziții > Facturi > Facturi de "
                  "achiziție, tranzacția Înregistrare Factură de Import) ca prim document al fluxului, "
                  "cu dată, curs valutar și articole aliniate codurilor vamale definite; Nota de "
-                 "intrare-recepție se generează ulterior din factură și din Declarația vamală de "
-                 "import, iar corecțiile se fac prin Factură storno de aprovizionare, cu sau fără "
-                 "scădere de stoc."),
+                 "intrare-recepție se generează ulterior din factură, iar corecțiile se fac prin "
+                 "Factură storno de aprovizionare, cu sau fără scădere de stoc."),
             Flux("A6", "Achiziții externe – Declarație vamală de import (DVI): Comandă → Factură de import → DVI → NIR; storno de import",
                  "Generarea Declarației vamale de import din Factura de import, prin tranzacția "
                  "Generare DVI din Factura de import, cu preluarea Facturilor auxiliare (transport, "
@@ -577,7 +581,7 @@ SECTIUNI: list[Sectiune] = [
         ],
         detaliere=[
             "Gestiune flexibilă pe niveluri: gestiune, depozit, locație de stocare; număr nelimitat de depozite.",
-            "Codificare flexibilă (automată sau manuală), caracteristici extinse pe articol, coduri de bare, clasificări multiple cu ierarhii paralele.",
+            "Codificarea articolului se poate face automat sau manual; caracteristici extinse pe articol, coduri de bare introduse manual, clasificări multiple cu ierarhii paralele.",
             "Urmărire pe loturi, serii, revizii sau proprietăți atașate; unități de măsură multiple cu conversie automată.",
             "Calculul costului stocului prin orice metodă, în paralel (FIFO, LIFO, identificare directă, CMP instantaneu, CMP global), inclusiv în valută.",
             "Toate tipurile de mișcări de stoc (intrare, ieșire, transfer, retururi, reevaluare, inventar); gestiunea stocurilor de custodie și consignație.",

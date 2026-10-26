@@ -33,6 +33,9 @@ COPIA_SCOPE = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_cor
 SURSA_CAPITOL = pathlib.Path("d:/AI_Claude/tools/shared/capitol_core.py")
 COPIA_CAPITOL = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_core" / "capitol.py"
 
+SURSA_VERIFICA = pathlib.Path("d:/AI_Claude/skills/generare-scope-core/verifica_document.py")
+COPIA_VERIFICA = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_core" / "verifica.py"
+
 
 def _hash(p: pathlib.Path) -> str:
     """Hash peste conținut, cu sfârșiturile de linie normalizate.
@@ -112,4 +115,15 @@ def test_scope_nu_a_divergat():
         "scope.py diferă de skills/generare-scope-core/scope.py (dincolo de "
         "blocul de import, care e singura diferență acceptată). "
         "Conținutul se editează în sursă și se copiază aici."
+    )
+
+
+@pytest.mark.skipif(not SURSA_VERIFICA.is_file(), reason="repo-ul sursă nu e accesibil aici")
+def test_verifica_nu_a_divergat():
+    """Verificările documentului de scop sunt cele ale skill-ului local (`verifica_document.py`):
+    fiecare a apărut după un defect ajuns într-un document livrat, deci o verificare nouă acolo
+    trebuie să ajungă și aici. Diferă doar importurile (`from . import stil`) și linia `sys.path`."""
+    assert _hash_fara_antet(COPIA_VERIFICA) == _hash_fara_antet(SURSA_VERIFICA), (
+        "verifica.py diferă de skills/generare-scope-core/verifica_document.py (dincolo de "
+        "importuri și de linia sys.path). Conținutul se editează în sursă și se copiază aici."
     )

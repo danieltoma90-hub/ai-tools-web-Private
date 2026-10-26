@@ -974,8 +974,8 @@ async def test_sumarul_document_are_numerele_corecte():
         },
         "suplimentare": [{"titlu": "Sub A", "in_modul": "vanzari"}, {"titlu": "Sub B"}],
         "acoperire": [
-            {"zona": "Z", "cerinta": "C1", "raspuns": "R1", "incadrare": "A"},
-            {"zona": "Z", "cerinta": "C2", "raspuns": "R2", "incadrare": "N"},
+            {"zona": "Z", "cerinta": "C1", "raspuns": "Răspuns unu.", "incadrare": "A"},
+            {"zona": "Z", "cerinta": "C2", "raspuns": "Răspuns doi.", "incadrare": "N"},
         ],
         "beneficii": ["Beneficiu."],
         "confirmari": [{"aspect": "Aspect.", "motiv": "Motiv."}],
@@ -1098,3 +1098,144 @@ def test_gaseste_placeholdere_gol_cand_documentul_nu_are_marcaje():
 
     assert numar == 0
     assert capitole == []
+
+
+# --- scopul corelat, locațiile, premisele pe client, verificarea documentului -----
+
+async def test_scop_corelat_cu_denumire_numeste_aria_in_delimitare():
+    """`scop_corelat` e cheia nouă a lui `document_frate`; `denumire` intră în titlul
+    capitolului, ca documentul să numească aria concretă, nu „documentul-frate”."""
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["scop_corelat"] = {"exista": True, "titlu": "Scop Retail", "arie_acoperita": "Retailul",
+                           "coduri": ["R1"], "denumire": "scopul de Retail"}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, cfg, {})
+    try:
+        assert any(t.endswith("Delimitarea față de scopul de Retail") for t in sumar["capitole"])
+        assert "documentul-frate" not in _tot_textul(doc_path)
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_document_frate_vechi_primeste_denumirea_implicita():
+    """Pagina publicată încă trimite `document_frate`: rămâne acceptat, cu denumirea implicită."""
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["document_frate"] = {"exista": True, "titlu": "Scop Producție",
+                             "arie_acoperita": "Producția", "coduri": ["N1"]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, cfg, {})
+    try:
+        assert any(t.endswith("Delimitarea față de scopul de Producție") for t in sumar["capitole"])
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_scop_corelat_cu_denumire_goala_cade_pe_denumirea_implicita():
+    cfg = copy.deepcopy(CFG_MINIM)
+    cfg["scop_corelat"] = {"exista": True, "titlu": "Scop Producție", "coduri": "nu e listă",
+                           "denumire": "   "}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, cfg, {})
+    try:
+        assert any(t.endswith("Delimitarea față de scopul de Producție") for t in sumar["capitole"])
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_client_pe_locatii_scrie_structura_pe_locatii():
+    continut = {"client": {"nume": "ACME SRL", "entitati": ["Sediul din Cluj", "Depozitul din Turda"],
+                           "tip_entitati": "locatii"}}
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        text = _tot_textul(doc_path)
+        assert "Structura pe locații" in text and "Structura pe entități" not in text
+        assert "propriile declarații" not in text
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_tip_entitati_necunoscut_ramane_pe_societati():
+    continut = {"client": {"nume": "ACME SRL", "entitati": ["ACME SRL", "ACME Logistic SRL"],
+                           "tip_entitati": "altceva"}}
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert "Structura pe entități" in _tot_textul(doc_path)
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_premise_extra_ajung_in_capitolul_de_premise():
+    continut = {"premise_extra": {
+        "infrastructura": ["Serverul de producție este pus la dispoziție de ACME."],
+        "date": "nu e listă — se ignoră",
+        "necunoscuta": ["nu are subcapitol — se ignoră"],
+    }}
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        text = _tot_textul(doc_path)
+        assert "Serverul de producție este pus la dispoziție de ACME." in text
+        assert "se ignoră" not in text
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_verificarea_semnaleaza_codul_de_bare_generat_automat():
+    """Afirmația corectată o dată de beneficiar ajunge în avertisment, nu în document fără semn."""
+    continut = {"client": {"nume": "ACME SRL", "domeniu": "distribuție"},
+                "suplimentare": [{"titlu": "Etichetare", "in_modul": "nomenclatoare",
+                                  "puncte": ["Codul de bare se generează automat la crearea "
+                                             "articolului."]}]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert any(p.startswith("afirmatii:") for p in sumar["verificare_probleme"])
+        assert "Verificarea documentului a găsit" in sumar["avertisment"]
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_document_standard_trece_verificarea_fara_probleme():
+    continut = {"client": {"nume": "ACME SRL", "domeniu": "distribuție"}}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert sumar["verificare_probleme"] == []
+        assert "Verificarea documentului" not in sumar["avertisment"]
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_eroarea_verificarii_nu_opreste_generarea(monkeypatch):
+    def cade(*a, **k):
+        raise RuntimeError("verificare stricată")
+    monkeypatch.setattr(pipeline.verifica, "verifica", cade)
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, {})
+    try:
+        assert doc_path.is_file()
+        assert sumar["verificare_probleme"] == []
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_proprietatile_fisierului_nu_pastreaza_titlul_gazdei():
+    """Gazda e documentul altui client: titlul din proprietăți se rescrie pe clientul curent."""
+    continut = {"client": {"nume": "ACME SRL"}}
+    doc_path, _ = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        assert "ACME SRL" in (Document(str(doc_path)).core_properties.title or "")
+    finally:
+        doc_path.unlink(missing_ok=True)
+
+
+async def test_codurile_din_caietul_de_sarcini_nu_sunt_luate_drept_fluxuri():
+    """Elementul din analiza de acoperire e textul clientului, cu numerotarea lui; un cod inexistent
+    în răspunsul soluției e însă o trimitere ruptă și se semnalează."""
+    continut = {"client": {"nume": "ACME SRL", "domeniu": "distribuție"},
+                "acoperire": [
+                    {"zona": "Vânzări", "cerinta": "R1.2 Facturare recurentă",
+                     "raspuns": "Acoperit prin facturarea directă.", "incadrare": "A"},
+                    {"zona": "Stocuri", "cerinta": "REQ12 Inventar",
+                     "raspuns": "Acoperit prin fluxul D99.", "incadrare": "A"},
+                ]}
+    doc_path, sumar = await pipeline.run_scope_document_pipeline(GAZDA, CFG_MINIM, continut)
+    try:
+        probleme = " ".join(sumar["verificare_probleme"])
+        assert "R1 " not in probleme and "REQ12" not in probleme
+        assert "D99" in probleme
+    finally:
+        doc_path.unlink(missing_ok=True)
