@@ -60,17 +60,27 @@ function appendOptiuni(form: FormData, o?: OptiuniMinutaApi) {
   if (o.detaliu) form.append("detaliu", o.detaliu);
 }
 
+/** Celelalte înregistrări ale aceleiași zile, deja urcate în storage, și notițele echipei din
+ * ședință — ambele opționale; serverul le reunește în aceeași minută. */
+export type SurseMinuta = {
+  inregistrari?: { storage_path: string; filename: string }[];
+  notite?: string;
+};
+
 export async function postMinuta(
   storagePath: string,
   filename: string,
   contextPath?: string,
-  optiuni?: OptiuniMinutaApi
+  optiuni?: OptiuniMinutaApi,
+  surse?: SurseMinuta
 ): Promise<{ job_id: string }> {
   const form = new FormData();
   form.append("storage_path", storagePath);
   form.append("filename", filename);
   if (contextPath) form.append("context_path", contextPath);
   appendOptiuni(form, optiuni);
+  if (surse?.inregistrari?.length) form.append("inregistrari", JSON.stringify(surse.inregistrari));
+  if (surse?.notite?.trim()) form.append("notite", surse.notite.trim());
   return apiFetch(`${PROXY}/minuta`, { method: "POST", body: form }) as Promise<{
     job_id: string;
   }>;
@@ -472,6 +482,11 @@ export async function postScopCoreGenereaza(params: {
 // rezultatul e împachetat tot într-un job „done”, deci se citește prin `getScopCoreJob`
 // exact ca la modul „capitol” — vezi `ScopCoreJob` mai jos, comun ambelor moduri.
 
+/** „societati” = societăți distincte ale unui grup; „locatii” = o singură societate pe mai multe
+ * puncte de lucru — schimbă textul subcapitolului 2.2 (o singură firmă nu are contabilitate pe
+ * entitate). */
+export type TipEntitati = "societati" | "locatii";
+
 export type ScopCoreDocConfig = {
   client: {
     nume: string;
@@ -479,6 +494,7 @@ export type ScopCoreDocConfig = {
     domeniu: string;
     entitati: string[];
     observatii: string;
+    tip_entitati?: TipEntitati;
   };
   document: {
     titlu: string;
@@ -487,11 +503,14 @@ export type ScopCoreDocConfig = {
     elaborat_de: string;
     furnizor: string;
   };
-  document_frate: {
+  /** Scopul cu care documentul se delimitează (fostul `document_frate`, încă acceptat de server).
+   * `denumire` e numele din text — implicit „scopul de Producție”. */
+  scop_corelat: {
     exista: boolean;
     titlu: string;
     arie_acoperita: string;
     coduri: string[];
+    denumire?: string;
   };
   sectiuni_core: { toate: boolean; doar: string[]; fara: string[] };
   capitole: {
@@ -539,7 +558,10 @@ export type ScopCoreDocContinut = {
     observatii: string;
     situatie_actuala: { actual: string; solutie: string }[];
     obiective: string[];
+    tip_entitati?: TipEntitati;
   };
+  /** Punctele adăugate pe client la capitolul de premise, pe cele trei subcapitole ale lui. */
+  premise_extra?: { infrastructura?: string[]; date?: string[]; organizare?: string[] };
   suplimentare: ScopCoreDocSuplimentar[];
   acoperire: ScopCoreDocCerinta[];
   delimitare: { zona: string; tratat_in: string; interfatare: string }[];
@@ -593,6 +615,10 @@ export type ScopCoreDocumentSummary = {
   /** Titlurile de capitol/subcapitol sub care a apărut cel puțin un marker, în ordinea
    * întâlnirii în document — gol dacă `placeholder_numar` e 0. */
   placeholder_capitole: string[];
+  /** Problemele găsite de verificările documentului (coduri de flux nedefinite, afirmații
+   * corectate o dată de beneficiari, dubluri, proprietăți moștenite) — tot ele, rezumate, și în
+   * `avertisment`. Lipsește pe un server mai vechi. */
+  verificare_probleme?: string[];
   avertisment: string;
 };
 

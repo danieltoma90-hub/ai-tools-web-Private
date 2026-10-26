@@ -22,7 +22,7 @@ type Props<T extends { id: string }> = {
 };
 
 /**
- * Tabel editabil generic — matricea de acoperire, delimitarea față de documentul-frate și
+ * Tabel editabil generic — matricea de acoperire, delimitarea față de scopul de Producție și
  * fluxul operațional sunt toate „rânduri de text pe câteva coloane, cu ștergere fără
  * confirmare”. Gândit pentru 20-60 de rânduri (Christof a avut 65 de cerințe):
  *

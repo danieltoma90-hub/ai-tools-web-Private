@@ -16,7 +16,7 @@ const ETICHETE: { cheie: CheieCapitol; titlu: string }[] = [
   { cheie: "abordare", titlu: "Abordarea și metodologia de implementare" },
   { cheie: "beneficii", titlu: "Beneficiile soluției" },
   { cheie: "acoperire", titlu: "Analiza de acoperire a cerințelor" },
-  { cheie: "delimitare", titlu: "Delimitarea față de documentul-frate" },
+  { cheie: "delimitare", titlu: "Delimitarea față de scopul de Producție" },
   { cheie: "premise", titlu: "Premise și responsabilități" },
   { cheie: "confirmari", titlu: "Puncte de confirmat înainte de validarea scopului" },
   { cheie: "sinteza", titlu: "Sinteza scopului funcțional" },

@@ -9,6 +9,7 @@ import {
   type ScopCoreDocConfig,
   type ScopCoreDocContinut,
   type ScopCoreDocumentSummary,
+  type TipEntitati,
 } from "@/lib/api";
 import { isColdStartError, pollJob } from "@/lib/poll";
 import { SECTIUNI_CORE, titluSectiune } from "./sectiuniCore";
@@ -72,6 +73,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
   const [numeComplet, setNumeComplet] = useState("");
   const [domeniu, setDomeniu] = useState("");
   const [entitatiText, setEntitatiText] = useState("");
+  const [tipEntitati, setTipEntitati] = useState<TipEntitati>("societati");
   const [observatii, setObservatii] = useState("");
   // Situația actuală (2.2) și obiectivele (2.3) — spre deosebire de restul câmpurilor
   // clientului, astea două nu au un fallback text scurt dacă lipsesc: `scope._cap_context`
@@ -86,6 +88,13 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
   // --- Referirea la documentul de Producție --------------------------------------------
   const [frateTitlu, setFrateTitlu] = useState("");
   const [frateArie, setFrateArie] = useState("");
+  // numele sub care apare în text; gol = „scopul de Producție”, implicitul serverului
+  const [corelatDenumire, setCorelatDenumire] = useState("");
+
+  // --- Premise adăugate pe client (o intrare pe linie, pe subcapitolele capitolului) -----
+  const [premiseInfrastructura, setPremiseInfrastructura] = useState("");
+  const [premiseDate, setPremiseDate] = useState("");
+  const [premiseOrganizare, setPremiseOrganizare] = useState("");
   const [delimitareRows, setDelimitareRows] = useState<DelimitareRandUI[]>([]);
 
   // --- Secțiunile adăugate peste standard -----------------------------------------------
@@ -107,9 +116,11 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
   const [fluxRows, setFluxRows] = useState<FluxRandUI[]>([]);
 
   // --- Comutatoarele editabile ale capitolelor (restul se derivă din conținut) ---------
+  // Metodologia și fazele descriu munca echipei de implementare, nu soluția oferită: scopul îi
+  // spune clientului ce acoperim, deci capitolul pornește oprit (se poate activa).
   const [capitoleManual, setCapitoleManual] = useState({
     context: true,
-    abordare: true,
+    abordare: false,
     premise: true,
     sinteza: true,
     validare: true,
@@ -266,7 +277,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
   const delimitareRandCompletate = delimitareRows.filter(
     (r) => r.zona.trim() && r.tratat_in.trim() && r.interfatare.trim()
   ).length;
-  // Odată declarat documentul-frate, capitolul de delimitare rămâne activ necondiționat —
+  // Odată declarat scopul de Producție, capitolul de delimitare rămâne activ necondiționat —
   // utilizatorul l-a cerut explicit prin acea declarație, și nu se mai dezactivă tăcut dacă
   // rândurile lipsesc (asta ar însemna să dispară din document fără nicio explicație). În loc
   // să lăsăm `_cap_delimitare` să completeze tăcut un tabel-schelet cu „[ de completat ]”
@@ -309,6 +320,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
         domeniu: domeniu.trim(),
         entitati: randuriDinText(entitatiText),
         observatii: observatii.trim(),
+        tip_entitati: tipEntitati,
       },
       // Obiect gol, intenționat: acest ecran nu are câmpuri pentru titlu/subtitlu/versiune/
       // elaborat_de/furnizor — o cheie goală face ca `scope.genereaza` să-și folosească propriile
@@ -316,11 +328,12 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
       // șiruri goale explicite, `.get()` le-ar întoarce PE ELE, nu valorile implicite, iar
       // coperta documentului ar ieși cu titlul gol.
       document: {} as ScopCoreDocConfig["document"],
-      document_frate: {
+      scop_corelat: {
         exista: frateExista,
         titlu: frateTitlu.trim(),
         arie_acoperita: frateArie.trim(),
         coduri: [],
+        denumire: corelatDenumire.trim(),
       },
       sectiuni_core: { toate: true, doar: [], fara: [] },
       capitole: capitoleEfective,
@@ -343,6 +356,12 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
           .filter((r) => r.actual.trim() && r.solutie.trim())
           .map((r) => ({ actual: r.actual.trim(), solutie: r.solutie.trim() })),
         obiective: randuriDinText(obiectiveText),
+        tip_entitati: tipEntitati,
+      },
+      premise_extra: {
+        infrastructura: randuriDinText(premiseInfrastructura),
+        date: randuriDinText(premiseDate),
+        organizare: randuriDinText(premiseOrganizare),
       },
       suplimentare: suplimentare
         .filter((s) => s.titlu.trim())
@@ -638,6 +657,32 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
             placeholder={"Societatea A SRL\nSocietatea B SRL"}
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#18257f]"
           />
+          {entitatiText.trim() && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
+              <span className="text-[11px] text-slate-500">Ce sunt:</span>
+              {(
+                [
+                  ["societati", "societăți distincte"],
+                  ["locatii", "locații ale aceleiași societăți"],
+                ] as [TipEntitati, string][]
+              ).map(([valoare, eticheta]) => (
+                <label key={valoare} className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="tip-entitati"
+                    checked={tipEntitati === valoare}
+                    onChange={() => setTipEntitati(valoare)}
+                    className="accent-[#18257f]"
+                  />
+                  {eticheta}
+                </label>
+              ))}
+              <span className="block w-full text-[11px] text-slate-400">
+                La o singură societate, capitolul nu mai vorbește de contabilitate și declarații pe
+                fiecare entitate: evidența contabilă rămâne unică, pe locații.
+              </span>
+            </div>
+          )}
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-500 mb-1">
@@ -716,8 +761,8 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
             <span className="font-normal text-slate-400">(opțional)</span>
           </h3>
           <p className="text-xs text-slate-500 leading-relaxed mt-1">
-            Completată, activează capitolul de delimitare față de documentul-frate — mai jos,
-            cu rândurile lui. Odată declarat documentul-frate, trebuie completat cel puțin un
+            Completată, activează capitolul de delimitare față de scopul de Producție — mai jos,
+            cu rândurile lui. Odată declarat acest document, trebuie completat cel puțin un
             rând: capitolul nu se mai dezactivă de la sine, iar fără niciun rând generarea e
             blocată.
           </p>
@@ -747,6 +792,23 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#18257f]"
             />
           </div>
+          {frateExista && (
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-500 mb-1">
+                Cum se numește în text{" "}
+                <span className="font-normal text-slate-400">
+                  (opțional — implicit „scopul de Producție”; ex. „scopul de Retail”)
+                </span>
+              </label>
+              <input
+                type="text"
+                value={corelatDenumire}
+                onChange={(e) => setCorelatDenumire(e.target.value)}
+                placeholder="scopul de Producție"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#18257f]"
+              />
+            </div>
+          )}
         </div>
         {frateExista && (
           <div>
@@ -870,6 +932,39 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
           golMesaj="Nicio etapă încă."
         />
       </div>
+
+      {/* 6b. Premisele adăugate pe client */}
+      {capitoleManual.premise && (
+        <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-[#18257f]">
+              Premise adăugate pe client{" "}
+              <span className="font-normal text-slate-400">(opțional — câte una pe linie)</span>
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed mt-1">
+              Se adaugă după premisele standard, în subcapitolul lor. Formulează-le ca sarcini ale
+              beneficiarului (key-users, infrastructură, date, modele de contare), nu ca întrebări.
+            </p>
+          </div>
+          {(
+            [
+              ["Infrastructură", premiseInfrastructura, setPremiseInfrastructura],
+              ["Date", premiseDate, setPremiseDate],
+              ["Organizare", premiseOrganizare, setPremiseOrganizare],
+            ] as [string, string, (v: string) => void][]
+          ).map(([eticheta, valoare, seteaza]) => (
+            <div key={eticheta}>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">{eticheta}</label>
+              <textarea
+                value={valoare}
+                onChange={(e) => seteaza(e.target.value)}
+                rows={2}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#18257f]"
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* 7. Comutatoare pe capitole */}
       <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">

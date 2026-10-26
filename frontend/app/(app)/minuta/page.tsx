@@ -13,6 +13,11 @@ import { ETAPE_MINUTA_AI } from "@/lib/progres";
 
 type State = "idle" | "processing" | "done" | "error";
 
+// Teams împarte o zi de ședințe în mai multe înregistrări; serverul le reunește în aceeași minută.
+const MAX_INREGISTRARI = 5;
+// notițele echipei: câteva pagini, nu un al doilea transcript (aceeași limită ca pe server)
+const MAX_NOTITE = 30000;
+
 function aiStepLabel(step: string): string {
   const e = step.match(/^extrageri:(\d+)\/(\d+)$/);
   if (e) return `Analizez transcriptul — ${e[1]} din ${e[2]} extrageri gata...`;
@@ -21,7 +26,10 @@ function aiStepLabel(step: string): string {
 }
 
 export default function MinutaPage() {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  // cheia zonei de încărcare: se schimbă după fiecare fișier ales, ca zona să revină goală
+  const [zonaKey, setZonaKey] = useState(0);
+  const [notite, setNotite] = useState("");
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState("");
   const [contextPath, setContextPath] = useState("");
@@ -51,19 +59,37 @@ export default function MinutaPage() {
     }
   }
 
+  function adaugaFisier(f: File) {
+    setFiles((fs) => (fs.length >= MAX_INREGISTRARI ? fs : [...fs, f]));
+    setZonaKey((k) => k + 1);
+  }
+
+  function scoateFisier(index: number) {
+    setFiles((fs) => fs.filter((_, i) => i !== index));
+  }
+
   async function handleGenerate() {
-    if (!file) return;
+    if (!files.length || notite.length > MAX_NOTITE) return;
+    const [file, ...alte] = files;
     setState("processing");
-    setAiLabel("Încarc transcriptul...");
+    setAiLabel(files.length > 1 ? `Încarc cele ${files.length} înregistrări...` : "Încarc transcriptul...");
     setStep(null);
     setError("");
     cancelledRef.current = false;
 
     try {
       const storagePath = await incarca(file);
+      const inregistrari: { storage_path: string; filename: string }[] = [];
+      for (const f of alte) {
+        if (cancelledRef.current) return;
+        inregistrari.push({ storage_path: await incarca(f), filename: f.name });
+      }
       if (cancelledRef.current) return;
       setAiLabel("Pornesc analiza...");
-      const { job_id } = await postMinuta(storagePath, file.name, contextPath || undefined, optiuni);
+      const { job_id } = await postMinuta(storagePath, file.name, contextPath || undefined, optiuni, {
+        inregistrari,
+        notite,
+      });
 
       const job = await pollJob(() => pollMinutaJob(job_id), {
         cancelled: () => cancelledRef.current,
@@ -90,7 +116,8 @@ export default function MinutaPage() {
 
   function reset() {
     cancelledRef.current = true;
-    setFile(null);
+    setFiles([]);
+    setNotite("");
     setResult(null);
     setState("idle");
     setError("");
@@ -124,7 +151,43 @@ export default function MinutaPage() {
 
             <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">
               <h3 className="text-sm font-bold text-[#18257f]">Pasul 2 · Transcript ședință</h3>
-              <UploadZone accept=".vtt,.docx" label=".vtt sau .docx" onFile={setFile} />
+              {files.length > 0 && (
+                <ul className="flex flex-col gap-1.5">
+                  {files.map((f, i) => (
+                    <li
+                      key={`${f.name}-${i}`}
+                      className="flex items-center justify-between gap-2 bg-[#eef0f8] rounded-lg px-3 py-2"
+                    >
+                      <span className="text-xs font-medium text-[#131e66] truncate">
+                        {files.length > 1 ? `${i + 1}. ` : ""}
+                        {f.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => scoateFisier(i)}
+                        className="text-xs text-slate-400 hover:text-red-600 shrink-0"
+                      >
+                        ✕ Elimină
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {files.length < MAX_INREGISTRARI && (
+                <UploadZone
+                  key={zonaKey}
+                  accept=".vtt,.docx"
+                  label={files.length ? "încă o înregistrare din aceeași zi" : ".vtt sau .docx"}
+                  onFile={adaugaFisier}
+                />
+              )}
+              <p className="text-xs text-slate-500">
+                {files.length > 1
+                  ? `Cele ${files.length} înregistrări se reunesc într-o singură minută, în ordinea de mai sus; ` +
+                    "dacă sunt ședințe diferite cu aceeași companie, minuta le separă pe capitole."
+                  : "Poți adăuga până la 5 înregistrări din aceeași zi (Teams împarte adesea o ședință în " +
+                    "mai multe fișiere) — se reunesc într-o singură minută."}
+              </p>
               {contextPath && (
                 <p className="text-xs text-slate-500">
                   Se va genera folosind contextul{" "}
@@ -133,11 +196,35 @@ export default function MinutaPage() {
               )}
             </div>
 
-            <OptiuniMinutaPanel value={optiuni} onChange={setOptiuni} titlu="Pasul 3 · Opțiuni minută" />
+            <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-2">
+              <h3 className="text-sm font-bold text-[#18257f]">
+                Pasul 3 · Notițele echipei din ședință{" "}
+                <span className="font-normal text-slate-400">(opțional)</span>
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Lipește notițele luate în ședință. Corectează ce deformează transcrierea automată — nume,
+                funcții, cifre, sisteme — și spun cine ce a prezentat. Ce vine din ele e marcat{" "}
+                <b>{optiuni.limba === "en" ? "[NOTES]" : "[NOTIȚE]"}</b> când marcajele sunt active.
+              </p>
+              <textarea
+                value={notite}
+                onChange={(e) => setNotite(e.target.value)}
+                rows={5}
+                placeholder={"Ex.\nAna Ionescu – directoare economică\nbugetul aprobat: 4,5 milioane"}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#18257f]"
+              />
+              {notite.length > MAX_NOTITE && (
+                <p className="text-xs text-red-600">
+                  Notițele au {notite.length} de caractere — cel mult {MAX_NOTITE}.
+                </p>
+              )}
+            </div>
+
+            <OptiuniMinutaPanel value={optiuni} onChange={setOptiuni} titlu="Pasul 4 · Opțiuni minută" />
 
             <button
               onClick={handleGenerate}
-              disabled={!file}
+              disabled={!files.length || notite.length > MAX_NOTITE}
               className="w-full text-white py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[#18257f] hover:bg-[#131e66]"
             >
               {optiuni.limba === "en" ? "✨ Generează minuta în engleză" : "✨ Generează minuta"}
