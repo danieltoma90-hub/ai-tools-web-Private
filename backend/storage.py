@@ -19,7 +19,8 @@ UPLOAD_TOOLS_EXT = {
     "mockup": {".docx", ".xlsx"},
     "training": {".docx"},
     "minuta": {".vtt", ".docx"},
-    "scop-core": {".docx"},
+    # .json: minutele de ședință, care circulă ca JSON structurat înainte să devină document
+    "scop-core": {".docx", ".json"},
 }
 UPLOAD_MAX_BYTES = 52_428_800  # 50MB — maximul planului free Supabase
 

@@ -926,3 +926,66 @@ async def run_scope_document_pipeline(
         "avertisment": " ".join(avertismente),
     }
     return document_path, sumar
+
+
+# --------------------------------------------------------------------------------------
+# Minutele de ședință ca sursă pentru scop
+#
+# Spre deosebire de `/propune`, aici NU intervine niciun model: minutele noastre există deja
+# ca JSON structurat (secțiuni, buline, pași următori), iar confruntarea cu documentul de scop
+# se face pe coduri de flux și pe cuvintele catalogului Charisma. Fără model înseamnă fără
+# cotă Mistral, fără așteptare și, mai ales, fără riscul ca o promisiune să fie reformulată:
+# fiecare punct din raport e un extras, cuvânt cu cuvânt, din minută.
+# --------------------------------------------------------------------------------------
+
+def run_minute_pipeline(
+    minute_paths: list[Path],
+    scop_path: Path | None = None,
+) -> dict:
+    """Minutele → elementele discutate și, dacă există un document de scop, confruntarea cu el."""
+    from skills.scop_core import confrunta as conf
+    from skills.scop_core import minute as mn
+
+    puncte = mn.citeste_multe(minute_paths)
+    elemente = [{
+        "sursa": p.sursa,
+        "sectiune_minuta": p.sectiune,
+        "rubrica": p.rubrica,
+        "text": p.text,
+        "semnale": list(p.semnale),
+        "marcaje": list(p.marcaje),
+        "confirmat": p.confirmat,
+    } for p in puncte if p.rubrica not in ("risc", "concluzie")]
+
+    raport: list[dict] = []
+    sumar_verdicte: dict[str, int] = {}
+    if scop_path is not None:
+        doc = conf.Document.citeste(scop_path)
+        for r in conf.confrunta(puncte, doc):
+            sumar_verdicte[r.verdict] = sumar_verdicte.get(r.verdict, 0) + 1
+            raport.append({
+                "verdict": r.verdict,
+                "eticheta": conf.ETICHETE[r.verdict],
+                "incredere": r.incredere,
+                "sursa": r.punct.sursa,
+                "sectiune": r.punct.sectiune,
+                "text": r.punct.text,
+                "marcaje": list(r.punct.marcaje),
+                "semnale": list(r.punct.semnale),
+                "termeni": list(r.termeni),
+                "gasiti": list(r.gasiti),
+                "locuri": list(r.locuri),
+            })
+        raport.sort(key=lambda x: (conf.ORDINE.index(x["verdict"]), x["incredere"] == "slaba"))
+
+    return {
+        "elemente": elemente,
+        "raport": raport,
+        "sumar": {
+            "puncte": len(puncte),
+            "elemente": len(elemente),
+            "neconfirmate": sum(1 for e in elemente if not e["confirmat"]),
+            "cu_semnal": sum(1 for e in elemente if e["semnale"]),
+            "verdicte": sumar_verdicte,
+        },
+    }

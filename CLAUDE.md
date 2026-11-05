@@ -1,7 +1,9 @@
 # AI Tools Web — Context Complet
 
 ## Descriere proiect
-Aplicație web internă TotalSoft cu 3 tool-uri AI (Minută, Mockup, Scenarii), autentificare cu Supabase și backend Python/FastAPI.
+Aplicație web internă TotalSoft cu tool-uri AI (Minută, Mockup, Scenarii, Training, Scop CORE), autentificare cu Supabase și backend Python/FastAPI.
+
+**Scop CORE** are trei moduri: documentul complet pe 11 capitole, doar capitolul CORE pentru inserare într-un document gazdă, și „Din minutele ședințelor" — confruntă minutele (JSON de minută sau de FitGap, ori .docx) cu un document de scop și spune ce a rămas nesincronizat: ce s-a cerut să se scoată și încă e acolo, ce s-a discutat și lipsește, ce trebuie reformulat. Ultimul mod e sincron și nu folosește model. Modulele `skills/scop_core/minute.py` și `confrunta.py` vin din `D:\AI_Claude\tools\shared\` prin `python tools/sincronizeaza_web.py` (rulat în repo-ul sursă), iar `tests/test_scop_core_sync.py` păzește sincronizarea.
 
 ## Stack tehnic
 - **Frontend**: Next.js 16.2.9 (App Router), React 19, Tailwind CSS — deploy pe **Vercel**

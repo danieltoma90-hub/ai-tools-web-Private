@@ -36,6 +36,13 @@ COPIA_CAPITOL = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_c
 SURSA_VERIFICA = pathlib.Path("d:/AI_Claude/skills/generare-scope-core/verifica_document.py")
 COPIA_VERIFICA = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_core" / "verifica.py"
 
+SURSA_MINUTE = pathlib.Path("d:/AI_Claude/tools/shared/minute.py")
+COPIA_MINUTE = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_core" / "minute.py"
+
+SURSA_CONFRUNTA = pathlib.Path("d:/AI_Claude/tools/shared/confrunta_scop.py")
+COPIA_CONFRUNTA = (pathlib.Path(__file__).resolve().parents[1]
+                   / "skills" / "scop_core" / "confrunta.py")
+
 
 def _hash(p: pathlib.Path) -> str:
     """Hash peste conținut, cu sfârșiturile de linie normalizate.
@@ -126,4 +133,24 @@ def test_verifica_nu_a_divergat():
     assert _hash_fara_antet(COPIA_VERIFICA) == _hash_fara_antet(SURSA_VERIFICA), (
         "verifica.py diferă de skills/generare-scope-core/verifica_document.py (dincolo de "
         "importuri și de linia sys.path). Conținutul se editează în sursă și se copiază aici."
+    )
+
+
+@pytest.mark.skipif(not SURSA_MINUTE.is_file(), reason="repo-ul sursă nu e accesibil aici")
+def test_minute_nu_a_divergat():
+    """`minute.py` nu importă nimic din pachetul local — doar `docx`, și acela târziu — deci
+    copia trebuie să fie identică cu sursa."""
+    assert _hash(COPIA_MINUTE) == _hash(SURSA_MINUTE), (
+        "minute.py diferă de tools/shared/minute.py. "
+        "Conținutul se editează în sursă și se copiază aici."
+    )
+
+
+@pytest.mark.skipif(not SURSA_CONFRUNTA.is_file(), reason="repo-ul sursă nu e accesibil aici")
+def test_confrunta_nu_a_divergat():
+    """`confrunta.py` importă `minute` și `charisma_core` din pachet, deci diferă de sursă
+    exact cu blocul de import — restul se compară ca la `capitol.py`."""
+    assert _hash_fara_antet(COPIA_CONFRUNTA) == _hash_fara_antet(SURSA_CONFRUNTA), (
+        "confrunta.py diferă de tools/shared/confrunta_scop.py. "
+        "Conținutul se editează în sursă și se copiază aici."
     )

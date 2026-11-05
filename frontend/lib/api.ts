@@ -450,6 +450,57 @@ export async function postScopCorePropune(
   }) as Promise<{ propunere_id: string; elemente: ScopCoreElement[] }>;
 }
 
+export type MinutaPunct = {
+  verdict: string;
+  eticheta: string;
+  incredere: "tare" | "slaba";
+  sursa: string;
+  sectiune: string;
+  text: string;
+  marcaje: string[];
+  semnale: string[];
+  termeni: string[];
+  gasiti: string[];
+  locuri: string[];
+};
+
+export type MinutaRaspuns = {
+  elemente: {
+    sursa: string;
+    sectiune_minuta: string;
+    rubrica: string;
+    text: string;
+    semnale: string[];
+    marcaje: string[];
+    confirmat: boolean;
+  }[];
+  raport: MinutaPunct[];
+  sumar: {
+    puncte: number;
+    elemente: number;
+    neconfirmate: number;
+    cu_semnal: number;
+    verdicte: Record<string, number>;
+  };
+};
+
+/** Confruntă minutele de ședință cu un document de scop. Fără model — răspuns imediat. */
+export async function postScopCoreMinute(params: {
+  minute: { storage_path: string; filename: string }[];
+  scopStoragePath?: string;
+  scopFilename?: string;
+}): Promise<MinutaRaspuns> {
+  return apiFetch(`${PROXY}/scop-core/minute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      minute: params.minute,
+      scop_storage_path: params.scopStoragePath ?? null,
+      scop_filename: params.scopFilename ?? null,
+    }),
+  }) as Promise<MinutaRaspuns>;
+}
+
 export async function postScopCoreGenereaza(params: {
   gazdaStoragePath: string;
   gazdaFilename: string;

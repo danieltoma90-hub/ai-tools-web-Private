@@ -480,7 +480,7 @@ def tabel_fluxuri(doc, fluxuri):
         _borduri_grila(t)
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-    for celula, titlu in zip(t.rows[0].cells, ANTET_TABEL):
+    for celula, titlu in zip(t.rows[0].cells, ANTET_TABEL, strict=True):
         celula.text = ""
         run = celula.paragraphs[0].add_run(titlu)
         run.bold = True
@@ -516,7 +516,7 @@ def tabel(doc, antet: list[str], randuri, latimi=None, bold_prima_coloana: bool 
         _borduri_grila(t)
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-    for celula, titlu in zip(t.rows[0].cells, antet):
+    for celula, titlu in zip(t.rows[0].cells, antet, strict=True):
         celula.text = ""
         run = celula.paragraphs[0].add_run(titlu)
         run.bold = True
@@ -561,7 +561,7 @@ def tabel_delimitari(doc, delimitari):
         _borduri_grila(t)
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-    for celula, titlu in zip(t.rows[0].cells, ANTET_TABEL_DELIMITARI):
+    for celula, titlu in zip(t.rows[0].cells, ANTET_TABEL_DELIMITARI, strict=True):
         celula.text = ""
         run = celula.paragraphs[0].add_run(titlu)
         run.bold = True

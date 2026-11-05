@@ -57,6 +57,7 @@ from acces import cere_modul
 from pipelines.scop_core_pipeline import (
     DocumentInvalid,
     propune_job,
+    run_minute_pipeline,
     run_scop_core_pipeline,
     run_scope_document_pipeline,
     valideaza_docx,
@@ -83,6 +84,23 @@ MESAJ_CUPRINS_INVECHIT = (
 class PropuneRequest(BaseModel):
     storage_path: str
     filename: str
+
+
+class FisierIncarcat(BaseModel):
+    storage_path: str
+    filename: str
+
+
+class MinuteRequest(BaseModel):
+    """Minutele de confruntat și, opțional, documentul de scop față de care se confruntă.
+
+    Fără `scop_*` endpointul doar citește minutele și întoarce punctele discutate; cu el,
+    întoarce și raportul: ce s-a cerut să se scoată și încă e în document, ce s-a discutat și
+    lipsește, ce trebuie reformulat.
+    """
+    minute: list[FisierIncarcat]
+    scop_storage_path: str | None = None
+    scop_filename: str | None = None
 
 
 class GenerateRequest(BaseModel):
@@ -154,6 +172,70 @@ async def propune_scop_core(
         supliment_path.unlink(missing_ok=True)
 
     return {"propunere_id": str(uuid.uuid4()), "elemente": elemente}
+
+
+@router.post("/scop-core/minute")
+async def minute_scop_core(
+    req: MinuteRequest,
+    user=Depends(cere_modul("scop-core")),
+):
+    """Minutele de ședință → punctele discutate și confruntarea lor cu documentul de scop.
+
+    Sincron și fără model: minutele noastre sunt deja JSON structurat, iar potrivirea cu
+    documentul se face pe coduri de flux și pe catalogul Charisma. Nu consumă cotă de model și
+    nu rescrie nimic — fiecare punct din răspuns e un extras, cuvânt cu cuvânt, din minută.
+    """
+    if not req.minute:
+        raise HTTPException(status_code=422, detail="Trimite cel puțin o minută.")
+    if len(req.minute) > 10:
+        raise HTTPException(status_code=422, detail="Cel mult 10 minute într-o confruntare.")
+    for f in req.minute:
+        if Path(f.filename).suffix.lower() not in (".json", ".docx"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"„{f.filename}”: minuta trebuie să fie .json sau .docx",
+            )
+    if bool(req.scop_storage_path) != bool(req.scop_filename):
+        raise HTTPException(
+            status_code=422, detail="Documentul de scop cere și calea, și numele fișierului.")
+    if req.scop_filename and Path(req.scop_filename).suffix.lower() != ".docx":
+        raise HTTPException(status_code=422, detail="Documentul de scop trebuie să fie .docx")
+
+    descarcate: list[Path] = []
+    scop_path: Path | None = None
+    try:
+        try:
+            for f in req.minute:
+                descarcate.append(download_upload(f.storage_path))
+            if req.scop_storage_path:
+                scop_path = download_upload(req.scop_storage_path)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(
+                status_code=422,
+                detail="Un fișier încărcat nu a fost găsit în storage — reîncarcă fișierele.",
+            )
+
+        try:
+            rezultat = run_minute_pipeline(descarcate, scop_path)
+        except ValueError as e:
+            # Fișier care nu e nici minută, nici FitGap — vina e a fișierului încărcat.
+            raise HTTPException(status_code=422, detail=str(e))
+        except DocumentInvalid as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except Exception as e:
+            logger.exception("scop-core/minute FAILED")
+            raise HTTPException(status_code=422, detail=f"Fișier invalid: {e}")
+    finally:
+        for c in descarcate:
+            c.unlink(missing_ok=True)
+        if scop_path is not None:
+            scop_path.unlink(missing_ok=True)
+
+    return rezultat
 
 
 async def _run_job(
