@@ -1,0 +1,28 @@
+{
+ "cheie": "documentul-comercial-al-aprovizionarii",
+ "denumire": "Documentul comercial al aprovizionării",
+ "capitol": "achizitii",
+ "incadrare": "Inclus",
+ "termeni": [
+  "aprovizionarii",
+  "comercial"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Teldo",
+   "denumire": "Documentul comercial al aprovizionării",
+   "sursa": "continut_teldo.SUPLIMENTARE",
+   "descriere": "Necesarul pe secție, comanda către furnizor și recepția prin cântărire sunt descrise în scopul de Producție, întrucât alimentează direct producția. Prezentul document acoperă latura comercială și contabilă a aceluiași flux, împreună cu achizițiile care nu trec prin fabrică.",
+   "puncte": [
+    "Factura de aprovizionare corelată cu recepția operată în producție, cu diferențele de preț și de cantitate tratate prin documentele aferente.",
+    "Achizițiile de servicii, utilități, transport și mentenanță, pe articole nestocabile, cu alocare pe dimensiuni de analiză.",
+    "Achizițiile externe, cu factura de import și declarația vamală.",
+    "Contractele de furnizor și listele de prețuri asociate, cu actualizarea prin acte adiționale și cu istoricul prețurilor păstrat."
+   ],
+   "fluxuri": [],
+   "nota": ""
+  }
+ ]
+}

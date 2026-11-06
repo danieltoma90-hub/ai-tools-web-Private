@@ -1,0 +1,76 @@
+{
+ "cheie": "integrarea-edi-cu-partenerii-comerciali",
+ "denumire": "Integrarea EDI cu partenerii comerciali",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "comenzilor",
+  "comerciali",
+  "documentelor",
+  "edi",
+  "edi1",
+  "edi2",
+  "edi3",
+  "edi4",
+  "edi5",
+  "emise",
+  "integrarea",
+  "interfata",
+  "jurnal",
+  "maparea",
+  "nomenclatoarelor",
+  "partener",
+  "partenerii",
+  "preluarea",
+  "receptiei",
+  "reconcilierea",
+  "reluarea",
+  "transferurilor",
+  "transmiterea"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Gixen S.R.L.",
+   "denumire": "Integrarea EDI cu partenerii comerciali",
+   "sursa": "continut_gixen.SUPLIMENTARE",
+   "descriere": "Schimbul electronic de documente cu partenerii comerciali intră în scopul ofertat. Comenzile primite de la partener se preiau direct în sistem, iar documentele emise se transmit în formatul agreat, eliminând reintroducerea manuală și diferențele care apar din ea.",
+   "puncte": [
+    "Preluarea automată a comenzilor de la partener, cu validarea articolelor, a prețurilor și a condițiilor comerciale înainte de a deveni comandă în sistem.",
+    "Transmiterea documentelor emise — aviz și factură — în formatul agreat cu partenerul.",
+    "Reconcilierea confirmării de recepție transmise de partener cu cantitatea livrată, cu semnalarea diferențelor.",
+    "Jurnalizarea fiecărui schimb, cu starea și numărul de documente procesate, și reluarea unui transfer eșuat fără duplicarea documentelor.",
+    "Maparea nomenclatoarelor: corespondența între codurile de articol și de partener folosite de cele două sisteme, întreținută prin ecran dedicat."
+   ],
+   "fluxuri": [
+    {
+     "cod": "EDI1",
+     "flux": "Maparea nomenclatoarelor",
+     "presupune": "Ecran de corespondență între codurile de articol și de partener din sistemul propriu și cele folosite de partenerul comercial."
+    },
+    {
+     "cod": "EDI2",
+     "flux": "Preluarea comenzilor",
+     "presupune": "Importul comenzilor transmise de partener, cu validarea articolelor și a condițiilor comerciale, și generarea comenzii de client."
+    },
+    {
+     "cod": "EDI3",
+     "flux": "Transmiterea documentelor emise",
+     "presupune": "Generarea și transmiterea avizului și a facturii în formatul agreat."
+    },
+    {
+     "cod": "EDI4",
+     "flux": "Reconcilierea recepției la partener",
+     "presupune": "Compararea cantității livrate cu confirmarea transmisă de partener și semnalarea diferențelor."
+    },
+    {
+     "cod": "EDI5",
+     "flux": "Jurnal de interfață și reluarea transferurilor",
+     "presupune": "Jurnalizarea schimburilor, cu starea fiecăruia, și reluarea celor eșuate fără duplicare."
+    }
+   ],
+   "nota": "Dimensionare și premise. Efortul ofertat acoperă un singur format de schimb și un singur partener EDI, pentru tipurile de document enumerate mai sus. Fiecare format suplimentar sau partener cu specificații proprii se analizează și se estimează separat. Punerea în funcțiune presupune ca partenerul sau operatorul EDI să pună la dispoziție specificația formatelor și un mediu de test."
+  }
+ ]
+}

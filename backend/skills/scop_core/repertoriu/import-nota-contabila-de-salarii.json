@@ -1,0 +1,27 @@
+{
+ "cheie": "import-nota-contabila-de-salarii",
+ "denumire": "Import notă contabilă de salarii",
+ "capitol": "contabilitate",
+ "incadrare": "Inclus",
+ "termeni": [
+  "contabila",
+  "import",
+  "salarii"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Import notă contabilă de salarii",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Salarizarea se realizează într-o aplicație externă, iar costurile salariale ajung în contabilitate prin import.",
+   "puncte": [
+    "Import al notei contabile de salarii, cu alocare pe dimensiunile de analiză folosite pentru centre de cost, departamente și proiecte.",
+    "Cheltuielile alocate din nota de salarii devin urmăribile pe aceste dimensiuni."
+   ],
+   "fluxuri": [],
+   "nota": "Delimitare. TotalSoft nu realizează integrări cu alte soluții de salarizare; transferul direct de costuri dintr-o aplicație externă de salarizare în zona financiară nu este acoperit. Sincronizarea datelor de angajat, declarația 112 și elementele specifice de resurse umane, inclusiv organigrama, presupun soluția Charisma HCM, produs distinct."
+  }
+ ]
+}

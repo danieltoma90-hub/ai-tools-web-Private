@@ -1,0 +1,105 @@
+{
+ "cheie": "schimbul-de-fisiere-bancare-in-format-multicash",
+ "denumire": "Schimbul de fișiere bancare în format MultiCash",
+ "capitol": "financiar",
+ "incadrare": "Inclus",
+ "termeni": [
+  "bancare",
+  "confirmarea",
+  "export",
+  "extras",
+  "fisiere",
+  "format",
+  "import",
+  "mc1",
+  "mc2",
+  "mc3",
+  "multicash",
+  "neidentificate",
+  "operatiunilor",
+  "ordine",
+  "plata",
+  "plati",
+  "potrivirea",
+  "pozitiilor",
+  "schimbul",
+  "tratarea"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "AGRIFIELDS S.R.L.",
+   "denumire": "Schimbul de fișiere bancare în format MultiCash",
+   "sursa": "continut_agrifields.SUPLIMENTARE",
+   "descriere": "Relația cu banca se automatizează prin schimbul de fișiere în format MultiCash: ordinele de plată se generează din Charisma și se încarcă în aplicația băncii, iar extrasul de cont se importă și se potrivește automat pe documentele din sold.",
+   "puncte": [
+    "Generarea fișierului de plăți din documentele de plată înregistrate, în formatul agreat cu banca.",
+    "Importul extrasului de cont și potrivirea automată a operațiunilor pe partener și pe documentele din sold, cu intervenție manuală doar pe liniile nepotrivite.",
+    "Confirmarea pe extras a plăților și încasărilor deja înregistrate, fără reintroducere.",
+    "Scopul ofertat cuprinde o singură bancă și un singur cont bancar; extinderea la alte bănci sau conturi se bugetează ulterior."
+   ],
+   "fluxuri": [
+    {
+     "cod": "MC1",
+     "flux": "Export ordine de plată",
+     "presupune": "Generarea fișierului de plăți din documentele înregistrate, în formatul agreat cu banca, pentru încărcare în aplicația acesteia."
+    },
+    {
+     "cod": "MC2",
+     "flux": "Import extras de cont",
+     "presupune": "Preluarea extrasului în formatul MultiCash, cu identificarea automată a partenerului și a documentelor din sold."
+    },
+    {
+     "cod": "MC3",
+     "flux": "Potrivirea și confirmarea operațiunilor",
+     "presupune": "Potrivirea automată pe documentele din sold, cu intervenție manuală pe liniile rămase nepotrivite, și confirmarea pe extras a documentelor deja înregistrate."
+    }
+   ],
+   "nota": "Precizare privind scopul ofertat. Efortul cuprinde configurarea pentru o singură bancă și un singur cont bancar. Formatul concret de fișier, pentru plăți și pentru extras, se confirmă cu banca în etapa de analiză; adăugarea altor bănci sau conturi se estimează și se bugetează separat."
+  },
+  {
+   "client": "Gixen S.R.L.",
+   "denumire": "Schimbul de fișiere bancare în format MultiCash",
+   "sursa": "continut_gixen.SUPLIMENTARE",
+   "descriere": "Relația cu banca se automatizează prin modulul MultiCash, care acoperă atât exportul plăților, cât și importul extrasului de cont. Modulul elimină operarea manuală a ordinelor de plată în aplicația băncii și reintroducerea extrasului în evidență.",
+   "puncte": [
+    "Generarea fișierului de plăți, pornind de la plățile propuse la scadență sau de la cele selectate manual, pentru încărcarea în aplicația băncii.",
+    "Preluarea extrasului de cont, cu identificarea automată a partenerului și a documentelor și stingerea facturilor corespondente.",
+    "Ecran de lucru pentru pozițiile din extras care nu au putut fi alocate automat, cu alocare manuală pe partener și pe documente, fără reintroducerea sumelor."
+   ],
+   "fluxuri": [
+    {
+     "cod": "MC1",
+     "flux": "Export plăți în format MultiCash",
+     "presupune": "Generarea fișierului de plăți pentru încărcarea în aplicația băncii."
+    },
+    {
+     "cod": "MC2",
+     "flux": "Import extras de cont în format MultiCash",
+     "presupune": "Încărcarea fișierului de extras primit de la bancă, potrivirea operațiunilor pe partener și pe documentele din sold după criteriile configurate, și stingerea automată a celor identificate."
+    },
+    {
+     "cod": "MC3",
+     "flux": "Tratarea pozițiilor neidentificate din extras",
+     "presupune": "Ecran de alocare manuală pentru pozițiile care nu au putut fi asociate automat, fără reintroducerea sumelor."
+    }
+   ],
+   "nota": "Dimensionare. Scopul ofertat acoperă o singură bancă și un singur cont bancar aferent. Fiecare bancă suplimentară sau cont suplimentar presupune o configurare proprie și se bugetează ulterior, întrucât structura fișierelor diferă de la o bancă la alta. Banca și contul se confirmă în etapa de analiză."
+  },
+  {
+   "client": "Christof Industries",
+   "denumire": "Schimbul de fișiere bancare în format MultiCash",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Relația cu băncile se realizează prin fișiere MultiCash, atât la import, cât și la export.",
+   "puncte": [
+    "Import al extrasului bancar în format MultiCash.",
+    "Export al plăților către bancă, pentru generarea ordinelor de plată.",
+    "Reconcilierea automată a plăților cu facturile de achiziție, atât prin importul MultiCash, cât și prin operarea manuală a ordinelor de plată.",
+    "Configurarea și întreținerea de conturi bancare multiple."
+   ],
+   "fluxuri": [],
+   "nota": ""
+  }
+ ]
+}

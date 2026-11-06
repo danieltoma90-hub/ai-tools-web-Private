@@ -1,0 +1,74 @@
+{
+ "cheie": "modulul-fleet-management",
+ "denumire": "Modulul Fleet Management",
+ "capitol": null,
+ "incadrare": "Inclus ca livrabil și buget separat",
+ "termeni": [
+  "asociate",
+  "casco",
+  "combustibil",
+  "consum",
+  "costuri",
+  "documente",
+  "echipamente",
+  "fleet",
+  "fm1",
+  "fm2",
+  "fm3",
+  "fm4",
+  "fm5",
+  "import",
+  "management",
+  "nomenclatorul",
+  "revizii",
+  "vehicul",
+  "vehicule"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Modulul Fleet Management",
+   "sursa": "continut_christof.SUPLIMENTARE",
+   "descriere": "Modulul acoperă evidența parcului auto și a echipamentelor, împreună cu documentele asociate, reviziile și consumul de combustibil.",
+   "puncte": [
+    "Evidența atât a vehiculelor, cât și a echipamentelor, cu datele proprii fiecăruia.",
+    "Configurarea și urmărirea reviziilor asociate vehiculelor sau echipamentelor.",
+    "Urmărirea documentelor de tip RCA și CASCO, cu termenele aferente.",
+    "Urmărirea documentelor de tip ITP.",
+    "Urmărirea combustibilului prin importul fișierelor de alimentare primite de la furnizorii de carburant, respectiv OMV, PETROM sau LUKOIL.",
+    "Costurile cumulate pe vehicul într-o perioadă selectată.",
+    "Consumul de combustibil cumulat pe perioadă, pe vehicul sau pe echipament."
+   ],
+   "fluxuri": [
+    {
+     "cod": "FM1",
+     "flux": "Nomenclatorul de vehicule și echipamente",
+     "presupune": "Definirea parcului auto și a echipamentelor, cu atributele proprii fiecăruia."
+    },
+    {
+     "cod": "FM2",
+     "flux": "Documente asociate: RCA, CASCO, ITP",
+     "presupune": "Evidența documentelor pe vehicul, cu termenele de valabilitate."
+    },
+    {
+     "cod": "FM3",
+     "flux": "Revizii",
+     "presupune": "Configurarea și urmărirea reviziilor pe vehicule și pe echipamente."
+    },
+    {
+     "cod": "FM4",
+     "flux": "Import consum de combustibil",
+     "presupune": "Preluarea fișierelor de alimentare de la OMV, PETROM sau LUKOIL și asocierea consumului pe vehicul sau echipament."
+    },
+    {
+     "cod": "FM5",
+     "flux": "Costuri și consum pe vehicul",
+     "presupune": "Raportarea costurilor cumulate și a consumului de combustibil pe perioadă."
+    }
+   ],
+   "nota": "Precizare privind livrarea. Fleet Management nu face parte din pachetul CORE: este un modul distinct, ofertat și bugetat separat. Indicatorul cost pe kilometru și istoricul detaliat al intervențiilor se confirmă în analiză, împreună cu formatul fișierelor de alimentare primite de la fiecare furnizor de carburant."
+  }
+ ]
+}

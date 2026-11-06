@@ -1,0 +1,69 @@
+{
+ "cheie": "aprobarea-platilor-pe-praguri-valorice",
+ "denumire": "Aprobarea plăților pe praguri valorice",
+ "capitol": "financiar",
+ "incadrare": "Inclus",
+ "termeni": [
+  "apl1",
+  "apl2",
+  "apl3",
+  "aprobare",
+  "aprobarea",
+  "circuitul",
+  "corelarea",
+  "niveluri",
+  "numerar",
+  "platii",
+  "platilor",
+  "praguri",
+  "previziunea",
+  "valorice"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Teldo",
+   "denumire": "Aprobarea plăților pe praguri valorice",
+   "sursa": "continut_teldo.SUPLIMENTARE",
+   "descriere": "Aprobarea plăților este enumerată explicit în scopul de Producție, alături de zona de cash-flow, ca arie tratată în această secțiune a ofertei. Plățile parcurg fluxul de aprobare înainte de execuție.",
+   "puncte": [
+    "Configurarea nivelurilor de aprobare pe praguri valorice, în unul până la trei pași, în funcție de valoarea plății.",
+    "Nivelul de aprobare se definește pe grupuri de utilizatori, nu pe persoane; superiorul ierarhic se administrează pentru a fi folosit în funcționalitatea de aprobare.",
+    "Plățile aprobate alimentează previziunea de disponibil din modulul CashFlow.",
+    "Istoricul aprobărilor rămâne atașat documentului de plată, pentru justificare ulterioară."
+   ],
+   "fluxuri": [
+    {
+     "cod": "APL1",
+     "flux": "Praguri și niveluri de aprobare",
+     "presupune": "Ecran de configurare a pragurilor valorice și a nivelurilor, definite pe grupuri de utilizatori."
+    },
+    {
+     "cod": "APL2",
+     "flux": "Circuitul de aprobare a plății",
+     "presupune": "Parcurgerea pașilor de aprobare înainte de execuție, cu istoricul păstrat pe document."
+    },
+    {
+     "cod": "APL3",
+     "flux": "Corelarea cu previziunea de numerar",
+     "presupune": "Plățile aprobate intră în previziunea de disponibil din modulul CashFlow."
+    }
+   ],
+   "nota": ""
+  },
+  {
+   "client": "Christof Industries",
+   "denumire": "Aprobarea plăților pe praguri valorice",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Plățile parcurg un flux de aprobare înainte de execuție.",
+   "puncte": [
+    "Configurarea nivelurilor de aprobare a plăților, pe praguri valorice.",
+    "Nivelul de aprobare se definește pe grupuri de utilizatori.",
+    "Notificarea aprobatorilor se realizează prin modulul Tempo."
+   ],
+   "fluxuri": [],
+   "nota": ""
+  }
+ ]
+}

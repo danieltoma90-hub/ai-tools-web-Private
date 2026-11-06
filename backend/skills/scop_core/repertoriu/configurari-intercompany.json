@@ -1,0 +1,62 @@
+{
+ "cheie": "configurari-intercompany",
+ "denumire": "Configurări intercompany",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "achizitie",
+  "configurari",
+  "factura",
+  "furnizor",
+  "ic1",
+  "ic2",
+  "ic3",
+  "ic4",
+  "intercompany",
+  "maparea",
+  "miscare",
+  "nomenclatoarelor",
+  "societatilor",
+  "vanzare",
+  "vanzarea"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Configurări intercompany",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Grupul are șase entități juridice, dintre care două cu activitate curentă, iar între ele circulă tranzacții de vânzare-cumpărare operate astăzi de două ori. Charisma generează automat documentul corespondent în a doua societate, astfel încât o singură operare să producă două evidențe contabile distincte.",
+   "puncte": [
+    "La emiterea facturii de vânzare într-o societate se generează automat factura de achiziție în societatea corespondentă.",
+    "La emiterea avizului de vânzare se generează automat avizul de furnizor în societatea corespondentă, împreună cu NIR-ul atunci când vânzarea se face cu mișcare de stoc.",
+    "Planul de conturi poate fi comun pentru întreținere unitară, iar vizibilitatea conturilor analitice se face la nivel de locație sau de firmă.",
+    "Fiecare societate își păstrează propriile documente, propria contabilitate și propriile declarații; corespondența dintre documente rămâne trasabilă."
+   ],
+   "fluxuri": [
+    {
+     "cod": "IC1",
+     "flux": "Factură de vânzare → factură de achiziție",
+     "presupune": "Generarea automată a facturii de achiziție în societatea corespondentă, cu preluarea pozițiilor și a valorilor."
+    },
+    {
+     "cod": "IC2",
+     "flux": "Aviz de vânzare → aviz de furnizor",
+     "presupune": "Generarea automată a avizului de furnizor în societatea corespondentă, pe baza avizului de vânzare emis."
+    },
+    {
+     "cod": "IC3",
+     "flux": "NIR la vânzarea cu mișcare de stoc",
+     "presupune": "Generarea NIR-ului în societatea corespondentă atunci când vânzarea descarcă stocul, cu actualizarea gestiunii."
+    },
+    {
+     "cod": "IC4",
+     "flux": "Maparea societăților și a nomenclatoarelor",
+     "presupune": "Configurarea perechilor de societăți, a partenerilor intercompany și a corespondenței de articole și gestiuni."
+    }
+   ],
+   "nota": "Dimensionare. Efortul acoperă perechile de societăți cu activitate curentă și tipurile de document enumerate mai sus. Extinderea la celelalte entități sau alte tipuri de document se estimează separat."
+  }
+ ]
+}

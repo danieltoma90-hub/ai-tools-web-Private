@@ -1,0 +1,203 @@
+{
+ "cheie": "postcalcul",
+ "denumire": "Postcalcul — costul culturii și al producției obținute",
+ "capitol": null,
+ "incadrare": "Inclus ca livrabil și buget distinct",
+ "termeni": [
+  "agr4",
+  "agr7",
+  "agricol",
+  "alocarilor",
+  "articolele",
+  "calculatie",
+  "calculul",
+  "cascada",
+  "cheltuielilor",
+  "complet",
+  "componenta",
+  "contabila",
+  "contabilitate",
+  "costul",
+  "costului",
+  "costurile",
+  "cultura",
+  "culturii",
+  "directe",
+  "efectiv",
+  "exercitiului",
+  "final",
+  "granita",
+  "indirecte",
+  "input",
+  "obtinute",
+  "pc1",
+  "pc2",
+  "pc3",
+  "pc4",
+  "pc5",
+  "pc6",
+  "pc7",
+  "pc8",
+  "peste",
+  "postcalcul",
+  "preluarea",
+  "producere",
+  "productie",
+  "productiei",
+  "ra2",
+  "raport",
+  "repartizarea",
+  "structura",
+  "succesivi",
+  "unitar"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Agro Seed Muntenia S.R.L.",
+   "denumire": "Postcalcul — costul culturii și al producției obținute",
+   "sursa": "continut_agroseed.SUPLIMENTARE",
+   "descriere": "Postcalculul determină costul real al culturii, din două straturi. Primul strat sunt costurile directe de input — semințe, îngrășăminte, erbicide și celelalte produse de protecție, motorină, piese de schimb — care se acumulează pe solă și pe cultură chiar în momentul consumului, din bonurile de consum generate la raportarea lucrărilor (AGR4, AGR7); raportul de costuri cultură (RA2) le prezintă cantitativ și valoric. Al doilea strat sunt cheltuielile indirecte, pe care postcalculul le repartizează pe culturi după chei, în pași succesivi. Costul culturii este suma celor două, iar postcalculul adaugă peste ele costul unitar al producției recoltate, pe care raportul de costuri directe nu îl conține.\nObiectul de cost este cultura pe solă, în contextul anului agricol. Acest lucru este esențial aici: anul agricol nu coincide cu exercițiul financiar — o cultură înființată toamna se recoltează în vara anului următor, deci acumulează cheltuieli în două exerciții succesive, dar costul ei se formează pe un singur an agricol. Calculul se rulează prin urmare pe anul agricol, iar rezultatul se raportează la hectar și la unitatea de producție recoltată.",
+   "puncte": [
+    "Definirea articolelor de calculație pe care se urmărește costul și a structurii costului, pe natura cheltuielilor.",
+    "Costurile directe de input — semințe, îngrășăminte, erbicide și celelalte produse de protecție, motorină, piese de schimb — intră în costul culturii direct de pe bonurile de consum generate la raportarea lucrărilor, pe solă și pe cultură. Ele nu consumă un pas de repartizare, pentru că sunt deja atașate obiectului de cost.",
+    "Preluarea cheltuielilor indirecte înregistrate în contabilitate, inclusiv amortizarea mijloacelor fixe, și repartizarea lor, după natura acestora, pe articolele de calculație definite.",
+    "Repartizarea cheltuielilor indirecte în pași succesivi, după chei de repartizare distincte, stabilite împreună cu beneficiarul — suprafața cultivată, orele de utilaj raportate sau suprafața irigată. Scopul ofertat cuprinde cel mult cinci pași de repartizare a cheltuielilor indirecte și un raport de componență a costului.",
+    "Costul pe cultură și pe solă, cu valoarea aferentă unui hectar, rezultat din consumurile directe completate cu cheltuielile repartizate.",
+    "Costul unitar al producției obținute, raportat la cantitatea recepționată din câmp prin notele de predare.",
+    "Raport de componență a costului final, pe natura cheltuielilor, cu urmărirea contribuției fiecărui articol de calculație.",
+    "Comparația costului realizat cu tehnologia de execuție planificată pe cultură, ca bază pentru deciziile campaniei următoare.",
+    "Calculul se rulează pe anul agricol: documentele care produc cost poartă anul agricol, astfel încât cheltuielile înregistrate în două exerciții financiare succesive se adună pe aceeași cultură.",
+    "La închiderea exercițiului financiar, costul acumulat pe culturile înființate și nerecoltate rămâne producție în curs și se reportează în exercițiul următor, unde se închide la recoltare; astfel cheltuiala nu apasă un exercițiu în care cultura nu a produs încă venit."
+   ],
+   "fluxuri": [
+    {
+     "cod": "PC1",
+     "flux": "Articolele de calculație și structura costului",
+     "presupune": "Definirea articolelor de calculație urmărite și a structurii costului pe natura cheltuielilor, împreună cu asocierea lor la culturi și la resursele folosite în câmp."
+    },
+    {
+     "cod": "PC2",
+     "flux": "Costurile directe de input",
+     "presupune": "Preluarea consumurilor de semințe, îngrășăminte, produse de protecție, motorină și piese, acumulate pe solă și pe cultură din bonurile de consum generate la raportarea lucrărilor; intră în cost fără pas de repartizare."
+    },
+    {
+     "cod": "PC3",
+     "flux": "Preluarea cheltuielilor indirecte din contabilitate",
+     "presupune": "Preluarea cheltuielilor înregistrate în contabilitate, inclusiv amortizarea mijloacelor fixe, și repartizarea lor pe articolele de calculație, după natura fiecăreia."
+    },
+    {
+     "cod": "PC4",
+     "flux": "Repartizarea cheltuielilor indirecte pe chei",
+     "presupune": "Rularea pașilor succesivi de repartizare, fiecare cu cheia proprie, până la alocarea integrală sau parțială a cheltuielilor indirecte pe culturi. Scopul ofertat cuprinde cel mult cinci pași de repartizare."
+    },
+    {
+     "cod": "PC5",
+     "flux": "Costul pe cultură și pe solă",
+     "presupune": "Obținerea costului pe cultură și pe solă, cu valoarea pe hectar, din consumurile directe acumulate și din cheltuielile repartizate."
+    },
+    {
+     "cod": "PC6",
+     "flux": "Costul unitar al producției obținute",
+     "presupune": "Raportarea costului culturii la cantitatea recepționată din câmp prin notele de predare, pentru obținerea costului pe unitatea de producție. Punerea lui în corespondență cu valoarea la care producția a intrat în stoc și tratamentul diferenței se stabilesc în analiză."
+    },
+    {
+     "cod": "PC7",
+     "flux": "Calculul pe an agricol, peste granița exercițiului",
+     "presupune": "Rularea calculului în contextul anului agricol, nu al exercițiului financiar: documentele care produc cost poartă anul agricol, astfel încât cheltuielile a două exerciții succesive se adună pe aceeași cultură. La închiderea exercițiului, costul culturilor nerecoltate rămâne producție în curs și se reportează."
+    },
+    {
+     "cod": "PC8",
+     "flux": "Raport de componență a costului",
+     "presupune": "Raportul de componență pe natura cheltuielilor și pe articol de calculație, cu separarea costurilor directe de cele repartizate și cu comparația față de tehnologia de execuție planificată pe cultură."
+    }
+   ],
+   "nota": "Precizare privind scopul ofertat. Efortul cuprins în prezentul document acoperă cinci pași de repartizare a cheltuielilor indirecte și un raport de componență a costului (PC8); costurile directe de input nu intră în pași de repartizare. Cei cinci pași din tabelul de mai sus sunt dați ca exemplu, construit pe specificul activității agricole: denumirea și structura lor se detaliază în analiza dedicată a modulului, împreună cu articolele de calculație și cheile folosite. Dacă din analiză rezultă necesitatea unui număr mai mare de pași decât cei cinci cuprinși aici, efortul suplimentar se cotează distinct.\nPrecizare privind livrarea și configurarea. Postcalculul este un modul distinct de pachetul CORE descris în celelalte capitole: intră în scopul ofertat prin prezentul document. Punerea în funcțiune se recomandă după stabilizarea fluxurilor operaționale și a evidenței contabile, astfel încât primul cost calculat să se sprijine pe date complete pe un ciclu agricol."
+  },
+  {
+   "client": "Gixen S.R.L.",
+   "denumire": "Postcalcul — costul complet de producție",
+   "sursa": "continut_gixen.SUPLIMENTARE",
+   "descriere": "Postcalculul determină costul real de producție, prin alocarea parțială sau totală a cheltuielilor indirecte în costul produselor obținute. Rezultatul permite identificarea produselor și a comenzilor eficiente și fundamentează deciziile de preț.",
+   "puncte": [
+    "Preluarea cheltuielilor înregistrate în contabilitate și repartizarea lor, după natura acestora, pe articolele de calculație definite.",
+    "Preluarea automată a alocărilor existente pe nota contabilă, astfel încât ce a fost deja atașat unei dimensiuni la operare să nu se mai repartizeze încă o dată.",
+    "Transferul cheltuielilor în cascadă, de pe materialele consumate pe produsele obținute din ele, acolo unde pe flux se raportează semifabricate.",
+    "Repartizarea cheltuielilor indirecte în pași succesivi, după chei de repartizare distincte, stabilite împreună cu beneficiarul.",
+    "Raport de componență a costului final, pe natura cheltuielilor, cu urmărirea contribuției fiecărui articol de calculație.",
+    "Dimensiunile de analiză avute în vedere: linia de produs, locația, grupa de produse și produsul, departamentul, articolul de calculație, mașina și comanda."
+   ],
+   "fluxuri": [
+    {
+     "cod": "PC1",
+     "flux": "Preluarea cheltuielilor din contabilitate",
+     "presupune": "Preluarea cheltuielilor înregistrate în contabilitate și repartizarea lor pe articolele de calculație, după natura fiecăreia."
+    },
+    {
+     "cod": "PC2",
+     "flux": "Preluarea alocărilor de pe nota contabilă",
+     "presupune": "Preluarea automată a alocărilor existente pe nota contabilă, pentru ca ce a fost atașat unei dimensiuni la operare să nu se repartizeze din nou."
+    },
+    {
+     "cod": "PC3",
+     "flux": "Preluarea cheltuielilor în cascadă",
+     "presupune": "Transferul cheltuielilor de pe materialele consumate pe produsele obținute din ele, pe lanțul de transformări interne."
+    },
+    {
+     "cod": "PC4",
+     "flux": "Repartizarea cheltuielilor indirecte în pași succesivi",
+     "presupune": "Repartizarea cheltuielilor indirecte de secție, a celor auxiliare și a celor administrative, fiecare pas cu cheia lui."
+    },
+    {
+     "cod": "PC5",
+     "flux": "Raport de componență a costului final",
+     "presupune": "Raport care prezintă structura costului final pe natura cheltuielilor și pe articol de calculație."
+    }
+   ],
+   "nota": "Precizare privind scopul ofertat. Mecanismul este prevăzut a se realiza în maximum cinci pași de repartizare, cu maximum cinci chei de repartizare, și un raport de componență a costului (PC5). Cei cinci pași din tabelul de mai sus sunt doar un exemplu, construit pe specificul fabricației de produse de hârtie, pentru a arăta forma pe care o ia repartizarea; pașii efectivi, articolele de calculație și cheile folosite se detaliază în etapa de analiză. Dacă din analiză rezultă necesitatea unui număr mai mare de pași, efortul suplimentar se cotează distinct.\nPrecizare privind livrarea și bugetarea. Configurarea postcalculului nu urmează un șablon standard: articolele de calculație, dimensiunile de alocare, ordinea pașilor și cheile decurg din structura contabilă și din politica de management a companiei. Postcalculul face parte din scopul ofertat, ca livrabil distinct, cu analiză, configurare, testare și recepție proprii; bugetul lui se stabilește după analiza dedicată și se cotează separat de restul implementării. Implementarea se recomandă după stabilizarea fluxurilor de producție și a evidenței contabile, pe cel puțin două luni contabile închise cu date reale.\nPrecizare privind relația cu scopul de Producție. Documentul de scop pentru zona de Producție urmează a fi elaborat. Postcalculul rămâne un singur livrabil, descris într-un singur loc: la elaborarea acelui document, descrierea de referință se stabilește acolo, iar prezentul capitol se reduce la o trimitere. Nu se ofertează de două ori."
+  },
+  {
+   "client": "AGRIFIELDS S.R.L.",
+   "denumire": "Postcalcul — costul efectiv de producere",
+   "sursa": "continut_agrifields.SUPLIMENTARE",
+   "descriere": "Postcalculul determină prețul real de producere, prin alocarea parțială sau totală a cheltuielilor directe și indirecte în costul produselor obținute. Într-o exploatație integrată, în care furajul se transferă intern de la fabrică la fermă și prețul de piață nu există ca reper pe fazele intermediare, el este singurul mod de a ști cât costă efectiv kilogramul de spor.\nIntrarea modulului este evidența contabilă descrisă în capitolele de mai sus: cheltuielile înregistrate pe conturi și alocările făcute pe documentele operaționale, pe dimensiunile de analiză configurate. De aceea structura dimensiunilor și modelele de contare se stabilesc o singură dată, pentru ambele arii.",
+   "puncte": [
+    "Preluarea cheltuielilor înregistrate în contabilitate și repartizarea lor, după natura acestora, pe articolele de calculație definite.",
+    "Preluarea automată a alocărilor existente pe nota contabilă, astfel încât ce a fost deja atașat unei dimensiuni la operare să nu se mai repartizeze încă o dată.",
+    "Transferul cheltuielilor în cascadă, de pe materialele consumate pe produsele obținute din ele — mecanismul prin care costul furajului ajunge în costul sporului.",
+    "Repartizarea cheltuielilor indirecte în pași succesivi, după chei de repartizare distincte, stabilite împreună cu beneficiarul.",
+    "Raport de componență a costului final, pe natura cheltuielilor, cu urmărirea contribuției fiecărui articol de calculație.",
+    "Dimensiunile de analiză avute în vedere: linia de business, locația, grupa de produse și produsul, departamentul, articolul de calculație, echipamentul și lotul."
+   ],
+   "fluxuri": [
+    {
+     "cod": "PC1",
+     "flux": "Preluarea cheltuielilor din contabilitate",
+     "presupune": "Preluarea cheltuielilor înregistrate în contabilitate și repartizarea lor pe articolele de calculație, după natura fiecăreia."
+    },
+    {
+     "cod": "PC2",
+     "flux": "Preluarea alocărilor de pe nota contabilă",
+     "presupune": "Preluarea automată a alocărilor existente pe nota contabilă, pentru ca ce a fost atașat unei dimensiuni la operare să nu se repartizeze din nou."
+    },
+    {
+     "cod": "PC3",
+     "flux": "Preluarea cheltuielilor în cascadă",
+     "presupune": "Transferul cheltuielilor de pe materialele consumate pe produsele obținute din ele, pe lanțul de transformări interne."
+    },
+    {
+     "cod": "PC4",
+     "flux": "Repartizarea cheltuielilor indirecte în pași succesivi",
+     "presupune": "Repartizarea cheltuielilor indirecte de secție, a celor auxiliare și a celor administrative, fiecare pas cu cheia lui."
+    },
+    {
+     "cod": "PC5",
+     "flux": "Raport de componență a costului final",
+     "presupune": "Raport care prezintă structura costului final pe natura cheltuielilor și pe articol de calculație."
+    }
+   ],
+   "nota": "Precizare privind scopul ofertat. Mecanismul este prevăzut a se realiza în maximum cinci pași de repartizare pe fiecare linie de business, cu maximum cinci chei de repartizare, și un raport de componență a costului (PC5). Cei cinci pași din tabelul de mai sus sunt doar un exemplu, construit pe specificul exploatației, pentru a arăta forma pe care o ia repartizarea; pașii efectivi, articolele de calculație și cheile folosite se detaliază în etapa de analiză. Dacă din analiză rezultă necesitatea unui număr mai mare de pași, efortul suplimentar se cotează distinct.\nPrecizare privind livrarea. Postcalculul este un singur livrabil în cadrul proiectului, cu analiză, configurare, testare și recepție proprii, bugetat o singură dată. El este descris și în scopul de Producție, la capitolul 6, de unde se vede dinspre fluxurile de fabricație; capitolul de față îl privește dinspre evidența contabilă care îl alimentează. Nu se ofertează de două ori."
+  }
+ ]
+}

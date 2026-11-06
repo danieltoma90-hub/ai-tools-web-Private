@@ -1,0 +1,31 @@
+{
+ "cheie": "ofertare-contracte-de-client-si-oferte-speciale",
+ "denumire": "Ofertare, contracte de client și oferte speciale",
+ "capitol": "vanzari",
+ "incadrare": "Inclus",
+ "termeni": [
+  "contracte",
+  "ofertare",
+  "oferte",
+  "speciale"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Ofertare, contracte de client și oferte speciale",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Ciclul comercial acoperă ofertarea, conversia în comandă, contractele și politica promoțională.",
+   "puncte": [
+    "Generarea ofertei prin comanda de client și conversia acesteia prin confirmarea de comandă.",
+    "Listele de prețuri se pot importa sau opera manual, iar întreținerea lor se face prin aceleași mijloace.",
+    "Discounturile simple se întrețin pornind de la lista de prețuri; discounturile complexe se acoperă prin ofertele speciale.",
+    "Ofertele speciale se configurează pe articol, grup de articole, partener sau grup de parteneri, cu valabilitate pe interval și cu reguli de cumul.",
+    "Înregistrarea și întreținerea contractelor de client."
+   ],
+   "fluxuri": [],
+   "nota": ""
+  }
+ ]
+}

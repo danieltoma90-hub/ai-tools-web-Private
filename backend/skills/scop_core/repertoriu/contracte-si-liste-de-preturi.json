@@ -1,0 +1,61 @@
+{
+ "cheie": "contracte-si-liste-de-preturi",
+ "denumire": "Contracte și liste de prețuri",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "aditionale",
+  "contracte",
+  "discounturi",
+  "furnizor",
+  "istoric",
+  "liste",
+  "lp1",
+  "lp2",
+  "lp3",
+  "lp4",
+  "oferte",
+  "partener",
+  "preturi",
+  "speciale"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Teldo",
+   "denumire": "Contracte și liste de prețuri",
+   "sursa": "continut_teldo.SUPLIMENTARE",
+   "descriere": "Scopul de Producție enumeră listele de prețuri între ariile tratate în această secțiune a ofertei. Prețul efectiv aplicat pe document rezultă din combinația dintre contract, lista de prețuri și mecanismele promoționale.",
+   "puncte": [
+    "Contracte de client și de furnizor, din care se generează și se întrețin listele de prețuri asociate detaliilor din contract.",
+    "Actualizarea prin acte adiționale modifică prețul din listă și marchează istoricul de preț.",
+    "Liste de prețuri multiple, cu valabilitate pe interval și pe partener sau grup de parteneri, importabile sau operate manual.",
+    "Discounturi și oferte speciale pe articol, grup de articole, partener sau grup de parteneri, aplicate automat la emiterea documentului."
+   ],
+   "fluxuri": [
+    {
+     "cod": "LP1",
+     "flux": "Contracte de client și de furnizor",
+     "presupune": "Înregistrarea contractelor, cu listele de prețuri generate din detaliile acestora."
+    },
+    {
+     "cod": "LP2",
+     "flux": "Acte adiționale și istoric de preț",
+     "presupune": "Actualizarea prețului din listă prin act adițional, cu marcarea istoricului."
+    },
+    {
+     "cod": "LP3",
+     "flux": "Liste de prețuri pe partener",
+     "presupune": "Liste multiple cu valabilitate pe interval, pe partener sau grup de parteneri, importabile sau operate manual."
+    },
+    {
+     "cod": "LP4",
+     "flux": "Discounturi și oferte speciale",
+     "presupune": "Configurarea mecanismelor promoționale și aplicarea automată la emiterea documentului."
+    }
+   ],
+   "nota": ""
+  }
+ ]
+}

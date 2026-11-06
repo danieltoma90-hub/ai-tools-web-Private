@@ -1,0 +1,33 @@
+{
+ "cheie": "configurarea-generala",
+ "denumire": "Configurarea generală: limbă, monedă și acces",
+ "capitol": "configurare",
+ "incadrare": "Inclus",
+ "termeni": [
+  "acces",
+  "configurarea",
+  "generala",
+  "limba",
+  "moneda"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Configurarea generală: limbă, monedă și acces",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Elemente de configurare cerute la nivel de sistem, comune tuturor modulelor.",
+   "puncte": [
+    "Aplicația este disponibilă în limba română și în limba engleză.",
+    "Sistemul este multi-monedă, cu o monedă de bază față de care se raportează celelalte.",
+    "Integrare cu Active Directory pentru administrarea utilizatorilor.",
+    "Autentificare unică: la deschiderea unei sesiuni noi de pe aceeași stație se solicită site-ul pe care se face conectarea și se apasă butonul de autentificare.",
+    "Administrarea rolurilor și a drepturilor de acces prin modulul standard dedicat.",
+    "Charisma ERP este o soluție desktop; accesul se poate configura prin conexiune la un server de tip RDP. Raportarea este accesibilă din browser și de pe mobil prin soluția de Business Intelligence."
+   ],
+   "fluxuri": [],
+   "nota": ""
+  }
+ ]
+}

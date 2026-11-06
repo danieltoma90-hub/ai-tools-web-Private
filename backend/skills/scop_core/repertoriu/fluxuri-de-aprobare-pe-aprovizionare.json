@@ -1,0 +1,28 @@
+{
+ "cheie": "fluxuri-de-aprobare-pe-aprovizionare",
+ "denumire": "Fluxuri de aprobare pe aprovizionare",
+ "capitol": "achizitii",
+ "incadrare": "Inclus",
+ "termeni": [
+  "aprobare",
+  "aprovizionare"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Fluxuri de aprobare pe aprovizionare",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Cererea de achiziție și comanda către furnizor parcurg fluxuri de aprobare pe praguri valorice, înainte de a produce efecte.",
+   "puncte": [
+    "Praguri de aprobare configurate pe documente, pe fluxul cerere de achiziție către comandă de achiziție.",
+    "Nivelurile de aprobare se definesc pe grupuri de utilizatori; superiorul ierarhic se administrează în Charisma ERP pentru a fi folosit în funcționalitatea de aprobare.",
+    "Notificarea aprobatorilor se configurează prin modulul Tempo.",
+    "Alertarea la depășirea bugetului se realizează prin modulul Bugete."
+   ],
+   "fluxuri": [],
+   "nota": "Dimensionare. Configurarea fluxurilor de aprobare se realizează de către TotalSoft în cadrul implementării. Dacă se dorește ca fluxurile să fie configurabile ulterior de către utilizatorii beneficiarului, această funcționalitate se bugetează și se dezvoltă distinct."
+  }
+ ]
+}

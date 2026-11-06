@@ -1,16 +1,24 @@
 "use client";
 import SelectorPlasare from "./SelectorPlasare";
-import { SECTIUNI_CORE } from "./sectiuniCore";
+import { SECTIUNI_CORE, type SectiuneCore } from "./sectiuniCore";
 import type { SuplimentarUI } from "./tipuri";
 
 type Props = {
   element: SuplimentarUI;
+  /** Doar secțiunile CORE bifate: un element nu poate fi plasat într-un capitol care nu
+   * intră în document — `scope.genereaza` respinge combinația cu 422. */
+  sectiuniIncluse?: SectiuneCore[];
   onModifica: (id: string, patch: Partial<SuplimentarUI>) => void;
   onSterge: (id: string) => void;
 };
 
 /** O secțiune adăugată peste standardul CORE — capitolul 4 al documentului complet. */
-export default function SectiuneSuplimentaraCard({ element, onModifica, onSterge }: Props) {
+export default function SectiuneSuplimentaraCard({
+  element,
+  sectiuniIncluse,
+  onModifica,
+  onSterge,
+}: Props) {
   return (
     <div className="border border-slate-200 rounded-lg p-3 flex flex-col gap-2">
       <div className="flex items-start gap-2">
@@ -56,7 +64,7 @@ export default function SectiuneSuplimentaraCard({ element, onModifica, onSterge
         <SelectorPlasare
           valoare={element.plasare}
           onChange={(v) => onModifica(element.id, { plasare: v })}
-          sectiuniIncluse={SECTIUNI_CORE}
+          sectiuniIncluse={sectiuniIncluse ?? SECTIUNI_CORE}
         />
       </div>
     </div>

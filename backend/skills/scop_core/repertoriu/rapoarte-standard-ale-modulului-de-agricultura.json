@@ -1,0 +1,120 @@
+{
+ "cheie": "rapoarte-standard-ale-modulului-de-agricultura",
+ "denumire": "Rapoarte standard ale modulului de Agricultură",
+ "capitol": null,
+ "incadrare": "Inclus ca livrabil și buget separat",
+ "termeni": [
+  "agricultura",
+  "alocari",
+  "bonuri",
+  "centralizate",
+  "centralizator",
+  "consum",
+  "costuri",
+  "cultura",
+  "culturi",
+  "ecran",
+  "ferme",
+  "lucrari",
+  "lucrate",
+  "mecanizatorului",
+  "modulului",
+  "operatii",
+  "principal",
+  "ra1",
+  "ra10",
+  "ra11",
+  "ra12",
+  "ra2",
+  "ra3",
+  "ra4",
+  "ra5",
+  "ra6",
+  "ra7",
+  "ra8",
+  "ra9",
+  "rapoarte",
+  "raport",
+  "recoltari",
+  "regie",
+  "registrul",
+  "solelor",
+  "standard",
+  "suprafete",
+  "utilaj"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Agro Seed Muntenia S.R.L.",
+   "denumire": "Rapoarte standard ale modulului de Agricultură",
+   "sursa": "continut_agroseed.SUPLIMENTARE",
+   "descriere": "Modulul de agricultură pune la dispoziție un set de rapoarte standard, care acoperă urmărirea lucrărilor, a consumurilor și a costurilor pe an agricol, fermă, solă și cultură. Ele se rulează în contextul anului agricol și nu necesită dezvoltare suplimentară. Capturile de mai jos sunt din aplicație.",
+   "puncte": [],
+   "fluxuri": [
+    {
+     "cod": "RA1",
+     "flux": "AGR Alocări bonuri de consum",
+     "presupune": "Afișează alocarea bonurilor de consum generate din modulul Agricultură, pe an agricol, solă, cultură, articol de calculație și echipament, cantitativ și valoric, după rularea procesării de stoc."
+    },
+    {
+     "cod": "RA2",
+     "flux": "AGR Costuri cultură",
+     "presupune": "Costurile directe înregistrate la nivel de an agricol, solă și cultură, împreună cu valoarea aferentă unui hectar."
+    },
+    {
+     "cod": "RA3",
+     "flux": "AGR Operații centralizate",
+     "presupune": "Lista operațiilor executate la nivel de solă și cultură, folosită pentru identificarea anumitor lucrări."
+    },
+    {
+     "cod": "RA4",
+     "flux": "AGR Ore regie lucrate utilaj",
+     "presupune": "Consumul de ore la nivel de resurse de tip echipament, alimentat din raportările de regie, adică lucrările indirecte."
+    },
+    {
+     "cod": "RA5",
+     "flux": "AGR Recoltări ferme",
+     "presupune": "Centralizează notele de predare pentru recoltat — dată, articol, cantitate — cu informațiile de lot, în funcție de configurarea articolelor de tip cultură sau recoltă."
+    },
+    {
+     "cod": "RA6",
+     "flux": "AGR Centralizator lucrări",
+     "presupune": "Operațiile și lucrările înregistrate în modulul de agricultură, la nivel de resurse și de consumuri de materiale."
+    },
+    {
+     "cod": "RA7",
+     "flux": "Fișa lucrări utilaj principal",
+     "presupune": "Lucrările efectuate la nivel de utilaj, pentru raportările în care a fost folosit ca utilaj principal; centralizează orele pe resursa de tip echipament principal și pe mecanizator."
+    },
+    {
+     "cod": "RA8",
+     "flux": "Fișa mecanizatorului",
+     "presupune": "Lucrările executate cu resursa de tip personal, detaliate pe persoană, ore lucrate și utilaje folosite, alocate pe solă, cultură și an agricol."
+    },
+    {
+     "cod": "RA9",
+     "flux": "Operații fără bonuri de consum",
+     "presupune": "Verificarea lucrărilor înregistrate din care nu s-a generat bon de consum la momentul raportării."
+    },
+    {
+     "cod": "RA10",
+     "flux": "Raport suprafețe culturi",
+     "presupune": "Verificarea dacă un tip de operație a fost raportat pe toate solele și culturile. Presupune ca operațiile să fie grupate în tipuri de operații."
+    },
+    {
+     "cod": "RA11",
+     "flux": "Registrul solelor",
+     "presupune": "Culturile înființate într-un an agricol, cu suprafața, data de deschidere și data de închidere a culturii, la nivel de cultură și solă."
+    },
+    {
+     "cod": "RA12",
+     "flux": "Ecran centralizator costuri culturi",
+     "presupune": "Ecran de vizualizare a consumurilor de material și de resurse de tip personal sau utilaj, la nivel de operație și grup de material. Prețul materialelor se preia din costul descărcării de gestiune, iar tariful operațiilor din nomenclatorul de prețuri al resurselor."
+    }
+   ],
+   "nota": "Rapoartele fac parte din modulul vertical de Agricultură și nu necesită dezvoltare suplimentară. Rapoartele suplimentare, în afara celor enumerate, se configurează la cerere și se estimează separat."
+  }
+ ]
+}

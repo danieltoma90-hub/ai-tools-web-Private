@@ -56,6 +56,7 @@ from auth import verify_token  # noqa: F401
 from acces import cere_modul
 from pipelines.scop_core_pipeline import (
     DocumentInvalid,
+    catalog_scop_core,
     propune_job,
     run_minute_pipeline,
     run_scop_core_pipeline,
@@ -469,6 +470,17 @@ async def genereaza_scop_core(
         req.delimitari, req.curata_antet_subsol,
     )
     return {"job_id": job_id}
+
+
+@router.get("/scop-core/catalog")
+async def catalog(user=Depends(cere_modul("scop-core"))):
+    """Ce se poate bifa: cele zece secțiuni CORE și modulele adiacente din repertoriu.
+
+    Citire pură, fără job și fără model — ecranul o cere o dată, la deschidere. Elementul bifat
+    se trimite înapoi ca element suplimentar obișnuit în `continut.suplimentare`, deci nu există
+    aici nicio stare de ținut minte între cele două cereri.
+    """
+    return catalog_scop_core()
 
 
 @router.get("/scop-core/job/{job_id}")

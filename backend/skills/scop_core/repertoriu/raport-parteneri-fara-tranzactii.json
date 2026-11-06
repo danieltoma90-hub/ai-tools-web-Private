@@ -1,0 +1,27 @@
+{
+ "cheie": "raport-parteneri-fara-tranzactii",
+ "denumire": "Raport parteneri fără tranzacții",
+ "capitol": "nomenclatoare",
+ "incadrare": "Inclus",
+ "termeni": [
+  "parteneri",
+  "raport",
+  "tranzactii"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Raport parteneri fără tranzacții",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Raport care identifică partenerii fără activitate într-un interval selectat, acoperind cerința de urmărire a furnizorilor activi și inactivi.",
+   "puncte": [
+    "Selecția perioadei de analiză și a tipului de partener, client sau furnizor.",
+    "Listarea partenerilor fără nicio tranzacție în intervalul ales."
+   ],
+   "fluxuri": [],
+   "nota": ""
+  }
+ ]
+}

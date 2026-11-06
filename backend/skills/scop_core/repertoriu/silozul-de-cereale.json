@@ -1,0 +1,65 @@
+{
+ "cheie": "silozul-de-cereale",
+ "denumire": "Silozul de cereale",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "cereale",
+  "depozitarea",
+  "depozitat",
+  "iesirea",
+  "inventarierea",
+  "livrare",
+  "locatie",
+  "silozul",
+  "stocare",
+  "stocului",
+  "sz1",
+  "sz2",
+  "sz3",
+  "sz4",
+  "urmarirea"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Agro Seed Muntenia S.R.L.",
+   "denumire": "Silozul de cereale",
+   "sursa": "continut_agroseed.SUPLIMENTARE",
+   "descriere": "Producția recoltată trece prin silozul propriu înainte de a fi livrată: se recepționează la cântar, se condiționează acolo unde este cazul, se depozitează pe loturi și se descarcă la livrare. Silozul se tratează ca locație de stocare în sistem, iar documentele care îl alimentează sunt cele descrise la funcționalitățile de agricultură; capitolul de față arată cum se leagă ele de evidența de stoc.",
+   "puncte": [
+    "Silozul se definește ca locație de stocare, cu gestiunile aferente; celulele se pot reprezenta ca gestiuni distincte sau ca locații de stocare în cadrul aceleiași gestiuni, în funcție de nivelul la care se dorește urmărirea stocului.",
+    "Intrarea producției în stoc se face prin nota de predare introdusă din centralizatorul de cântăriri, descrisă la funcționalitățile de agricultură (AGR6); capitolul de față arată efectul ei pe evidența de stoc.",
+    "Lotul poartă caracteristicile de calitate ale articolului de cereale — umiditate, corpuri străine și celelalte proprietăți configurate — preluate de la recepție.",
+    "Condiționarea se evidențiază prin fluxul de servicii de recepție și condiționare (AGR8); în stoc, ea scade cantitatea intrată în proces și intră produsul condiționat, cu diferențele de masă evidențiate distinct.",
+    "Stocul se urmărește pe lot și pe gestiune, cu trasabilitatea până la cultura și solele din care provine.",
+    "Inventarierea se face parțial sau total, cu proces verbal de diferențe la închidere; diferențele constatate la depozitare se tratează prin același mecanism.",
+    "Ieșirea la livrare descarcă stocul pe lotul livrat, cu metoda de descărcare configurată pe articol."
+   ],
+   "fluxuri": [
+    {
+     "cod": "SZ1",
+     "flux": "Silozul ca locație de stocare",
+     "presupune": "Definirea silozului cu gestiunile si locațiile de stocare aferente, la nivelul la care se dorește urmărirea stocului."
+    },
+    {
+     "cod": "SZ2",
+     "flux": "Depozitarea și urmărirea pe lot",
+     "presupune": "Urmărirea stocului pe lot și gestiune, cu trasabilitatea până la cultura și solele de proveniență."
+    },
+    {
+     "cod": "SZ3",
+     "flux": "Inventarierea stocului depozitat",
+     "presupune": "Inventariere parțială sau totală, cu proces verbal de diferențe la închidere."
+    },
+    {
+     "cod": "SZ4",
+     "flux": "Ieșirea la livrare",
+     "presupune": "Descărcarea stocului pe lotul livrat, cu metoda configurată pe articol, din documentul de livrare."
+    }
+   ],
+   "nota": "Delimitare. Prezentul document acoperă evidența de stoc a silozului, nu automatizarea lui: integrarea cu cântarul-bascul, cu sistemul de comandă al celulelor sau cu aparatura de determinare a calității nu face obiectul acestui scop și se dimensionează separat, pe baza documentației de interfață a echipamentelor."
+  }
+ ]
+}

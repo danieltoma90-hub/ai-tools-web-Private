@@ -1,0 +1,54 @@
+{
+ "cheie": "iesirea-catre-magazinele-grupului",
+ "denumire": "Ieșirea către magazinele grupului",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "dinspre",
+  "firme",
+  "gestiuni",
+  "grupului",
+  "iesirea",
+  "magazin",
+  "magazinele",
+  "mg1",
+  "mg2",
+  "mg3",
+  "retururi",
+  "transfer",
+  "vanzare"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Teldo",
+   "denumire": "Ieșirea către magazinele grupului",
+   "sursa": "continut_teldo.SUPLIMENTARE",
+   "descriere": "Majoritatea pieselor rezultate din transare pleacă direct, ca carne proaspătă, către magazinele grupului, alături de produsul finit. Forma documentară a acestei ieșiri depinde de structura juridică a rețelei și se configurează în consecință; ambele variante sunt acoperite de soluție.",
+   "puncte": [
+    "Varianta transfer între gestiuni, atunci când magazinele aparțin aceleiași societăți: documentul de transfer mută stocul, cu păstrarea lotului și a datei de expirare.",
+    "Varianta vânzare între firme, atunci când magazinele sunt societăți distincte: factura de vânzare generează automat factura de achiziție și NIR-ul în societatea care primește, cu o singură operare.",
+    "În ambele variante, lotul și data de expirare formate în producție se propagă pe stocul ajuns în magazin, astfel încât trasabilitatea rămâne neîntreruptă până la raft."
+   ],
+   "fluxuri": [
+    {
+     "cod": "MG1",
+     "flux": "Transfer între gestiuni către magazin",
+     "presupune": "Document de transfer din gestiunea de livrare în gestiunea magazinului, cu lotul și data de expirare păstrate."
+    },
+    {
+     "cod": "MG2",
+     "flux": "Vânzare între firme către magazin",
+     "presupune": "Factură de vânzare cu generarea automată a facturii de achiziție și a NIR-ului în societatea corespondentă."
+    },
+    {
+     "cod": "MG3",
+     "flux": "Retururi dinspre magazin",
+     "presupune": "Documentul de retur reintră în gestiune pe același lot, simetric cu forma aleasă la ieșire."
+    }
+   ],
+   "nota": "Dimensionare. Efortul acoperă una dintre cele două variante, aleasă în etapa de calificare. Punctul este deschis în scopul de Producție, la capitolul de puncte de clarificat, întrucât determină documentele generate la ieșirea din fabrică."
+  }
+ ]
+}

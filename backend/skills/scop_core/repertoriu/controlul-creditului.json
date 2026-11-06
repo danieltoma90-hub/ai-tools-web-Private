@@ -1,0 +1,54 @@
+{
+ "cheie": "controlul-creditului",
+ "denumire": "Controlul creditului",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "cc1",
+  "cc2",
+  "cc3",
+  "comenzii",
+  "controlul",
+  "credit",
+  "creditului",
+  "expunere",
+  "limita",
+  "partener",
+  "preluarea",
+  "rapoarte",
+  "verificarea"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Teldo",
+   "denumire": "Controlul creditului",
+   "sursa": "continut_teldo.SUPLIMENTARE",
+   "descriere": "Controlul creditului este enumerat explicit în scopul de Producție ca arie tratată în această secțiune a ofertei. El acționează la preluarea comenzii, înainte ca marfa să plece din depozit.",
+   "puncte": [
+    "Urmărirea expunerii pe fiecare client, din perspectiva datoriei totale și a zilelor de întârziere.",
+    "Limită de credit definită pe partener, cu avertizare sau blocare la preluarea comenzii de client, în funcție de configurare.",
+    "Rapoarte de facturi neîncasate și balanțe pe vechimi, ca suport pentru decizia comercială."
+   ],
+   "fluxuri": [
+    {
+     "cod": "CC1",
+     "flux": "Limita de credit pe partener",
+     "presupune": "Definirea limitei și a comportamentului la depășire: avertizare sau blocare."
+    },
+    {
+     "cod": "CC2",
+     "flux": "Verificarea la preluarea comenzii",
+     "presupune": "Evaluarea expunerii și a zilelor de întârziere în momentul introducerii comenzii de client."
+    },
+    {
+     "cod": "CC3",
+     "flux": "Rapoarte de expunere",
+     "presupune": "Facturi neîncasate și balanțe pe vechimi, pe partener și pe perioadă."
+    }
+   ],
+   "nota": "Controlul creditului funcționează în contextul folosirii comenzii de la client; nu se aplică facturilor generate din alte surse."
+  }
+ ]
+}

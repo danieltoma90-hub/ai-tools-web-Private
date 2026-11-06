@@ -1,0 +1,31 @@
+{
+ "cheie": "contracte-de-furnizor-si-istoricul-preturilor-de-achizitie",
+ "denumire": "Contracte de furnizor și istoricul prețurilor de achiziție",
+ "capitol": "achizitii",
+ "incadrare": "Inclus",
+ "termeni": [
+  "achizitie",
+  "contracte",
+  "furnizor",
+  "istoricul",
+  "preturilor"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Contracte de furnizor și istoricul prețurilor de achiziție",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Relația cu furnizorii se administrează prin contracte, din care rezultă listele de prețuri folosite la comandă.",
+   "puncte": [
+    "Înregistrarea și urmărirea contractelor de furnizor, din care se generează și se întrețin listele de prețuri asociate detaliilor din contract.",
+    "Actualizarea prețurilor prin acte adiționale modifică prețul din listă și marchează istoricul de preț.",
+    "Pentru furnizorii fără liste predefinite de preț, evoluția prețurilor se urmărește prin rapoarte.",
+    "Trasabilitatea documentelor pe fluxul cerere de achiziție, comandă, recepție, factură, transferuri între gestiuni și consum."
+   ],
+   "fluxuri": [],
+   "nota": ""
+  }
+ ]
+}

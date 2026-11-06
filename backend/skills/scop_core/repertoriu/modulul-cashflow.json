@@ -1,0 +1,82 @@
+{
+ "cheie": "modulul-cashflow",
+ "denumire": "Modulul CashFlow",
+ "capitol": null,
+ "incadrare": "Inclus ca livrabil și buget separat",
+ "termeni": [
+  "alimentarea",
+  "cashflow",
+  "cfl1",
+  "cfl2",
+  "cfl3",
+  "configurarea",
+  "documentele",
+  "fluxului",
+  "numerar",
+  "operationale",
+  "raportarea",
+  "structurii"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Modulul CashFlow",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Modulul CashFlow este suportul pentru controlul fluxului de intrări și ieșiri de numerar din organizație. Obiectivul lui este de a informa corect și rapid managementul companiei și de a menține un nivel optim al fluxului de bani. Acoperă cerința de previzionare a fluxului de numerar din zona de trezorerie.",
+   "puncte": [
+    "Urmărirea intrărilor și ieșirilor de numerar pe perioade, pe baza documentelor operaționale și a scadențelor din facturi.",
+    "Previzionarea disponibilului pe intervalele configurate, cu evidențierea perioadelor deficitare.",
+    "Raportul de cash-flow, solicitat atât în zona contabilă, cât și în cea de trezorerie."
+   ],
+   "fluxuri": [
+    {
+     "cod": "CFL1",
+     "flux": "Configurarea structurii de cash-flow",
+     "presupune": "Definirea categoriilor de intrări și ieșiri și a perioadelor de analiză."
+    },
+    {
+     "cod": "CFL2",
+     "flux": "Alimentarea din documentele operaționale",
+     "presupune": "Preluarea scadențelor din facturi, a plăților programate și a disponibilului din conturi."
+    },
+    {
+     "cod": "CFL3",
+     "flux": "Raportarea fluxului de numerar",
+     "presupune": "Situația previzionată și realizată, pe perioade și pe categorii."
+    }
+   ],
+   "nota": "Precizare privind livrarea. CashFlow nu face parte din pachetul CORE: este un modul distinct al platformei Charisma, cu analiză, configurare și recepție proprii, și se ofertează și se bugetează separat."
+  },
+  {
+   "client": "Teldo",
+   "denumire": "Modulul CashFlow",
+   "sursa": "continut_teldo.SUPLIMENTARE",
+   "descriere": "Modulul CashFlow este suportul pentru controlul fluxului de intrări și ieșiri de numerar. Obiectivul lui este de a informa corect și rapid managementul companiei și de a menține un nivel optim al fluxului de bani. Scopul de Producție îl enumeră, alături de aprobarea plăților, ca arie tratată într-o secțiune distinctă.",
+   "puncte": [
+    "Urmărirea intrărilor și ieșirilor de numerar pe perioade, pe baza documentelor operaționale și a scadențelor din facturi.",
+    "Previzionarea disponibilului pe intervalele configurate, cu evidențierea perioadelor deficitare.",
+    "Corelarea cu plățile propuse la scadență și cu fluxul de aprobare aferent."
+   ],
+   "fluxuri": [
+    {
+     "cod": "CFL1",
+     "flux": "Configurarea structurii de cash-flow",
+     "presupune": "Definirea categoriilor de intrări și ieșiri și a perioadelor de analiză."
+    },
+    {
+     "cod": "CFL2",
+     "flux": "Alimentarea din documentele operaționale",
+     "presupune": "Preluarea scadențelor din facturi, a plăților programate și a disponibilului din conturi."
+    },
+    {
+     "cod": "CFL3",
+     "flux": "Raportarea fluxului de numerar",
+     "presupune": "Situația previzionată și realizată, pe perioade și pe categorii."
+    }
+   ],
+   "nota": "Precizare privind livrarea. CashFlow nu face parte din pachetul CORE: este un modul distinct al platformei, cu analiză, configurare și recepție proprii, și se ofertează și se bugetează separat."
+  }
+ ]
+}

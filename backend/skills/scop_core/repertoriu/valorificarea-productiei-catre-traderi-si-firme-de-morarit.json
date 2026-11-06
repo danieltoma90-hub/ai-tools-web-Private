@@ -1,0 +1,59 @@
+{
+ "cheie": "valorificarea-productiei-catre-traderi-si-firme-de-morarit",
+ "denumire": "Valorificarea producției către traderi și firme de morărit",
+ "capitol": "vanzari",
+ "incadrare": "Inclus",
+ "termeni": [
+  "comanda",
+  "contract",
+  "creanta",
+  "facturarea",
+  "firme",
+  "livrarea",
+  "morarit",
+  "productiei",
+  "siloz",
+  "traderi",
+  "valorificarea",
+  "vanzare",
+  "vp1",
+  "vp2",
+  "vp3"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Agro Seed Muntenia S.R.L.",
+   "denumire": "Valorificarea producției către traderi și firme de morărit",
+   "sursa": "continut_agroseed.SUPLIMENTARE",
+   "descriere": "Întreaga producție se valorifică pe piața internă, către traderi de cereale și către firme de morărit. Comercialul este prin urmare concentrat pe un număr restrâns de parteneri, cu relații contractuale repetitive și cu cantități mari pe document, nu pe o rețea de clienți mici.",
+   "puncte": [
+    "Partenerii se clasifică pe tipul de activitate — trader sau unitate de morărit — ceea ce permite urmărirea distinctă a vânzărilor și a creanțelor pe fiecare categorie.",
+    "Contractul sau comanda de vânzare poartă cantitatea, prețul și termenul de livrare, iar livrările succesive se urmăresc față de cantitatea contractată.",
+    "Prețul se aplică din lista de prețuri pe partener, cu valabilitate pe interval și cu istoricul modificărilor păstrat; vânzarea se poate face și la preț negociat pe document.",
+    "Livrarea descarcă stocul pe lotul din siloz, astfel încât cantitatea livrată rămâne trasabilă până la cultura și solele din care provine.",
+    "Caracteristicile de calitate ale lotului livrat sunt disponibile pe documentul de ieșire, din proprietățile articolului de cereale.",
+    "Creanțele se urmăresc pe partener, pe vechimi și pe scadențe."
+   ],
+   "fluxuri": [
+    {
+     "cod": "VP1",
+     "flux": "Contract sau comandă de vânzare",
+     "presupune": "Înregistrarea cantității, prețului și termenului, cu urmărirea livrărilor succesive față de cantitatea contractată."
+    },
+    {
+     "cod": "VP2",
+     "flux": "Livrarea din siloz",
+     "presupune": "Aviz sau factură, cu descărcarea stocului pe lotul livrat și cu trasabilitatea până la cultura de proveniență."
+    },
+    {
+     "cod": "VP3",
+     "flux": "Facturarea și creanța",
+     "presupune": "Factura de vânzare cu prețul aplicat din lista configurată, cu creanța urmărită pe partener și pe scadență."
+    }
+   ],
+   "nota": ""
+  }
+ ]
+}

@@ -1,0 +1,102 @@
+{
+ "cheie": "functionalitati-de-agricultura",
+ "denumire": "Funcționalități de agricultură",
+ "capitol": null,
+ "incadrare": "Inclus ca livrabil și buget separat",
+ "termeni": [
+  "activitate",
+  "agr1",
+  "agr2",
+  "agr3",
+  "agr4",
+  "agr5",
+  "agr6",
+  "agr7",
+  "agr8",
+  "agricol",
+  "agricultura",
+  "blocuri",
+  "cantar",
+  "cantariri",
+  "conditionare",
+  "consumuri",
+  "consumurile",
+  "cultura",
+  "culturilor",
+  "fizice",
+  "functionalitati",
+  "generate",
+  "import",
+  "infiintarea",
+  "nivel",
+  "predare",
+  "raport",
+  "realizate",
+  "receptia",
+  "receptie",
+  "servicii",
+  "tichet"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Agro Seed Muntenia S.R.L.",
+   "denumire": "Funcționalități de agricultură",
+   "sursa": "continut_agroseed.SUPLIMENTARE",
+   "descriere": "Zona de agricultură urmărește activitatea de câmp pe anul agricol, pe fermă și pe solă: de la planul de cultură și preluarea suprafețelor, prin raportarea lucrărilor și consumurile generate din ele, până la recepția recoltei din câmp și evidența serviciilor de recepție și condiționare. Punctele de lucru sunt fermele, iar solele constituie nivelul la care se acumulează consumurile și rezultatul.",
+   "puncte": [
+    "Înființarea culturilor, prin planul de cultură pe anul agricol, cu tehnologia de execuție asociată fiecărei culturi.",
+    "Preluarea blocurilor fizice din APIA prin import, ca sursă a suprafețelor declarate.",
+    "Importul solelor la nivel de an agricol, cu suprafețele și caracteristicile aferente.",
+    "Raportul de activitate ca document de înregistrare a lucrărilor executate, din care se generează automat consumurile de materiale și de resurse.",
+    "Recepția producției din câmp pe baza tichetului de cântar, cu informațiile de STAS ale articolului de cereale și cu generarea notei de predare din cântăririle centralizate.",
+    "Raportarea consumurilor realizate la nivel de solă, ca bază pentru costul culturii.",
+    "Evidențierea rezultatului serviciilor de recepție și condiționare, prin bon de consum pentru intrare și notă de predare pentru produsul condiționat."
+   ],
+   "fluxuri": [
+    {
+     "cod": "AGR1",
+     "flux": "Înființarea culturilor — plan de cultură pe an agricol",
+     "presupune": "Definirea culturilor în sistem și a tehnologiei de execuție raportată la hectar, cu planul de cultură deschis pe anul agricol; planul constituie contextul în care se raportează ulterior toate lucrările."
+    },
+    {
+     "cod": "AGR2",
+     "flux": "Import blocuri fizice APIA",
+     "presupune": "Preluarea prin import a blocurilor fizice declarate la APIA, cu identificatorul și suprafața fiecăruia, ca sursă unică a suprafețelor."
+    },
+    {
+     "cod": "AGR3",
+     "flux": "Import sole la nivel de an agricol",
+     "presupune": "Importul solelor pe anul agricol, cu suprafața și caracteristicile fiecăreia, și asocierea lor la fermă. Premisa de lucru: blocul fizic corespunde solei."
+    },
+    {
+     "cod": "AGR4",
+     "flux": "Raport de activitate și consumurile generate din el",
+     "presupune": "Înregistrarea lucrării executate pe solă și cultură, cu resursele implicate — utilaj principal și mecanizator — și generarea automată, din același document, a bonului de consum pentru materialele folosite."
+    },
+    {
+     "cod": "AGR5",
+     "flux": "Recepția din câmp cu tichet de cântar",
+     "presupune": "Înregistrarea cântăririlor la intrarea recoltei, cu informațiile de STAS ale articolului de cereale — umiditate, corpuri străine și celelalte caracteristici configurate pe articol."
+    },
+    {
+     "cod": "AGR6",
+     "flux": "Notă de predare din cântăriri",
+     "presupune": "Înregistrarea notei de predare din centralizatorul de recepții, astfel încât cantitatea recoltată să intre în stoc o singură dată, pe lotul aferent."
+    },
+    {
+     "cod": "AGR7",
+     "flux": "Consumuri realizate la nivel de solă",
+     "presupune": "Raportarea consumurilor de materiale și de resurse acumulate pe fiecare solă, ca bază pentru costul culturii și pentru comparația cu tehnologia planificată."
+    },
+    {
+     "cod": "AGR8",
+     "flux": "Servicii de recepție și condiționare",
+     "presupune": "Evidențierea rezultatului condiționării prin bon de consum pentru cantitatea intrată în proces și notă de predare pentru produsul condiționat, cu diferențele de masă evidențiate distinct."
+    }
+   ],
+   "nota": "Precizare privind livrarea. Funcționalitățile de agricultură aparțin modulului vertical Charisma Agricultură, distinct de pachetul CORE descris în celelalte capitole. Ele intră în scopul ofertat prin prezentul document, însă se licențiază și se bugetează separat.\nPrecizare privind raportările către APIA. Scopul ofertat cuprinde importul blocurilor fizice (AGR2), ca sursă a suprafețelor declarate. Rapoartele solicitate de APIA se pot structura în sistem, pe datele acumulate pe solă și pe cultură, însă conținutul și formatul fiecăruia se stabilesc printr-o analiză ulterioară; ele nu fac parte din scopul ofertat prin prezentul document și se cotează distinct."
+  }
+ ]
+}

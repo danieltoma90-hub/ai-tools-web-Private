@@ -1,11 +1,14 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import {
   uploadSourceFile,
   postScopCoreGenereazaDocument,
   getScopCoreJob,
+  getScopCoreCatalog,
+  type ScopCoreCatalog,
+  type ScopCoreElementCatalog,
   type ScopCoreDocConfig,
   type ScopCoreDocContinut,
   type ScopCoreDocumentSummary,
@@ -17,6 +20,7 @@ import ComutatoareCapitole, { type CheieCapitol } from "./ComutatoareCapitole";
 import TabelEditabil, { type ColoanaTabel } from "./TabelEditabil";
 import OrdineCap4, { type OrdineItem } from "./OrdineCap4";
 import SectiuneSuplimentaraCard from "./SectiuneSuplimentaraCard";
+import SelectieContinut from "./SelectieContinut";
 import type {
   SuplimentarUI,
   CerintaUI,
@@ -99,6 +103,27 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
 
   // --- Secțiunile adăugate peste standard -----------------------------------------------
   const [suplimentare, setSuplimentare] = useState<SuplimentarUI[]>([]);
+
+  // --- Ce intră în document: baza CORE și modulele adiacente din repertoriu ------------------
+  const [catalog, setCatalog] = useState<ScopCoreCatalog | null>(null);
+  const [catalogIncarca, setCatalogIncarca] = useState(true);
+  const [catalogEroare, setCatalogEroare] = useState("");
+  /** Cheile secțiunilor CORE debifate. Lista goală = tot standardul, cazul obișnuit. */
+  const [coreExcluse, setCoreExcluse] = useState<string[]>([]);
+  /** Pentru fiecare modul adiacent bifat, clientul variantei alese. */
+  const [varianteAlese, setVarianteAlese] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let activ = true;
+    getScopCoreCatalog()
+      .then((c) => activ && setCatalog(c))
+      .catch((e: unknown) =>
+        activ && setCatalogEroare(e instanceof Error ? e.message : "Eroare la încărcare."))
+      .finally(() => activ && setCatalogIncarca(false));
+    return () => {
+      activ = false;
+    };
+  }, []);
   const [ordine, setOrdine] = useState<OrdineItem[]>(
     SECTIUNI_CORE.map((s) => ({ tip: "sectiune" as const, id: s.cheie }))
   );
@@ -158,9 +183,14 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
   // nou cu subcapitol propriu), elimină ce a dispărut (elementul a fost șters sau mutat
   // „în interiorul modulului X”). Lista trimisă la generare e mereu completă — niciodată
   // incompletă sau cu chei necunoscute, cele două condiții pe care backend-ul le respinge.
+  // Secțiunile CORE care chiar intră în document. Tot ce ține de ordinea capitolului 4 se
+  // calculează pe ele, nu pe lista completă: o secțiune debifată nu are subcapitol, iar
+  // backend-ul respinge o ordine care numește un capitol inexistent.
+  const sectiuniActive = SECTIUNI_CORE.filter((s) => !coreExcluse.includes(s.cheie));
+
   const propriiIds = suplimentare.filter((s) => s.plasare === "propriu").map((s) => s.id);
   const semnalCurent = [
-    ...SECTIUNI_CORE.map((s) => `sectiune:${s.cheie}`),
+    ...sectiuniActive.map((s) => `sectiune:${s.cheie}`),
     ...propriiIds.map((id) => `propriu:${id}`),
   ].join("|");
   if (semnalCurent !== ordineDinSemnal) {
@@ -169,7 +199,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
     const pastrate = ordine.filter((o) => dorite.has(`${o.tip}:${o.id}`));
     const prezente = new Set(pastrate.map((o) => `${o.tip}:${o.id}`));
     const adaugate: OrdineItem[] = [];
-    for (const s of SECTIUNI_CORE) {
+    for (const s of sectiuniActive) {
       if (!prezente.has(`sectiune:${s.cheie}`)) adaugate.push({ tip: "sectiune", id: s.cheie });
     }
     for (const id of propriiIds) {
@@ -194,6 +224,63 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
     const titlu = el?.titlu.trim();
     return titlu ? titlu : "(secțiune fără titlu — nu va apărea în document)";
   }
+
+  // --- Bifele din catalog --------------------------------------------------------------------
+  const bifate = suplimentare
+    .map((s) => s.sursa?.cheie)
+    .filter((c): c is string => Boolean(c));
+
+  function elementDinVarianta(el: ScopCoreElementCatalog, client: string): SuplimentarUI {
+    const v = el.variante.find((x) => x.client === client) ?? el.variante[0];
+    return {
+      id: idNou(),
+      titlu: el.denumire,
+      intro: v?.intro ?? "",
+      puncte: (v?.puncte ?? []).join("\n"),
+      nota: v?.nota ?? "",
+      plasare: el.capitol ?? "propriu",
+      fluxuri: v?.fluxuri ?? [],
+      incadrare: el.incadrare,
+      sursa: { cheie: el.cheie, client: v?.client ?? "" },
+    };
+  }
+
+  function comutaAdiacent(el: ScopCoreElementCatalog) {
+    setSuplimentare((els) => {
+      if (els.some((x) => x.sursa?.cheie === el.cheie)) {
+        return els.filter((x) => x.sursa?.cheie !== el.cheie);
+      }
+      return [...els, elementDinVarianta(el, varianteAlese[el.cheie] ?? el.variante[0]?.client ?? "")];
+    });
+  }
+
+  function schimbaVarianta(el: ScopCoreElementCatalog, client: string) {
+    setVarianteAlese((v) => ({ ...v, [el.cheie]: client }));
+    setSuplimentare((els) =>
+      els.map((x) =>
+        x.sursa?.cheie === el.cheie
+          ? { ...elementDinVarianta(el, client), id: x.id, plasare: x.plasare }
+          : x
+      )
+    );
+  }
+
+  /** Debifarea unei secțiuni CORE scoate și modulele adiacente care intrau în ea — au venit
+   * tot dintr-o bifă, deci dispar simetric. Elementele scrise de mână în ecran NU se ating:
+   * ar fi conținut pierdut în tăcere; ele apar în avertismentul de mai jos, ca să fie mutate. */
+  function comutaCore(cheie: string) {
+    const seExclude = !coreExcluse.includes(cheie);
+    setCoreExcluse((prev) => (seExclude ? [...prev, cheie] : prev.filter((c) => c !== cheie)));
+    if (seExclude) {
+      setSuplimentare((els) => els.filter((x) => !(x.sursa && x.plasare === cheie)));
+    }
+  }
+
+  /** Elemente scrise de mână, atașate unei secțiuni debifate: `scope.genereaza` le respinge cu
+   * 422, deci oprim generarea înainte, cu un mesaj care spune exact ce e de făcut. */
+  const elementeOrfane = suplimentare
+    .filter((s) => s.plasare !== "propriu" && coreExcluse.includes(s.plasare))
+    .map((s) => s.titlu.trim() || "(fără titlu)");
 
   // --- Elemente suplimentare ---------------------------------------------------------------
   function adaugaSuplimentar() {
@@ -305,7 +392,11 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
   };
 
   const delimitareIncompleta = frateExista && delimitareRandCompletate === 0;
-  const potGenera = nume.trim().length > 0 && !delimitareIncompleta && state !== "processing";
+  const potGenera =
+    nume.trim().length > 0 &&
+    !delimitareIncompleta &&
+    elementeOrfane.length === 0 &&
+    state !== "processing";
 
   function construiesteCerere(): { config: ScopCoreDocConfig; continut: ScopCoreDocContinut } {
     const titluriPropriiById = new Map(suplimentare.map((s) => [s.id, s.titlu.trim()]));
@@ -335,7 +426,11 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
         coduri: [],
         denumire: corelatDenumire.trim(),
       },
-      sectiuni_core: { toate: true, doar: [], fara: [] },
+      sectiuni_core: {
+        toate: coreExcluse.length === 0,
+        doar: [],
+        fara: coreExcluse,
+      },
       capitole: capitoleEfective,
       stil: {
         document_gazda: "",
@@ -369,9 +464,13 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
           titlu: s.titlu.trim(),
           intro: s.intro.trim(),
           puncte: randuriDinText(s.puncte),
-          fluxuri: [],
+          // Fluxurile există doar la elementele venite din repertoriu; ecranul nu le editează,
+          // dar le trimite mai departe — fără ele, modulul adiacent ar ajunge în document fără
+          // tabelul lui de fluxuri, adică fără partea pentru care a fost scris.
+          fluxuri: s.fluxuri ?? [],
           nota: s.nota.trim(),
           in_modul: s.plasare === "propriu" ? null : s.plasare,
+          incadrare: s.incadrare,
         })),
       acoperire: acoperireRows
         .filter((r) => r.cerinta.trim() && r.raspuns.trim())
@@ -828,7 +927,29 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
         )}
       </div>
 
-      {/* 4. Secțiunile adăugate peste standard */}
+      {/* 4. Ce intră în document: baza CORE și modulele adiacente */}
+      <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-[#18257f]">Ce intră în document</h3>
+          <p className="text-xs text-slate-500 leading-relaxed mt-1">
+            Standardul CORE e același la toți clienții și intră implicit; modulele adiacente
+            se adaugă doar unde au obiect, cu textul scris la proiectul unde au apărut.
+          </p>
+        </div>
+        <SelectieContinut
+          catalog={catalog}
+          incarca={catalogIncarca}
+          eroare={catalogEroare}
+          excluse={coreExcluse}
+          onComutaCore={comutaCore}
+          bifate={bifate}
+          variante={varianteAlese}
+          onComutaAdiacent={comutaAdiacent}
+          onSchimbaVarianta={schimbaVarianta}
+        />
+      </div>
+
+      {/* 5. Secțiunile adăugate peste standard */}
       <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">
         <div>
           <h3 className="text-sm font-semibold text-[#18257f]">
@@ -836,10 +957,18 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
             <span className="font-normal text-slate-400">(opțional)</span>
           </h3>
           <p className="text-xs text-slate-500 leading-relaxed mt-1">
-            Ce primește clientul peste standardul CORE — fie în interiorul unui modul existent,
-            fie ca subcapitol propriu în capitolul 4.
+            Cele bifate mai sus apar aici, cu textul din repertoriu — editabil. Adaugă tot aici
+            ce e scris prima dată la clientul ăsta.
           </p>
         </div>
+
+        {elementeOrfane.length > 0 && (
+          <p className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            Atașate unei secțiuni CORE debifate: {elementeOrfane.join(", ")}. Mută-le în alt
+            modul sau pe „subcapitol propriu”, ori rebifează secțiunea — altfel generarea se
+            oprește cu eroare.
+          </p>
+        )}
 
         {titluriDuplicate.length > 0 && (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -852,6 +981,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
           <SectiuneSuplimentaraCard
             key={el.id}
             element={el}
+            sectiuniIncluse={sectiuniActive}
             onModifica={modificaSuplimentar}
             onSterge={stergeSuplimentar}
           />
@@ -871,7 +1001,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
         </div>
       </div>
 
-      {/* 5. Matricea de acoperire */}
+      {/* 6. Matricea de acoperire */}
       <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">
         <div>
           <h3 className="text-sm font-semibold text-[#18257f]">
@@ -912,7 +1042,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
         />
       </div>
 
-      {/* 6. Fluxul operațional */}
+      {/* 7. Fluxul operațional */}
       <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">
         <div>
           <h3 className="text-sm font-semibold text-[#18257f]">
@@ -966,7 +1096,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
         </div>
       )}
 
-      {/* 7. Comutatoare pe capitole */}
+      {/* 8. Comutatoare pe capitole */}
       <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">
         <h3 className="text-sm font-semibold text-[#18257f]">Capitolele documentului</h3>
         <ComutatoareCapitole
@@ -978,7 +1108,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
         />
       </div>
 
-      {/* 8. Forma capitolului 6 + diacritice */}
+      {/* 9. Forma capitolului 6 + diacritice */}
       <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-3">
         <div>
           <label className="block text-xs font-semibold text-slate-500 mb-1.5">

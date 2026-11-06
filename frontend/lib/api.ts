@@ -715,6 +715,50 @@ export async function getScopCoreJob(jobId: string): Promise<ScopCoreJob> {
   return apiFetch(`${PROXY}/scop-core/job/${jobId}`) as Promise<ScopCoreJob>;
 }
 
+// ── Catalogul: ce se poate bifa într-un document de scop ────────────────────
+// Baza CORE (cele zece secțiuni, bifate implicit) și modulele adiacente scrise la proiectele
+// anterioare (MultiCash, Fleet, postcalcul…, nebifate implicit). Un element bifat se trimite
+// înapoi ca `ScopCoreDocSuplimentar` obișnuit — catalogul nu introduce o a doua cale de
+// generare, doar scutește de rescrierea aceluiași text la fiecare client.
+
+export type ScopCoreSectiuneCatalog = {
+  cheie: string;
+  titlu: string;
+  prefix: string;
+  scop: string;
+  fluxuri: number;
+  puncte: number;
+};
+
+/** Un text al aceluiași subiect, așa cum a fost livrat unui client. Variantele nu se
+ * amestecă: alegerea e a omului care face oferta. */
+export type ScopCoreVariantaCatalog = {
+  client: string;
+  intro: string;
+  puncte: string[];
+  fluxuri: { cod: string; flux: string; presupune: string }[];
+  nota: string;
+};
+
+export type ScopCoreElementCatalog = {
+  cheie: string;
+  denumire: string;
+  /** Cheia secțiunii CORE în care se evidențiază, sau `null` pentru subcapitol propriu. */
+  capitol: string | null;
+  incadrare: string;
+  clienti: string[];
+  variante: ScopCoreVariantaCatalog[];
+};
+
+export type ScopCoreCatalog = {
+  core: ScopCoreSectiuneCatalog[];
+  adiacente: ScopCoreElementCatalog[];
+};
+
+export async function getScopCoreCatalog(): Promise<ScopCoreCatalog> {
+  return apiFetch(`${PROXY}/scop-core/catalog`) as Promise<ScopCoreCatalog>;
+}
+
 // ── Grupuri de utilizatori și accesul pe module ─────────────────────────────
 
 export type AccesEu = {

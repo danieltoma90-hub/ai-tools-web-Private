@@ -131,6 +131,31 @@ def _cap1_scop(doc, client: Client, corelat: ScopCorelat, nr: int) -> None:
         "punctele care necesită confirmare înainte de validarea scopului.")
 
 
+def scoate_randuri_de_flux(doc, coduri: list[str] | None) -> None:
+    """Șterge din tabelele de fluxuri rândurile cu codurile date.
+
+    `curata_pentru_client` lucrează pe paragrafe, deci nu ajunge la fluxuri: ele sunt rânduri de
+    tabel, cu codul în prima celulă. Un flux pe care ședința l-a scos trebuie să dispară din
+    tabel, altfel „ce rămâne din standard" e doar o părere, iar documentul oferă mai departe ce
+    tocmai s-a tăiat.
+
+    Ca și la buline, un cod care nu potrivește nimic e eroare: înseamnă că s-a schimbat catalogul
+    și filtrul ar tăcea exact când nu mai taie."""
+    coduri = [c.strip().upper() for c in (coduri or []) if c.strip()]
+    if not coduri:
+        return
+    gasite = {c: 0 for c in coduri}
+    for t in doc.tables:
+        for rand in list(t.rows):
+            cod = rand.cells[0].text.strip().upper()
+            if cod in gasite:
+                gasite[cod] += 1
+                rand._tr.getparent().remove(rand._tr)
+    lipsa = [c for c, n in gasite.items() if n == 0]
+    if lipsa:
+        raise AssertionError(f"coduri de flux care nu există în document: {lipsa}")
+
+
 def curata_pentru_client(doc, scoate: list[str] | None, reformulari: list[tuple[str, str]] | None):
     """Scoate sau rescrie, în documentul gata construit, pasaje din conținutul CORE partajat.
 
@@ -620,6 +645,7 @@ def genereaza(cfg: dict, cale_iesire, client: Client | None = None,
               premise_extra: dict[str, list[str]] | None = None,
               lant_valoric: dict | None = None,
               scoate_buline: list[str] | None = None,
+              scoate_fluxuri: list[str] | None = None,
               reformulari: list[tuple[str, str]] | None = None):
     """Construiește documentul complet și îl salvează. Întoarce calea scrisă."""
     client = client or Client.din_config(cfg)
@@ -704,6 +730,7 @@ def genereaza(cfg: dict, cale_iesire, client: Client | None = None,
     # client, iar textele căutate sunt scrise cu diacritice.
     if scoate_buline or reformulari:
         curata_pentru_client(doc, scoate_buline, reformulari)
+    scoate_randuri_de_flux(doc, scoate_fluxuri)
 
     if (cfg.get("stil", {}) or {}).get("fara_diacritice"):
         stil.transliterare_document(doc)

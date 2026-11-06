@@ -1,0 +1,44 @@
+{
+ "cheie": "modulul-tempo",
+ "denumire": "Modulul Tempo — alerte și praguri de aprobare",
+ "capitol": null,
+ "incadrare": "Inclus ca livrabil și buget separat",
+ "termeni": [
+  "alerte",
+  "alertelor",
+  "aprobare",
+  "configurarea",
+  "praguri",
+  "tempo",
+  "tp1",
+  "tp2"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Modulul Tempo — alerte și praguri de aprobare",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Charisma Tempo transmite automat informații către grupuri de utilizatori la producerea unor evenimente configurate. În prezenta implementare susține alertele și pragurile valorice folosite de fluxurile de aprobare.",
+   "puncte": [
+    "Configurarea evenimentelor care declanșează o alertă și a grupurilor de destinatari.",
+    "Notificări pe e-mail sau SMS, cu date preluate dinamic din sistem.",
+    "Susținerea pragurilor valorice folosite de fluxurile de aprobare pe achiziții și pe plăți."
+   ],
+   "fluxuri": [
+    {
+     "cod": "TP1",
+     "flux": "Configurarea alertelor",
+     "presupune": "Definirea evenimentelor, a mesajelor și a grupurilor de destinatari."
+    },
+    {
+     "cod": "TP2",
+     "flux": "Praguri de aprobare",
+     "presupune": "Configurarea pragurilor valorice folosite de fluxurile de aprobare."
+    }
+   ],
+   "nota": "Precizare privind livrarea. Tempo este un modul distinct al platformei, ofertat și bugetat separat de pachetul CORE."
+  }
+ ]
+}

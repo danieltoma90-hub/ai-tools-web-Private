@@ -1,0 +1,43 @@
+{
+ "cheie": "modulul-bugete",
+ "denumire": "Modulul Bugete",
+ "capitol": null,
+ "incadrare": "Inclus ca livrabil și buget separat",
+ "termeni": [
+  "alertarea",
+  "bg1",
+  "bg2",
+  "bugete",
+  "bugetelor",
+  "definirea",
+  "depasire"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Modulul Bugete",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Modulul susține cerința de alertare la depășirea bugetului, exprimată în zona de achiziții, și oferă cadrul de urmărire buget față de realizat.",
+   "puncte": [
+    "Definirea bugetelor pe dimensiunile de analiză folosite de companie, respectiv centre de cost, departamente și proiecte.",
+    "Transmiterea de alerte specifice la atingerea sau depășirea pragurilor configurate.",
+    "Alertele se configurează conform necesarului beneficiarului, pe praguri și pe destinatari."
+   ],
+   "fluxuri": [
+    {
+     "cod": "BG1",
+     "flux": "Definirea bugetelor",
+     "presupune": "Configurarea bugetelor pe dimensiunile de analiză agreate."
+    },
+    {
+     "cod": "BG2",
+     "flux": "Alertarea la depășire",
+     "presupune": "Configurarea pragurilor și a destinatarilor notificărilor."
+    }
+   ],
+   "nota": "Precizare privind livrarea. Modulul Bugete este distinct de pachetul CORE și se ofertează separat."
+  }
+ ]
+}

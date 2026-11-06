@@ -1,0 +1,64 @@
+{
+ "cheie": "integrarea-cu-aplicatia-retelei-de-magazine",
+ "denumire": "Integrarea cu aplicația rețelei de magazine",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "aplicatia",
+  "corectiilor",
+  "integrarea",
+  "magazin",
+  "magazine",
+  "miscarilor",
+  "nomenclator",
+  "preluarea",
+  "preturi",
+  "reconcilierea",
+  "retelei",
+  "rm1",
+  "rm2",
+  "rm3",
+  "rm4",
+  "stocului",
+  "vanzarilor"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Teldo",
+   "denumire": "Integrarea cu aplicația rețelei de magazine",
+   "sursa": "continut_teldo.SUPLIMENTARE",
+   "descriere": "Rețeaua de magazine proprii funcționează pe o aplicație dedicată. Integrarea are ca obiectiv consolidarea vânzărilor și a stocului magazinelor în evidența centrală, astfel încât rețeaua să nu constituie o evidență paralelă.",
+   "puncte": [
+    "Transmiterea nomenclatorului de articole și a prețurilor de vânzare către aplicația de magazin, astfel încât acestea să fie întreținute într-un singur loc.",
+    "Preluarea vânzărilor realizate în magazine, centralizat pe zi și pe articol, cu generarea documentelor de ieșire corespondente și descărcarea gestiunii.",
+    "Preluarea mișcărilor de stoc operate în magazine: recepții confirmate, retururi, transferuri și corecții de inventar.",
+    "Reconcilierea stocului raportat de aplicația de magazin cu stocul din Charisma, cu semnalarea diferențelor."
+   ],
+   "fluxuri": [
+    {
+     "cod": "RM1",
+     "flux": "Nomenclator și prețuri către magazine",
+     "presupune": "Transmiterea articolelor active, a codurilor de bare și a prețurilor de vânzare, împreună cu modificările ulterioare."
+    },
+    {
+     "cod": "RM2",
+     "flux": "Preluarea vânzărilor din magazine",
+     "presupune": "Importul vânzărilor pe zi și pe articol, cu generarea documentelor de ieșire și descărcarea gestiunii aferente."
+    },
+    {
+     "cod": "RM3",
+     "flux": "Preluarea mișcărilor de stoc și a corecțiilor",
+     "presupune": "Importul recepțiilor confirmate, al retururilor, al transferurilor și al corecțiilor de inventar."
+    },
+    {
+     "cod": "RM4",
+     "flux": "Reconcilierea stocului pe magazin",
+     "presupune": "Compararea stocului din Charisma cu cel raportat de aplicația de magazin și semnalarea diferențelor."
+    }
+   ],
+   "nota": "Dimensionare și premise. Efortul acoperă cele patru fluxuri, pe o singură interfață tehnică și un singur format de schimb. Punerea în funcțiune presupune ca furnizorul aplicației de magazin să pună la dispoziție documentația interfeței și un punct de contact pentru definire și testare. Numărul de magazine și granularitatea datelor de vânzare se confirmă în analiză."
+  }
+ ]
+}

@@ -52,6 +52,23 @@ def _tokenuri(text: str) -> list[str]:
     return TIPAR_CUVANT.findall(fara_diacritice(text).lower())
 
 
+def comune(ai_punctului: set[str], ai_tintei: set[str], prefix: int = 6) -> set[str]:
+    """Cuvintele comune, cu toleranță la flexiune, în forma țintei.
+
+    Minuta scrie „modelelor", catalogul scrie „modele"; fără regula asta sunt două cuvinte
+    diferite și potrivirea ratează exact acolo unde contează. Se acceptă prefix comun de cel
+    puțin `prefix` litere, cât să nu lege „contare" de „contabil" — și se întorc formele țintei,
+    fiindcă pe ele e calculată frecvența."""
+    gasite = set()
+    for t in ai_tintei:
+        for p in ai_punctului:
+            if t == p or (min(len(t), len(p)) >= prefix
+                          and (t.startswith(p) or p.startswith(t))):
+                gasite.add(t)
+                break
+    return gasite
+
+
 # Un document de scop vorbește despre ce NU oferă la fel de mult ca despre ce oferă: capitolul
 # „Arii în afara scopului" și rândurile „Neinclus" sunt exact locul unde un subiect scos trebuie
 # să apară. Fără distincția asta, confruntarea raportează „încă e în document" tocmai pentru că

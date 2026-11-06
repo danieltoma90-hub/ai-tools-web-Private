@@ -1,0 +1,82 @@
+{
+ "cheie": "parcul-auto",
+ "denumire": "Parcul auto — Fleet Management",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "alocarea",
+  "combustibil",
+  "consumul",
+  "costul",
+  "documente",
+  "fleet",
+  "management",
+  "pa1",
+  "pa2",
+  "pa3",
+  "pa4",
+  "pa5",
+  "pa6",
+  "parcul",
+  "parcurs",
+  "registrul",
+  "reparatii",
+  "revizii",
+  "termene",
+  "utilajelor",
+  "vehicul",
+  "vehiculelor"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "AGRIFIELDS S.R.L.",
+   "denumire": "Parcul auto — Fleet Management",
+   "sursa": "continut_agrifields.SUPLIMENTARE",
+   "descriere": "Scopul de Producție lasă gestiunea flotei în afara ariei lui și o trimite către modulul de Parc Auto; prezentul document o cuprinde. Modulul ține registrul vehiculelor și al utilajelor cu documentele și termenele lor, consumurile de combustibil, foile de parcurs, reviziile și reparațiile, iar cheltuiala rezultată se alocă pe dimensiunile de analiză ale companiei.",
+   "puncte": [
+    "Registrul vehiculelor și al utilajelor, cu datele tehnice, seria de șasiu, numărul de înmatriculare și responsabilul.",
+    "Documentele vehiculului — asigurare, inspecție tehnică, rovinietă, licențe — cu termenele de expirare și alertarea înaintea scadenței.",
+    "Foaia de parcurs, cu plecarea și sosirea, kilometrajul și scopul deplasării.",
+    "Alimentările cu combustibil, cu cantitatea, valoarea și kilometrajul, din care rezultă consumul mediu și abaterile față de norma vehiculului.",
+    "Reviziile și reparațiile, planificate sau accidentale, cu piesele consumate din stoc și cu serviciile facturate de terți.",
+    "Amenzile și alte cheltuieli asociate vehiculului, cu responsabilul înregistrat.",
+    "Cheltuiala pe vehicul alocată pe centrul de cost, pe linia de business sau pe celelalte dimensiuni configurate, astfel încât costul transportului să ajungă acolo unde a fost consumat."
+   ],
+   "fluxuri": [
+    {
+     "cod": "PA1",
+     "flux": "Registrul vehiculelor și al utilajelor",
+     "presupune": "Definirea vehiculului cu datele tehnice, seria, numărul de înmatriculare, responsabilul și legătura cu fișa mijlocului fix."
+    },
+    {
+     "cod": "PA2",
+     "flux": "Documente și termene",
+     "presupune": "Evidența asigurărilor, a inspecțiilor tehnice, a rovinietelor și a licențelor, cu termenele de expirare și alertarea înaintea scadenței."
+    },
+    {
+     "cod": "PA3",
+     "flux": "Foi de parcurs",
+     "presupune": "Înregistrarea cursei cu plecarea, sosirea, kilometrajul și scopul deplasării, pe vehicul și pe șofer."
+    },
+    {
+     "cod": "PA4",
+     "flux": "Consumul de combustibil",
+     "presupune": "Înregistrarea alimentărilor cu cantitate, valoare și kilometraj, cu determinarea consumului mediu și a abaterilor față de normă."
+    },
+    {
+     "cod": "PA5",
+     "flux": "Revizii și reparații",
+     "presupune": "Planificarea și înregistrarea intervențiilor, cu piesele consumate din stoc și cu serviciile facturate de terți."
+    },
+    {
+     "cod": "PA6",
+     "flux": "Costul pe vehicul și alocarea lui",
+     "presupune": "Centralizarea cheltuielilor pe vehicul — combustibil, întreținere, asigurări, amenzi, amortizare — și alocarea lor pe dimensiunile de analiză configurate."
+    }
+   ],
+   "nota": "Delimitare. Integrarea cu sistemele de monitorizare GPS nu face obiectul prezentului scop: kilometrajul, cursele și consumurile se înregistrează în aplicație, nu se preiau automat de la un furnizor de telematică. Dacă se dorește preluarea automată, ea se analizează și se cotează separat, pe baza documentației de interfață a furnizorului ales."
+  }
+ ]
+}

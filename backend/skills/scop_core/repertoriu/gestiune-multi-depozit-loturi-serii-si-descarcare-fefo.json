@@ -1,0 +1,36 @@
+{
+ "cheie": "gestiune-multi-depozit-loturi-serii-si-descarcare-fefo",
+ "denumire": "Gestiune multi-depozit, loturi, serii și descărcare FEFO",
+ "capitol": "stocuri",
+ "incadrare": "Inclus",
+ "termeni": [
+  "depozit",
+  "descarcare",
+  "fefo",
+  "gestiune",
+  "loturi",
+  "multi",
+  "serii"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Gestiune multi-depozit, loturi, serii și descărcare FEFO",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Stocurile se urmăresc pe mai multe depozite și locații, cu identificare pe lot și serie, iar descărcarea urmează regula configurată pe articol.",
+   "puncte": [
+    "Configurarea de multi-depozit și de multi-locație.",
+    "Urmărirea stocurilor la nivel de loturi și la nivel de serii.",
+    "Asocierea codurilor de bare pe articol sau pe unitatea de măsură specifică articolului, de bază sau alternativă.",
+    "Descărcare de gestiune FIFO, respectiv FEFO pentru articolele care prezintă termene de expirare.",
+    "Rezervarea de stoc la nivel de comandă de client.",
+    "Inventare pe locații și gestiuni, parțiale sau totale, cu generarea procesului verbal de diferențe la închidere.",
+    "Fișa de magazie pe articol, în care se observă recepția, transferul și consumul articolului într-o perioadă."
+   ],
+   "fluxuri": [],
+   "nota": "Precizare. Charisma ERP nu permite stocuri negative, motiv pentru care raportul de stoc negativ solicitat nu are obiect. Scanarea mobilă se realizează prin module distincte de scanare, ofertate separat."
+  }
+ ]
+}

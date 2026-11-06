@@ -39,6 +39,16 @@ COPIA_VERIFICA = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_
 SURSA_MINUTE = pathlib.Path("d:/AI_Claude/tools/shared/minute.py")
 COPIA_MINUTE = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_core" / "minute.py"
 
+SURSA_REPERTORIU = pathlib.Path("d:/AI_Claude/tools/shared/repertoriu.py")
+COPIA_REPERTORIU = (pathlib.Path(__file__).resolve().parents[1]
+                    / "skills" / "scop_core" / "repertoriu.py")
+
+# Datele repertoriului, nu doar codul: modulele adiacente pe care ecranul le propune
+# (MultiCash, Fleet, postcalcul) SUNT fișierele astea. Un element adăugat local și nesincronizat
+# nu apare în catalogul de pe site, iar unul șters local ar continua să fie propus acolo.
+DATE_REPERTORIU = pathlib.Path("d:/AI_Claude/repertoriu")
+DATE_COPIA = pathlib.Path(__file__).resolve().parents[1] / "skills" / "scop_core" / "repertoriu"
+
 SURSA_CONFRUNTA = pathlib.Path("d:/AI_Claude/tools/shared/confrunta_scop.py")
 COPIA_CONFRUNTA = (pathlib.Path(__file__).resolve().parents[1]
                    / "skills" / "scop_core" / "confrunta.py")
@@ -154,3 +164,37 @@ def test_confrunta_nu_a_divergat():
         "confrunta.py diferă de tools/shared/confrunta_scop.py. "
         "Conținutul se editează în sursă și se copiază aici."
     )
+
+
+@pytest.mark.skipif(not SURSA_REPERTORIU.is_file(), reason="repo-ul sursă nu e accesibil aici")
+def test_repertoriu_nu_a_divergat():
+    """`repertoriu.py` importă `confrunta` și `minute` din pachet — diferă de sursă exact cu
+    blocul de import."""
+    assert _hash_fara_antet(COPIA_REPERTORIU) == _hash_fara_antet(SURSA_REPERTORIU), (
+        "repertoriu.py diferă de tools/shared/repertoriu.py. "
+        "Conținutul se editează în sursă și se copiază aici."
+    )
+
+
+@pytest.mark.skipif(not DATE_REPERTORIU.is_dir(), reason="repo-ul sursă nu e accesibil aici")
+def test_datele_repertoriului_nu_au_divergat():
+    """Aceleași elemente, cu același conținut, în ambele repo-uri.
+
+    Se compară doar JSON-urile: `INDEX.md` și `REPERTORIU.md` sunt pentru citit și nu se
+    livrează cu backendul."""
+    sursa = {f.name: _hash(f) for f in sorted(DATE_REPERTORIU.glob("*.json"))}
+    copia = {f.name: _hash(f) for f in sorted(DATE_COPIA.glob("*.json"))}
+    assert copia == sursa, (
+        "datele din repertoriu/ diferă între repo-uri. "
+        "Rulează `python tools/sincronizeaza_web.py` în repo-ul sursă."
+    )
+
+
+def test_repertoriul_livrat_se_poate_citi():
+    """Plasa de siguranță pentru deploy: pe Render nu există repo-ul sursă, iar catalogul
+    trebuie să găsească elementele în pachet, nu lângă el."""
+    from skills.scop_core import repertoriu
+
+    elemente = repertoriu.incarca()
+    assert len(elemente) >= 30, "repertoriul nu a ajuns în pachet"
+    assert repertoriu.dosar() == DATE_COPIA

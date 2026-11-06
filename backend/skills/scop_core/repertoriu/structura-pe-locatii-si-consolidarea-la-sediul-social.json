@@ -1,0 +1,67 @@
+{
+ "cheie": "structura-pe-locatii-si-consolidarea-la-sediul-social",
+ "denumire": "Structura pe locații și consolidarea la sediul social",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "consolidarea",
+  "consolidata",
+  "definirea",
+  "drepturi",
+  "gestiunilor",
+  "lo1",
+  "lo2",
+  "lo3",
+  "lo4",
+  "locatie",
+  "locatii",
+  "locatiilor",
+  "raportare",
+  "sediul",
+  "social",
+  "structura",
+  "transferuri",
+  "utilizator"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Agro Seed Muntenia S.R.L.",
+   "denumire": "Structura pe locații și consolidarea la sediul social",
+   "sursa": "continut_agroseed.SUPLIMENTARE",
+   "descriere": "Activitatea se desfășoară în trei locații: ferma Băneasa, județul Giurgiu, cu 2.400 de hectare, și ferma Perișoru, județul Călărași, cu 2.000 de hectare, în care se înregistrează operațiunile de câmp, recepțiile și mișcările de stoc, și sediul social, în care se înregistrează documentele financiare și contabile și în care se obține situația consolidată a celor două ferme. Silozul de cereale constituie o locație de stocare proprie, tratată în capitolul dedicat.",
+   "puncte": [
+    "Fiecare locație se definește distinct în sistem, cu gestiunile proprii și cu drepturi de utilizator alocate pe locație, astfel încât operatorul de la fermă să lucreze numai pe locația proprie.",
+    "Documentele operaționale — recepții, consumuri, transferuri, rapoarte de activitate — se înregistrează la locația care le generează.",
+    "Documentele financiare și contabile se înregistrează la sediul social, pe același plan de conturi, cu vizibilitatea conturilor analitice pe locație.",
+    "Transferurile între ferme și către sediul social se operează ca mișcări de stoc între locații, cu documentele aferente.",
+    "Situația consolidată rezultă din aceeași bază de date: balanța și rapoartele contabile se pot rula pe o singură locație sau centralizat, pe toată compania.",
+    "Dimensiunea de analiză corespunzătoare locației permite urmărirea costurilor și a rezultatului pe fiecare fermă, în paralel cu situația consolidată."
+   ],
+   "fluxuri": [
+    {
+     "cod": "LO1",
+     "flux": "Definirea locațiilor și a gestiunilor",
+     "presupune": "Configurarea celor trei locații, cu gestiunile aferente fiecăreia și cu regulile de acces pe locație."
+    },
+    {
+     "cod": "LO2",
+     "flux": "Drepturi de utilizator pe locație",
+     "presupune": "Alocarea drepturilor pe locație, astfel încât fiecare fermă să opereze numai documentele proprii."
+    },
+    {
+     "cod": "LO3",
+     "flux": "Transferuri între locații",
+     "presupune": "Mișcări de stoc între ferme și către sediul social, cu documentele corespondente."
+    },
+    {
+     "cod": "LO4",
+     "flux": "Raportare pe locație și consolidată",
+     "presupune": "Balanța și rapoartele contabile rulate pe o locație sau centralizat, pe toată compania."
+    }
+   ],
+   "nota": "Consolidarea descrisă aici este cea contabilă, obținută din rularea centralizată a rapoartelor pe aceeași bază de date. Consolidarea de grup, cu eliminarea tranzacțiilor reciproce între societăți distincte, nu face obiectul prezentului document."
+  }
+ ]
+}

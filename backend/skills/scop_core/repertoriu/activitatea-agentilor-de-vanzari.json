@@ -1,0 +1,55 @@
+{
+ "cheie": "activitatea-agentilor-de-vanzari",
+ "denumire": "Activitatea agenților de vânzări",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "activitatea",
+  "ag1",
+  "ag2",
+  "ag3",
+  "agent",
+  "agentilor",
+  "agentului",
+  "atribuita",
+  "clienti",
+  "comanda",
+  "portofolii",
+  "rapoarte",
+  "vanzari"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Teldo",
+   "denumire": "Activitatea agenților de vânzări",
+   "sursa": "continut_teldo.SUPLIMENTARE",
+   "descriere": "Activitatea agenților este enumerată explicit în scopul de Producție ca arie tratată în această secțiune a ofertei. Ea se urmărește prin portofolii de clienți și prin atribuirea comenzilor pe agentul care le-a generat.",
+   "puncte": [
+    "Clasificarea clienților în portofolii pe agent sau pe zonă comercială, cu ierarhii multiple acolo unde este nevoie.",
+    "Comenzile de client se preiau pe agentul care le-a generat, astfel încât activitatea fiecăruia să fie atribuibilă.",
+    "Rapoarte de vânzări pe agent, pe client, pe articol și pe perioadă, ca bază pentru urmărirea și evaluarea activității comerciale.",
+    "Prețul și discountul aplicabile rezultă din lista atribuită partenerului, nu din decizia agentului la momentul comenzii."
+   ],
+   "fluxuri": [
+    {
+     "cod": "AG1",
+     "flux": "Portofolii de clienți pe agent",
+     "presupune": "Clasificarea clienților pe agent sau zonă comercială, întreținută de beneficiar."
+    },
+    {
+     "cod": "AG2",
+     "flux": "Comanda atribuită agentului",
+     "presupune": "Preluarea comenzii pe agentul care a generat-o, cu trasabilitate până la factură."
+    },
+    {
+     "cod": "AG3",
+     "flux": "Rapoarte pe agent",
+     "presupune": "Situații de vânzări pe agent și perioadă, pentru urmărirea activității."
+    }
+   ],
+   "nota": ""
+  }
+ ]
+}

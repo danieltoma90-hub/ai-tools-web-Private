@@ -1,0 +1,29 @@
+{
+ "cheie": "raport-de-statistici-privind-utilizarea-aplicatiei",
+ "denumire": "Raport de statistici privind utilizarea aplicației",
+ "capitol": "configurare",
+ "incadrare": "Inclus",
+ "termeni": [
+  "aplicatiei",
+  "privind",
+  "raport",
+  "statistici",
+  "utilizarea"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Raport de statistici privind utilizarea aplicației",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Raport de administrare care arată activitatea utilizatorilor în aplicație.",
+   "puncte": [
+    "Raport standard cu documentele operate la nivel de utilizator, care acoperă și cerința de jurnal de audit al activității.",
+    "Raport configurabil suplimentar pentru numărul de tranzacții pe utilizator și pe departament, într-un interval ales."
+   ],
+   "fluxuri": [],
+   "nota": ""
+  }
+ ]
+}

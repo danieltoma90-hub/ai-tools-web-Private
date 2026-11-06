@@ -74,7 +74,8 @@ from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
-from skills.scop_core import capitol, extractie, insereaza, scope, stil, verifica
+from skills.scop_core import (capitol, extractie, insereaza, repertoriu, scope,
+                              stil, verifica)
 from skills.scop_core.charisma_core import SECTIUNI, Flux
 from skills.scop_core.stil import DocumentInvalid  # re-exportat pentru router,
 # care nu importă `skills.scop_core` direct — vezi docstring-ul de sus.
@@ -989,3 +990,56 @@ def run_minute_pipeline(
             "verdicte": sumar_verdicte,
         },
     }
+
+
+def catalog_scop_core() -> dict:
+    """Ce se poate bifa într-un document de scop: baza CORE și modulele adiacente.
+
+    Două liste, cu statut diferit. **CORE** sunt cele zece secțiuni din `charisma_core.SECTIUNI`
+    — aceleași la toți clienții, bifate implicit; se debifează doar ce nu se ofertează, iar
+    cheile debifate ajung în `config.sectiuni_core.fara`. **Adiacente** sunt elementele din
+    repertoriu — MultiCash, Fleet, postcalcul, CashFlow și celelalte subiecte scrise peste
+    standard la proiectele anterioare —, nebifate implicit: ele se adaugă doar unde au obiect.
+
+    Fiecare element adiacent vine cu toate variantele lui de text, nu cu una singură: același
+    subiect scris pentru un grup de lactate și pentru un industrial nu e același text, iar
+    alegerea e a omului care face oferta. Varianta implicită e prima (cea mai detaliată).
+    Elementul bifat intră în `continut.suplimentare` ca orice element suplimentar — cu fluxurile
+    lui, în capitolul `in_modul` —, deci nu există cale separată de generare pentru el.
+
+    Repertoriul lipsă (dosar inexistent) nu e eroare: catalogul întoarce atunci doar CORE, iar
+    ecranul rămâne folosibil exact ca înainte.
+    """
+    core = [
+        {
+            "cheie": s.cheie,
+            "titlu": s.titlu,
+            "prefix": s.prefix,
+            "scop": s.scop,
+            "fluxuri": len(s.fluxuri),
+            "puncte": len(s.detaliere) + sum(len(g.puncte) for g in s.grupe),
+        }
+        for s in SECTIUNI
+    ]
+
+    adiacente = []
+    for el in repertoriu.incarca():
+        adiacente.append({
+            "cheie": el.cheie,
+            "denumire": el.denumire,
+            "capitol": el.capitol,
+            "incadrare": el.incadrare,
+            "clienti": el.clienti,
+            "variante": [
+                {
+                    "client": v.client,
+                    "intro": v.descriere,
+                    "puncte": list(v.puncte),
+                    "fluxuri": [dict(f) for f in v.fluxuri],
+                    "nota": v.nota,
+                }
+                for v in el.variante
+            ],
+        })
+    adiacente.sort(key=lambda a: (a["capitol"] or "~propriu", a["denumire"]))
+    return {"core": core, "adiacente": adiacente}

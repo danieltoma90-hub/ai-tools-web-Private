@@ -10,6 +10,16 @@ export type SuplimentarUI = {
   nota: string;
   /** "propriu" (subcapitol propriu în cap. 4) sau cheia unei secțiuni CORE. */
   plasare: string;
+  /** Tabelul de fluxuri, când elementul vine din repertoriu. Nu se editează în ecran —
+   * fluxurile au cod, denumire și „ce presupune", scrise odată cu oferta la care au apărut —
+   * dar se trimit mai departe, altfel modulul adiacent ar ajunge în document fără tabelul lui. */
+  fluxuri?: { cod: string; flux: string; presupune: string }[];
+  /** „Inclus" implicit; coloana a treia din tabelul de sinteză. */
+  incadrare?: string;
+  /** Cheia elementului din repertoriu și clientul a cărui variantă e afișată. Prezentă doar la
+   * elementele bifate din catalog — leagă bifa de element, ca debifarea să știe ce să scoată, și
+   * marchează în ecran textul care nu e scris acum, ci reluat. */
+  sursa?: { cheie: string; client: string };
 };
 
 export type CerintaUI = {

@@ -1,0 +1,176 @@
+{
+ "cheie": "conformitate-fiscala",
+ "denumire": "Conformitate fiscală și integrare cu ANAF",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "anaf",
+  "conformitate",
+  "control",
+  "declaratii",
+  "declaratiile",
+  "decont",
+  "emitere",
+  "factura",
+  "fiscal",
+  "fiscala",
+  "fiscale",
+  "fisierul",
+  "fs1",
+  "fs2",
+  "fs3",
+  "fs4",
+  "informative",
+  "integrare",
+  "intrastat",
+  "partenerilor",
+  "preluare",
+  "primire",
+  "standard",
+  "verificarea"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "AGRIFIELDS S.R.L.",
+   "denumire": "Conformitate fiscală și integrare cu ANAF",
+   "sursa": "continut_agrifields.SUPLIMENTARE",
+   "descriere": "Obligațiile declarative și schimbul de documente cu ANAF se acoperă din platformă, pe baza documentelor deja operate, fără prelucrări în afara sistemului.",
+   "puncte": [
+    "e-Factura: transmiterea facturilor emise și preluarea celor primite prin SPV, cu urmărirea stării fiecărui document.",
+    "Declarațiile acoperite în standard, generate din rulajele perioadei și exportate în formatul publicat de ANAF: D300 — decontul de TVA; D390 — declarația recapitulativă VIES; D394 — declarația informativă privind livrările și achizițiile pe teritoriul național; D406 — fișierul standard de control fiscal, SAF-T; și raportarea Intrastat.",
+    "Toate cinci se obțin din aceleași documente deja operate, fără prelucrări în afara sistemului și fără dezvoltare suplimentară.",
+    "Verificarea stării partenerilor în scopuri de TVA, înaintea emiterii documentelor."
+   ],
+   "fluxuri": [
+    {
+     "cod": "FS1",
+     "flux": "e-Factura: emitere și primire",
+     "presupune": "Transmiterea facturilor de vânzare către SPV și preluarea facturilor primite, cu urmărirea stării fiecărui document."
+    },
+    {
+     "cod": "FS2",
+     "flux": "Decont de TVA și declarații informative: D300, D390, D394",
+     "presupune": "Generarea decontului de TVA (D300), a declarației recapitulative VIES (D390) și a declarației informative privind livrările și achizițiile pe teritoriul național (D394), din rulajele perioadei, cu export în formatul publicat de ANAF."
+    },
+    {
+     "cod": "FS3",
+     "flux": "Fișierul standard de control fiscal: D406 (SAF-T) și Intrastat",
+     "presupune": "Generarea fișierului SAF-T (D406) din rulajele perioadei și a raportării Intrastat pentru schimburile intracomunitare de bunuri, ambele în formatele publicate de ANAF."
+    },
+    {
+     "cod": "FS4",
+     "flux": "Verificarea partenerilor",
+     "presupune": "Verificarea încadrării partenerilor în scopuri de TVA, pe baza informațiilor publicate de ANAF."
+    }
+   ],
+   "nota": "Precizare privind acoperirea. Cele cinci declarații de mai sus — D300, D390, D394, D406 (SAF-T) și Intrastat — sunt acoperite în standard, fără dezvoltare suplimentară. Generarea altor declarații sau a rapoartelor legale în alt format decât cele existente în platformă nu este cuprinsă în scop; ele se analizează și se cotează separat."
+  },
+  {
+   "client": "Agro Seed Muntenia S.R.L.",
+   "denumire": "Conformitate fiscală și integrare cu ANAF",
+   "sursa": "continut_agroseed.SUPLIMENTARE",
+   "descriere": "Zona acoperă obligațiile declarative și schimbul electronic de documente cu ANAF. Este parte a scopului standard, întrucât documentele operate în modulele descrise mai sus constituie baza raportării.",
+   "puncte": [
+    "Generarea facturilor emise în formatul XML cerut și preluarea automată a facturilor primite din e-Factura, cu înregistrarea lor ca documente de achiziție.",
+    "Generarea decontului de TVA și a declarațiilor informative, în formatele existente în platformă.",
+    "Fișierul standard de audit, pe baza datelor contabile și operaționale din platformă, cu validările aferente înainte de transmitere.",
+    "Verificarea încadrării fiscale a partenerilor la creare și periodic, cu efect asupra tratamentului TVA aplicat pe documente."
+   ],
+   "fluxuri": [
+    {
+     "cod": "FS1",
+     "flux": "e-Factura, emitere și preluare",
+     "presupune": "Generarea facturilor emise în formatul cerut și preluarea automată a celor primite, cu înregistrarea ca document de achiziție."
+    },
+    {
+     "cod": "FS2",
+     "flux": "Declarații fiscale",
+     "presupune": "Decontul de TVA și declarațiile informative, în formatele existente în platformă."
+    },
+    {
+     "cod": "FS3",
+     "flux": "SAF-T",
+     "presupune": "Generarea fișierului standard de audit, cu validările aferente înainte de transmitere."
+    },
+    {
+     "cod": "FS4",
+     "flux": "Verificarea partenerilor",
+     "presupune": "Verificarea încadrării fiscale la creare și periodic, cu efect asupra tratamentului TVA."
+    }
+   ],
+   "nota": "Generarea declarațiilor și a rapoartelor legale în alt format decât cele existente în platformă nu este cuprinsă în scop."
+  },
+  {
+   "client": "Teldo",
+   "denumire": "Conformitate fiscală: e-Factura și declarațiile",
+   "sursa": "continut_teldo.SUPLIMENTARE",
+   "descriere": "Zona acoperă obligațiile declarative și schimbul electronic de documente cu ANAF, enumerate în scopul de Producție drept arie tratată într-o secțiune distinctă a ofertei.",
+   "puncte": [
+    "Generarea facturilor emise în formatul XML cerut și preluarea automată a facturilor primite din e-Factura, cu înregistrarea lor ca documente de achiziție.",
+    "Generarea decontului de TVA și a declarațiilor informative, în formatele existente în platformă.",
+    "Verificarea automată a încadrării fiscale a partenerilor la crearea și pe parcursul relației comerciale.",
+    "Fișierul standard de audit, pe baza datelor contabile și operaționale din platformă."
+   ],
+   "fluxuri": [
+    {
+     "cod": "FS1",
+     "flux": "e-Factura, emitere și preluare",
+     "presupune": "Generarea facturilor emise în formatul cerut și preluarea automată a celor primite, cu înregistrarea ca document de achiziție."
+    },
+    {
+     "cod": "FS2",
+     "flux": "Declarații fiscale",
+     "presupune": "Decontul de TVA și declarațiile informative, în formatele existente în platformă."
+    },
+    {
+     "cod": "FS3",
+     "flux": "SAF-T",
+     "presupune": "Generarea fișierului standard de audit, cu validările aferente înainte de transmitere."
+    },
+    {
+     "cod": "FS4",
+     "flux": "Verificarea partenerilor",
+     "presupune": "Verificarea încadrării fiscale la creare și periodic, cu efect asupra tratamentului TVA aplicat pe documente."
+    }
+   ],
+   "nota": "Generarea declarațiilor și a rapoartelor legale în alt format decât cele existente în platformă nu este cuprinsă în scop."
+  },
+  {
+   "client": "Gixen S.R.L.",
+   "denumire": "Conformitate fiscală și integrare cu ANAF",
+   "sursa": "continut_gixen.SUPLIMENTARE",
+   "descriere": "Zona acoperă obligațiile declarative și schimbul electronic de documente cu ANAF, pe baza documentelor deja operate în modulele descrise mai sus.",
+   "puncte": [
+    "Generarea facturilor emise în formatul XML cerut și preluarea automată a facturilor primite din e-Factura, cu înregistrarea lor ca documente de achiziție.",
+    "Generarea decontului de TVA și a declarațiilor informative, în formatele existente în platformă.",
+    "Fișierul standard de audit, cu validările aferente înainte de transmitere.",
+    "Verificarea încadrării fiscale a partenerilor la creare și periodic, cu efect asupra tratamentului TVA aplicat pe documente."
+   ],
+   "fluxuri": [
+    {
+     "cod": "FS1",
+     "flux": "e-Factura, emitere și preluare",
+     "presupune": "Generarea facturilor emise în formatul cerut și preluarea automată a celor primite, cu înregistrarea ca document de achiziție."
+    },
+    {
+     "cod": "FS2",
+     "flux": "Declarații fiscale",
+     "presupune": "Decontul de TVA și declarațiile informative, în formatele existente în platformă."
+    },
+    {
+     "cod": "FS3",
+     "flux": "SAF-T",
+     "presupune": "Generarea fișierului standard de audit, cu validările aferente."
+    },
+    {
+     "cod": "FS4",
+     "flux": "Verificarea partenerilor",
+     "presupune": "Verificarea încadrării fiscale la creare și periodic, cu efect asupra tratamentului TVA."
+    }
+   ],
+   "nota": "Generarea declarațiilor și a rapoartelor legale în alt format decât cele existente în platformă nu este cuprinsă în scop."
+  }
+ ]
+}

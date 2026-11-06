@@ -1,0 +1,30 @@
+{
+ "cheie": "gestiunile-comerciale-si-pregatirea-livrarii",
+ "denumire": "Gestiunile comerciale și pregătirea livrării",
+ "capitol": "stocuri",
+ "incadrare": "Inclus",
+ "termeni": [
+  "comerciale",
+  "gestiunile",
+  "livrarii",
+  "pregatirea"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Teldo",
+   "denumire": "Gestiunile comerciale și pregătirea livrării",
+   "sursa": "continut_teldo.SUPLIMENTARE",
+   "descriere": "Gestiunile de secție, consumurile normate și inventarul pe secții sunt descrise în scopul de Producție. Prezentul document acoperă gestiunile din aval: depozitul de livrare, marfa de la terți și stocul alocat magazinelor.",
+   "puncte": [
+    "Gestiuni distincte pentru produsul finit destinat livrării, pentru marfa achiziționată spre revânzare și pentru stocul alocat magazinelor.",
+    "Lotul și data de expirare, formate în producție, urmărite ca proprietăți de stoc până la documentul de livrare, cu descărcare pe principiul primului termen de expirare.",
+    "Alocarea loturilor pe documentul de livrare și generarea documentelor care însoțesc marfa.",
+    "Inventarierea gestiunilor comerciale, cu procesul verbal de diferențe la închidere."
+   ],
+   "fluxuri": [],
+   "nota": ""
+  }
+ ]
+}

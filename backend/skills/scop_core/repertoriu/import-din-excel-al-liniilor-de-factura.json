@@ -1,0 +1,28 @@
+{
+ "cheie": "import-din-excel-al-liniilor-de-factura",
+ "denumire": "Import din Excel al liniilor de factură",
+ "capitol": "achizitii",
+ "incadrare": "Inclus",
+ "termeni": [
+  "excel",
+  "factura",
+  "import",
+  "liniilor"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Import din Excel al liniilor de factură",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Facturile cu multe poziții se încarcă dintr-un fișier Excel, în locul introducerii linie cu linie.",
+   "puncte": [
+    "Import al liniilor de factură dintr-un format de fișier agreat, cu validarea articolelor și a partenerului.",
+    "Raportarea liniilor care nu au putut fi importate, cu motivul respingerii, și reluarea importului după corecție."
+   ],
+   "fluxuri": [],
+   "nota": "Structura fișierului se stabilește în analiză."
+  }
+ ]
+}

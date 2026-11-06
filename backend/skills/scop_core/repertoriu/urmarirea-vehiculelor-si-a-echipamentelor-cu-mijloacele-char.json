@@ -1,0 +1,110 @@
+{
+ "cheie": "urmarirea-vehiculelor-si-a-echipamentelor-cu-mijloacele-char",
+ "denumire": "Urmărirea vehiculelor și a echipamentelor cu mijloacele Charisma ERP CORE",
+ "capitol": null,
+ "incadrare": "Inclus",
+ "termeni": [
+  "aflate",
+  "analiza",
+  "apartenenta",
+  "asigurari",
+  "bazin",
+  "cantitativ",
+  "combustibil",
+  "core",
+  "costuri",
+  "dimensiune",
+  "echipamentelor",
+  "erp",
+  "evidenta",
+  "inchiriate",
+  "interventiilor",
+  "istoricul",
+  "leasing",
+  "mijloacele",
+  "operational",
+  "organizatorica",
+  "perioada",
+  "polite",
+  "proprietate",
+  "propriu",
+  "reparatii",
+  "responsabilul",
+  "service",
+  "urmarirea",
+  "urmarit",
+  "valabilitate",
+  "valoric",
+  "vehicul",
+  "vehiculele",
+  "vehiculelor",
+  "vh1",
+  "vh2",
+  "vh3",
+  "vh4",
+  "vh5",
+  "vh6",
+  "vh7",
+  "vh8",
+  "vh9"
+ ],
+ "implicit": 0,
+ "actualizat": "2026-11-06",
+ "variante": [
+  {
+   "client": "Christof Industries",
+   "denumire": "Urmărirea vehiculelor și a echipamentelor cu mijloacele Charisma ERP CORE",
+   "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
+   "descriere": "Modulul Fleet Management nu face parte din scopul ofertat prin prezentul document. O parte dintre funcționalitățile cerute pe zona de parc auto se pot realiza cu mijloacele existente în Charisma ERP CORE, descrise mai jos, fiecare cu trimitere la capitolul care le acoperă. Ce nu are corespondent în CORE este enumerat explicit la finalul capitolului și revine odată cu modulul Fleet Management, ofertat distinct.",
+   "puncte": [],
+   "fluxuri": [
+    {
+     "cod": "VH1",
+     "flux": "Evidența vehiculelor și echipamentelor aflate în proprietate",
+     "presupune": "Fișa mijlocului fix, cu datele de identificare, seria și numărul de inventar, iar caracteristicile proprii vehiculului în tabul Date tehnice (capitolul Mijloace Fixe)."
+    },
+    {
+     "cod": "VH2",
+     "flux": "Vehiculele închiriate sau în leasing operațional",
+     "presupune": "Nu intră în registrul de mijloace fixe. Se urmăresc prin contractul de furnizor și prin dimensiunea de analiză, pe care se alocă toate costurile aferente (capitolele Achiziții și Analiza multidimensională)."
+    },
+    {
+     "cod": "VH3",
+     "flux": "Responsabilul și apartenența organizatorică",
+     "presupune": "Câmpurile de responsabil, centru de cost și departament de pe mijlocul fix, modificabile în timp, cu istoricul mișcărilor păstrat (capitolul Mijloace Fixe)."
+    },
+    {
+     "cod": "VH4",
+     "flux": "Dimensiune de analiză pe vehicul",
+     "presupune": "Fiecare vehicul devine o valoare distinctă a dimensiunii de analiză, alocată pe documentele care îl privesc. Constituie cheia după care se obțin toate raportările de mai jos (capitolul Analiza multidimensională)."
+    },
+    {
+     "cod": "VH5",
+     "flux": "Costuri pe vehicul: reparații, service, taxe, asigurări",
+     "presupune": "Facturile de achiziție se alocă pe dimensiunea vehiculului la operare, iar costul total se obține din balanță și din fișa de cont, filtrate pe această dimensiune (capitolele Achiziții și Analiza multidimensională)."
+    },
+    {
+     "cod": "VH6",
+     "flux": "Combustibil urmărit valoric",
+     "presupune": "Factura de carburant se înregistrează pe articol nestocabil, de natura cheltuielii, alocată pe dimensiunea vehiculului (capitolul Achiziții)."
+    },
+    {
+     "cod": "VH7",
+     "flux": "Combustibil urmărit cantitativ și valoric, din bazin propriu",
+     "presupune": "Acolo unde există bazin de stocare, carburantul se recepționează ca articol stocabil într-o gestiune dedicată, cu celule aferente fiecărui vehicul, iar alimentările se descarcă prin bon de consum. Se obține astfel consumul în litri și în valoare, pe fiecare vehicul (capitolul Gestiunea Stocurilor)."
+    },
+    {
+     "cod": "VH8",
+     "flux": "Polițe și costuri cu valabilitate pe perioadă",
+     "presupune": "Asigurările de tip CASCO și celelalte costuri care se recunosc pe o perioadă se înregistrează ca cheltuieli în avans, cu dată de început și de sfârșit, și se descarcă lunar din ecranul dedicat. Data de sfârșit indică momentul în care polița își încetează efectul (capitolul Contabilitate)."
+    },
+    {
+     "cod": "VH9",
+     "flux": "Istoricul intervențiilor",
+     "presupune": "Documentele de achiziție de service alocate pe dimensiunea vehiculului constituie istoricul intervențiilor, consultabil cronologic pe fiecare vehicul (capitolele Achiziții și Analiza multidimensională)."
+    }
+   ],
+   "nota": "Rămâne în afara scopului, acoperit doar de modulul Fleet Management: planificarea reviziilor cu recurență la kilometri sau la ore de funcționare; importul fișierelor de alimentare primite de la furnizorii de carburant; indicatorul cost pe kilometru, care presupune contorizarea kilometrajului; și urmărirea documentelor care nu produc efecte de cheltuială, cum sunt documentele șoferului. Aceste elemente nu au corespondent în Charisma ERP CORE și revin odată cu modulul Fleet Management, ofertat distinct."
+  }
+ ]
+}
