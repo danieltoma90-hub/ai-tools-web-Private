@@ -59,10 +59,19 @@ async function proxy(
     let renewed: SupabaseSession | null = null;
     let refreshFailed = false;
 
+    // Cont dezactivat de administrator: reînnoirea n-ar ajuta — Supabase o refuză
+    // oricum pentru un cont blocat. Răspunsul merge mai departe ca atare, iar
+    // cookie-urile se șterg, ca să nu rămână o sesiune moartă în browser.
+    let dezactivat = false;
+    if (res.status === 401) {
+      const corp = await res.clone().text().catch(() => "");
+      dezactivat = corp.includes("dezactivat");
+    }
+
     // Sesiunea expiră după ~1 oră. În loc să arunce „Token invalid sau expirat"
     // în fața utilizatorului, schimbăm refresh token-ul pe unul nou și reluăm
     // cererea o singură dată.
-    if (res.status === 401 && refreshToken) {
+    if (res.status === 401 && refreshToken && !dezactivat) {
       renewed = await refreshSession(refreshToken);
       if (renewed) {
         res = await callBackend(renewed.access_token);
@@ -83,7 +92,7 @@ async function proxy(
     // șterse aici: cât timp rămân, middleware-ul le vede prezente, crede că
     // sesiunea e validă și trimite utilizatorul înapoi în aplicație — iar
     // pagina cere din nou datele, ia 401 și o ia de la capăt (buclă de refresh).
-    if (refreshFailed) clearSessionCookies(response);
+    if (refreshFailed || dezactivat) clearSessionCookies(response);
     return response;
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {

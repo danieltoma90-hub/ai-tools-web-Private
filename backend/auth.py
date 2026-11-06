@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, Security
@@ -77,6 +78,46 @@ def _retine(cheie: str, token: str, user: Any, acum: float) -> None:
     _token_cache[cheie] = (valabil_pana, user)
 
 
+# Mesajul ajunge si in proxy, care il recunoaste dupa „dezactivat" si trimite
+# utilizatorul la login cu explicatia potrivita, nu cu „sesiunea a expirat".
+CONT_DEZACTIVAT = "Contul a fost dezactivat de administrator."
+
+
+def e_dezactivat(user: Any) -> bool:
+    """Contul e blocat de administrator: Supabase il tine ca `banned_until` in viitor.
+
+    O valoare care nu se poate citi e tratata ca „nu e blocat": blocarea propriu-zisa
+    o face Supabase la login si la reinnoirea sesiunii; aici e doar al doilea strat,
+    pentru sesiunile deja deschise.
+    """
+    raw = user.get("banned_until") if isinstance(user, dict) else getattr(user, "banned_until", None)
+    if not raw:
+        return False
+    try:
+        pana = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if pana.tzinfo is None:
+        pana = pana.replace(tzinfo=timezone.utc)
+    return pana > datetime.now(timezone.utc)
+
+
+def _id_din(user: Any) -> str:
+    return str((user.get("id") if isinstance(user, dict) else getattr(user, "id", "")) or "")
+
+
+def uita_utilizatorul(uid: str) -> int:
+    """Scoate din cache toate sesiunile unui utilizator; intoarce cate erau.
+
+    Fara asta, un cont dezactivat ar mai merge pana la un minut — cat tine cache-ul.
+    Render ruleaza un singur proces, deci curatenia de aici e completa.
+    """
+    de_scos = [k for k, (_, u) in _token_cache.items() if _id_din(u) == uid]
+    for k in de_scos:
+        _token_cache.pop(k, None)
+    return len(de_scos)
+
+
 async def verify_token(
     credentials: HTTPAuthorizationCredentials | None = Security(_security),
 ):
@@ -97,6 +138,11 @@ async def verify_token(
     except Exception:
         _token_cache.pop(cheie, None)
         raise HTTPException(status_code=401, detail="Token invalid sau expirat")
+
+    # Supabase refuza login-ul si reinnoirea pentru un cont blocat, dar un token
+    # emis inainte de blocare ramane valid pana expira (~1h). Il oprim aici.
+    if e_dezactivat(user):
+        raise HTTPException(status_code=401, detail=CONT_DEZACTIVAT)
 
     _retine(cheie, token, user, acum)
     return user

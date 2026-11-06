@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import acces
-from auth import verify_token
+from auth import e_dezactivat, verify_token
 
 router = APIRouter()
 
@@ -25,6 +25,10 @@ class MembruIn(BaseModel):
 
 class ImplicitIn(BaseModel):
     grup: str
+
+
+class StareIn(BaseModel):
+    activ: bool
 
 
 def _public(cfg: dict) -> dict:
@@ -77,6 +81,7 @@ def configuratia(user=Depends(acces.cere_admin)):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Utilizatorii nu pot fi citiți din Supabase: {e}")
     admini = acces.admin_emails()
+    eu = acces.email_din(user)
     utilizatori = []
     for u in users:
         email = acces.email_din(u)
@@ -84,12 +89,17 @@ def configuratia(user=Depends(acces.cere_admin)):
             continue
         ultima = getattr(u, "last_sign_in_at", None)
         utilizatori.append({
+            "id": str(getattr(u, "id", "") or ""),
             "email": email,
-            "activ": bool(ultima),
+            # „conectat" = a intrat cel puțin o dată; „dezactivat" = blocat de administrator.
+            # Sunt lucruri diferite: un cont poate fi folosit ani de zile și apoi blocat.
+            "conectat": bool(ultima),
+            "dezactivat": e_dezactivat(u),
             "ultima_conectare": str(ultima or ""),
             "grup": cfg["membri"].get(email, cfg["grup_implicit"]),
             "explicit": email in cfg["membri"],
             "admin": email in admini,
+            "eu": email == eu,
         })
     utilizatori.sort(key=lambda x: x["email"])
     return {**_public(cfg), "utilizatori": utilizatori}
@@ -142,6 +152,33 @@ def seteaza_membru(body: MembruIn, user=Depends(acces.cere_admin)):
     cfg["membri"][email] = body.grup
     _salveaza(cfg)
     return {"ok": True}
+
+
+@router.put("/acces/utilizatori/{uid}/stare")
+def seteaza_stare(uid: str, body: StareIn, user=Depends(acces.cere_admin)):
+    """Activează sau dezactivează un cont. Contul dezactivat nu se mai poate autentifica,
+    iar sesiunile lui deja deschise se închid la următoarea cerere; documentele rămân."""
+    tinta = acces.utilizator_dupa_id(uid)
+    if tinta is None:
+        raise HTTPException(status_code=404, detail="Utilizatorul nu există")
+    email = acces.email_din(tinta)
+
+    # Un administrator care se dezactivează singur nu mai are cine să-l reactiveze.
+    if email == acces.email_din(user):
+        raise HTTPException(status_code=422, detail="Nu îți poți dezactiva propriul cont.")
+    # Administratorii vin din ADMIN_EMAILS pe server: dezactivarea lor de aici ar face
+    # ca pagina să spună „admin" pentru un cont care nu se mai poate conecta.
+    if email in acces.admin_emails():
+        raise HTTPException(
+            status_code=422,
+            detail="Administratorii nu se dezactivează de aici — se scot din ADMIN_EMAILS pe server.",
+        )
+
+    try:
+        acces.seteaza_activ(uid, body.activ)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Supabase nu a acceptat modificarea: {e}")
+    return {"ok": True, "email": email, "activ": body.activ}
 
 
 @router.put("/acces/grup-implicit")

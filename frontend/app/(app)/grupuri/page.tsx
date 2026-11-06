@@ -6,9 +6,11 @@ import {
   getConfigAcces,
   seteazaGrupImplicit,
   seteazaMembru,
+  seteazaStareUtilizator,
   stergeGrup,
   type ConfigAcces,
   type Grup,
+  type UtilizatorAcces,
 } from "@/lib/api";
 
 const TOATE = "*";
@@ -19,6 +21,24 @@ function formatData(iso: string) {
   return isNaN(d.getTime())
     ? "—"
     : d.toLocaleString("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function Stare({ u }: { u: UtilizatorAcces }) {
+  if (u.dezactivat) {
+    return <span className="text-red-700 font-medium">dezactivat</span>;
+  }
+  return u.conectat ? (
+    <span className="text-emerald-700">activ</span>
+  ) : (
+    <span className="text-slate-500">invitat, neconectat</span>
+  );
+}
+
+/** De ce nu se poate schimba starea unui cont — sau null dacă se poate. */
+function motivBlocare(u: UtilizatorAcces): string | null {
+  if (u.eu) return "Nu îți poți dezactiva propriul cont.";
+  if (u.admin) return "Administratorii se scot din ADMIN_EMAILS pe server.";
+  return null;
 }
 
 /** Alegerea modulelor unui grup: „toate” (inclusiv cele adăugate ulterior) sau o listă. */
@@ -158,14 +178,34 @@ export default function GrupuriPage() {
 
   const utilizatori = cfg?.utilizatori ?? [];
   const membri = (gid: string) => utilizatori.filter((u) => u.grup === gid).length;
+  const dezactivati = utilizatori.filter((u) => u.dezactivat).length;
+
+  function schimbaStarea(u: UtilizatorAcces) {
+    const activeaza = u.dezactivat;
+    if (
+      !activeaza &&
+      !window.confirm(
+        `Dezactivezi contul ${u.email}?\n\n` +
+          "Nu se va mai putea autentifica, iar sesiunea lui deschisă se închide la următoarea acțiune. " +
+          "Documentele generate rămân în Repository. Îl poți reactiva oricând."
+      )
+    ) {
+      return;
+    }
+    actiune(
+      () => seteazaStareUtilizator(u.id, activeaza),
+      activeaza ? `${u.email} a fost reactivat.` : `${u.email} a fost dezactivat.`
+    );
+  }
 
   return (
     <div className="p-6 flex flex-col gap-5 max-w-5xl">
       <div>
-        <h1 className="text-xl font-bold text-[#18257f]">👥 Grupuri de utilizatori</h1>
+        <h1 className="text-xl font-bold text-[#18257f]">👥 Utilizatori și grupuri</h1>
         <p className="text-sm text-slate-600 mt-1">
           Fiecare utilizator face parte dintr-un grup, iar grupul dă accesul la module. Utilizatorii fără grup ales
           (de exemplu, cei invitați de acum încolo) intră în grupul implicit. Administratorii au acces la tot.
+          Un cont dezactivat nu se mai poate autentifica, dar documentele lui rămân.
         </p>
       </div>
 
@@ -221,8 +261,11 @@ export default function GrupuriPage() {
           </section>
 
           <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-bold text-[#18257f]">Utilizatori ({utilizatori.length})</h2>
-            <div className="bg-white border border-[#e2e5f0] rounded-xl overflow-hidden">
+            <h2 className="text-sm font-bold text-[#18257f]">
+              Utilizatori ({utilizatori.length}
+              {dezactivati > 0 ? `, din care ${dezactivati} ${dezactivati === 1 ? "dezactivat" : "dezactivați"}` : ""})
+            </h2>
+            <div className="bg-white border border-[#e2e5f0] rounded-xl overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-[#f2f4fb] text-left text-xs text-slate-600">
                   <tr>
@@ -230,25 +273,28 @@ export default function GrupuriPage() {
                     <th className="px-4 py-2">Stare</th>
                     <th className="px-4 py-2">Ultima conectare</th>
                     <th className="px-4 py-2">Grup</th>
+                    <th className="px-4 py-2">Cont</th>
                   </tr>
                 </thead>
                 <tbody>
                   {utilizatori.map((u) => (
-                    <tr key={u.email} className="border-t border-slate-100">
-                      <td className="px-4 py-2">
+                    <tr
+                      key={u.email}
+                      className={`border-t border-slate-100 ${u.dezactivat ? "bg-red-50/40" : ""}`}
+                    >
+                      <td className={`px-4 py-2 ${u.dezactivat ? "text-slate-400 line-through" : ""}`}>
                         {u.email}
                         {u.admin && (
-                          <span className="ml-2 text-[11px] bg-[#ffd500]/30 text-[#18257f] rounded-full px-2 py-0.5">
+                          <span className="ml-2 text-[11px] bg-[#ffd500]/30 text-[#18257f] rounded-full px-2 py-0.5 no-underline inline-block">
                             admin — acces la tot
                           </span>
                         )}
+                        {u.eu && (
+                          <span className="ml-2 text-[11px] text-slate-400">(tu)</span>
+                        )}
                       </td>
                       <td className="px-4 py-2 text-xs">
-                        {u.activ ? (
-                          <span className="text-emerald-700">activ</span>
-                        ) : (
-                          <span className="text-slate-500">invitat, neconectat</span>
-                        )}
+                        <Stare u={u} />
                       </td>
                       <td className="px-4 py-2 text-xs text-slate-500">{formatData(u.ultima_conectare)}</td>
                       <td className="px-4 py-2">
@@ -267,6 +313,25 @@ export default function GrupuriPage() {
                             </option>
                           ))}
                         </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        {motivBlocare(u) ? (
+                          <span className="text-[11px] text-slate-400" title={motivBlocare(u) ?? ""}>
+                            —
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => schimbaStarea(u)}
+                            disabled={ocupat}
+                            className={`text-xs font-semibold px-2.5 py-1 rounded-lg border whitespace-nowrap disabled:opacity-40 ${
+                              u.dezactivat
+                                ? "border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+                                : "border-red-300 text-red-700 hover:bg-red-50"
+                            }`}
+                          >
+                            {u.dezactivat ? "Reactivează" : "Dezactivează"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

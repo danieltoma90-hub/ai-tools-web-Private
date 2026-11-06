@@ -74,7 +74,7 @@ export default function Sidebar() {
         <NavLink
           href="/grupuri"
           icon="👥"
-          label="Grupuri"
+          label="Utilizatori"
           active={pathname === "/grupuri"}
         />
       )}

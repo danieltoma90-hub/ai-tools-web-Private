@@ -6,8 +6,16 @@ async function apiFetch(url: string, init?: RequestInit) {
     // Sesiunea a expirat și nici reînnoirea din proxy n-a reușit: singura
     // ieșire e autentificarea din nou, nu un mesaj de eroare pe ecran.
     if (res.status === 401 && typeof window !== "undefined") {
-      window.location.href = "/login?error=session_expired";
-      throw new Error("Sesiune expirată — te reautentifici.");
+      // Un cont dezactivat nu trebuie trimis la login cu „sesiunea a expirat":
+      // ar încerca să se reconecteze, apoi să-și reseteze parola, fără să afle de ce.
+      const corp = await res.text().catch(() => "");
+      const motiv = corp.includes("dezactivat") ? "dezactivat" : "session_expired";
+      window.location.href = `/login?error=${motiv}`;
+      throw new Error(
+        motiv === "dezactivat"
+          ? "Contul a fost dezactivat de administrator."
+          : "Sesiune expirată — te reautentifici."
+      );
     }
     // Vercel oprește cererile peste 4,5MB cu o pagină proprie, al cărei text
     // („FUNCTION_PAYLOAD_TOO_LARGE") nu spune nimic utilizatorului.
@@ -788,12 +796,18 @@ export type AccesEu = {
 export type Grup = { id: string; nume: string; module: string[] };
 
 export type UtilizatorAcces = {
+  id: string;
   email: string;
-  activ: boolean;
+  /** A intrat în aplicație cel puțin o dată. */
+  conectat: boolean;
+  /** Blocat de administrator — nu se mai poate autentifica. */
+  dezactivat: boolean;
   ultima_conectare: string;
   grup: string;
   explicit: boolean;
   admin: boolean;
+  /** Contul administratorului care se uită la pagină. */
+  eu: boolean;
 };
 
 export type ConfigAcces = {
@@ -833,6 +847,15 @@ export async function stergeGrup(id: string): Promise<ConfigAcces> {
 
 export async function seteazaMembru(email: string, grup: string): Promise<{ ok: boolean }> {
   return trimiteJson("PUT", "acces/membri", { email, grup }) as Promise<{ ok: boolean }>;
+}
+
+export async function seteazaStareUtilizator(
+  id: string,
+  activ: boolean
+): Promise<{ ok: boolean; email: string; activ: boolean }> {
+  return trimiteJson("PUT", `acces/utilizatori/${encodeURIComponent(id)}/stare`, {
+    activ,
+  }) as Promise<{ ok: boolean; email: string; activ: boolean }>;
 }
 
 export async function seteazaGrupImplicit(grup: string): Promise<ConfigAcces> {

@@ -44,8 +44,9 @@ export async function middleware(request: NextRequest) {
   // Aplicația tocmai a trimis utilizatorul aici fiindcă sesiunea i-a fost
   // respinsă. Dacă l-am întoarce în aplicație pe baza cookie-urilor (care pot fi
   // prezente, dar invalide), cele două redirectări s-ar chema la nesfârșit.
+  const eroare = request.nextUrl.searchParams.get("error");
   const comingFromExpiredSession =
-    request.nextUrl.searchParams.get("error") === "session_expired";
+    eroare === "session_expired" || eroare === "dezactivat";
   if (authenticated && pathname === "/login" && !comingFromExpiredSession) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }

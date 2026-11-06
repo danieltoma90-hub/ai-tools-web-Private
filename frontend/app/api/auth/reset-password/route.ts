@@ -43,6 +43,10 @@ export async function POST(request: NextRequest) {
     const json = await res.json().catch(() => ({}));
     const cod = String(json.error_code ?? json.code ?? "").toLowerCase();
     const text = String(json.msg ?? json.message ?? json.error_description ?? "").toLowerCase();
+    // Verificat înaintea regulii de 401/403 de mai jos, care l-ar raporta drept link expirat.
+    if (cod === "user_banned" || text.includes("banned")) {
+      return NextResponse.json({ error: "dezactivat" }, { status: 403 });
+    }
     if (res.status === 401 || res.status === 403 || cod.includes("jwt") || cod === "session_not_found") {
       return NextResponse.json({ error: "link_expirat" }, { status: 401 });
     }

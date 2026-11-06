@@ -5,6 +5,8 @@ const MESAJE: Record<string, string> = {
   weak_password: "Parola nouă trebuie să aibă cel puțin 8 caractere.",
   same_password: "Parola nouă trebuie să fie diferită de cea veche.",
   link_expirat: "Linkul a expirat sau a fost deja folosit. Cere un link nou.",
+  dezactivat:
+    "Contul tău a fost dezactivat, deci parola nu se poate schimba. Contactează administratorul.",
   server_error: "Eroare de server. Încearcă din nou.",
 };
 

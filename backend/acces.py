@@ -26,7 +26,7 @@ from typing import Any
 
 from fastapi import Depends, HTTPException
 
-from auth import get_supabase, verify_token
+from auth import get_supabase, uita_utilizatorul, verify_token
 
 # Modulele site-ului: cheia = folderul din Storage și ruta API; valoarea = eticheta din pagină.
 MODULE: dict[str, str] = {
@@ -135,6 +135,32 @@ def utilizatori_supabase() -> list[Any]:
         if len(lot) < 1000:
             return toti
         pagina += 1
+
+
+# Supabase nu are blocare „pentru totdeauna"; o suta de ani tine loc.
+BAN_PERMANENT = "876000h"
+
+
+def utilizator_dupa_id(uid: str) -> Any:
+    """Utilizatorul din Supabase Auth, sau None dacă nu există."""
+    try:
+        return get_supabase().auth.admin.get_user_by_id(uid).user
+    except Exception:
+        return None
+
+
+def seteaza_activ(uid: str, activ: bool) -> None:
+    """Activează sau dezactivează contul.
+
+    Folosește blocarea nativă Supabase (ban), nu un semn al nostru: așa contul e
+    refuzat chiar la login și la reînnoirea sesiunii, nu doar în aplicație.
+    Documentele utilizatorului rămân neatinse — se blochează accesul, nu se șterge nimic.
+    """
+    get_supabase().auth.admin.update_user_by_id(
+        uid, {"ban_duration": "none" if activ else BAN_PERMANENT}
+    )
+    if not activ:
+        uita_utilizatorul(uid)
 
 
 def _initializeaza() -> dict:

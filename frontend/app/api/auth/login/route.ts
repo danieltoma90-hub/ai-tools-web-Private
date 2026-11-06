@@ -46,9 +46,18 @@ export async function POST(request: NextRequest) {
     );
 
     if (!res.ok) {
-      return NextResponse.redirect(
-        new URL("/login?error=invalid_credentials", request.url)
-      );
+      // Un cont dezactivat primea „Email sau parolă incorectă" — și omul pornea
+      // în bucla „Am uitat parola", fără să afle că problema e altundeva.
+      const json = await res.json().catch(() => ({}));
+      const cod = String(json.error_code ?? json.code ?? "").toLowerCase();
+      const text = String(json.msg ?? json.message ?? json.error_description ?? "").toLowerCase();
+      const motiv =
+        cod === "user_banned" || text.includes("banned")
+          ? "dezactivat"
+          : "invalid_credentials";
+      return NextResponse.redirect(new URL(`/login?error=${motiv}`, request.url), {
+        status: 303,
+      });
     }
 
     const json = await res.json();
