@@ -13,6 +13,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Fluxuri de aprobare pe aprovizionare",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Cererea de achiziție și comanda către furnizor parcurg fluxuri de aprobare pe praguri valorice, înainte de a produce efecte.",
    "puncte": [

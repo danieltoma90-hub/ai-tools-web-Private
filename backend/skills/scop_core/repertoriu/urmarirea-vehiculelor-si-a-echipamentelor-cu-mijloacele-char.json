@@ -54,6 +54,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Urmărirea vehiculelor și a echipamentelor cu mijloacele Charisma ERP CORE",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Modulul Fleet Management nu face parte din scopul ofertat prin prezentul document. O parte dintre funcționalitățile cerute pe zona de parc auto se pot realiza cu mijloacele existente în Charisma ERP CORE, descrise mai jos, fiecare cu trimitere la capitolul care le acoperă. Ce nu are corespondent în CORE este enumerat explicit la finalul capitolului și revine odată cu modulul Fleet Management, ofertat distinct.",
    "puncte": [],

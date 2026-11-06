@@ -19,6 +19,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Modulul Tempo — alerte și praguri de aprobare",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Charisma Tempo transmite automat informații către grupuri de utilizatori la producerea unor evenimente configurate. În prezenta implementare susține alertele și pragurile valorice folosite de fluxurile de aprobare.",
    "puncte": [

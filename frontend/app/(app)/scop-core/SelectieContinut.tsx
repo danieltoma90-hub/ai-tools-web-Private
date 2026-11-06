@@ -14,6 +14,13 @@ type Props = {
   variante: Record<string, string>;
   onComutaAdiacent: (el: ScopCoreElementCatalog) => void;
   onSchimbaVarianta: (el: ScopCoreElementCatalog, client: string) => void;
+  /** Verticala clientului, sau "" pentru „toate industriile". */
+  verticala: string;
+  onSchimbaVerticala: (cheie: string) => void;
+  /** Arată și modulele propuse în alte industrii decât cea aleasă. */
+  aratTot: boolean;
+  onComutaAratTot: () => void;
+  onBifeazaVerticala: (elemente: ScopCoreElementCatalog[]) => void;
 };
 
 /** Ce intră în document: baza CORE și modulele adiacente.
@@ -22,6 +29,12 @@ type Props = {
  * implicit și se debifează doar ce nu se ofertează. **Modulele adiacente** sunt subiectele
  * scrise peste standard la proiectele anterioare; nu se potrivesc tuturor, deci pornesc
  * nebifate și se adaugă unde au obiect, cu textul deja scris atunci.
+ *
+ * Selectorul de verticală răspunde la întrebarea de dinaintea ofertei: nu „ce am scris
+ * vreodată", ci **ce propunem de obicei într-o industrie**. Alegerea unei verticale lasă în
+ * listă modulele propuse acolo, marchează cu „2 proiecte" ce s-a repetat (singurul semn
+ * obiectiv că modulul ține de industrie, nu de un client anume) și face ca textul implicit al
+ * unui modul bifat să fie cel scris în aceeași industrie.
  *
  * Un modul adiacent care stă într-o secțiune CORE debifată nu se poate bifa: documentul l-ar
  * atașa unui capitol care nu există, iar generarea ar cădea cu eroare. Bifa lui se dezactivează,
@@ -37,6 +50,11 @@ export default function SelectieContinut({
   variante,
   onComutaAdiacent,
   onSchimbaVarianta,
+  verticala,
+  onSchimbaVerticala,
+  aratTot,
+  onComutaAratTot,
+  onBifeazaVerticala,
 }: Props) {
   if (incarca) {
     return <p className="text-xs text-slate-500">Se încarcă lista de module…</p>;
@@ -50,8 +68,20 @@ export default function SelectieContinut({
     );
   }
 
+  const dinVerticala = (el: ScopCoreElementCatalog) =>
+    !verticala || el.verticale.includes(verticala);
+  const vizibile = catalog.adiacente.filter((el) => aratTot || dinVerticala(el));
+  const deBifat = verticala
+    ? catalog.adiacente.filter(
+        (el) =>
+          dinVerticala(el) &&
+          !bifate.includes(el.cheie) &&
+          !(el.capitol && excluse.includes(el.capitol))
+      )
+    : [];
+
   const peCapitol = new Map<string, ScopCoreElementCatalog[]>();
-  for (const el of catalog.adiacente) {
+  for (const el of vizibile) {
     const cheie = el.capitol ?? "propriu";
     peCapitol.set(cheie, [...(peCapitol.get(cheie) ?? []), el]);
   }
@@ -113,7 +143,64 @@ export default function SelectieContinut({
           Scrise la proiectele anterioare. Bifează ce intră la clientul ăsta — textul și
           fluxurile vin de acolo și rămân editabile mai jos.
         </p>
+
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <label className="text-[11px] font-semibold text-slate-500">Industria clientului:</label>
+          <select
+            value={verticala}
+            onChange={(e) => onSchimbaVerticala(e.target.value)}
+            className="border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#18257f]"
+          >
+            <option value="">Toate industriile ({catalog.adiacente.length} module)</option>
+            {catalog.verticale.map((v) => (
+              <option key={v.cheie} value={v.cheie}>
+                {v.nume} — {v.module} module, {v.proiecte}{" "}
+                {v.proiecte === 1 ? "proiect" : "proiecte"}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {verticala && (
+          <div className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-2 flex flex-col gap-1">
+            <span>
+              Ce am propus la{" "}
+              <strong>
+                {catalog.verticale.find((v) => v.cheie === verticala)?.nume ?? verticala}
+              </strong>
+              : {catalog.adiacente.filter(dinVerticala).length} module, la{" "}
+              {catalog.verticale.find((v) => v.cheie === verticala)?.clienti.join(", ")}.
+            </span>
+            <span className="flex flex-wrap items-center gap-3">
+              {deBifat.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onBifeazaVerticala(deBifat)}
+                  className="font-semibold text-[#18257f] underline"
+                >
+                  Bifează-le pe toate ({deBifat.length})
+                </button>
+              )}
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={aratTot}
+                  onChange={onComutaAratTot}
+                  className="accent-[#18257f]"
+                />
+                arată și modulele din alte industrii
+              </label>
+            </span>
+          </div>
+        )}
+
         <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[28rem] overflow-y-auto">
+          {grupuri.length === 0 && (
+            <p className="px-3 py-3 text-[11px] text-slate-500">
+              Niciun modul propus încă la industria asta. Bifează „arată și modulele din alte
+              industrii” sau scrie-l ca secțiune nouă mai jos.
+            </p>
+          )}
           {grupuri.map(([cheie, elemente]) => {
             const capitolExclus = cheie !== "propriu" && excluse.includes(cheie);
             return (
@@ -124,7 +211,13 @@ export default function SelectieContinut({
                 </p>
                 {elemente.map((el) => {
                   const esteBifat = bifate.includes(el.cheie);
-                  const clientAles = variante[el.cheie] ?? el.variante[0]?.client ?? "";
+                  const clientAles =
+                    variante[el.cheie] ??
+                    el.variante.find((v) => verticala && v.vertical === verticala)?.client ??
+                    el.variante[0]?.client ??
+                    "";
+                  const repetari = verticala ? el.proiecte_pe_verticala[verticala] ?? 0 : 0;
+                  const dinAlta = Boolean(verticala) && !dinVerticala(el);
                   return (
                     <div key={el.cheie} className="px-3 pb-2">
                       <label
@@ -145,8 +238,20 @@ export default function SelectieContinut({
                           className="mt-0.5 accent-[#18257f]"
                         />
                         <span className="flex-1">
-                          <span className="block text-xs font-medium text-slate-800">
-                            {el.denumire}
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium text-slate-800">
+                              {el.denumire}
+                            </span>
+                            {repetari > 1 && (
+                              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1">
+                                {repetari} proiecte
+                              </span>
+                            )}
+                            {dinAlta && (
+                              <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 rounded px-1">
+                                altă industrie
+                              </span>
+                            )}
                           </span>
                           <span className="block text-[11px] text-slate-400">
                             {el.variante[0]?.fluxuri.length
@@ -167,6 +272,9 @@ export default function SelectieContinut({
                             {el.variante.map((v) => (
                               <option key={v.client} value={v.client}>
                                 {v.client}
+                                {verticala && v.vertical === verticala
+                                  ? " — aceeași industrie"
+                                  : ""}
                               </option>
                             ))}
                           </select>

@@ -26,6 +26,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Configurări intercompany",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Grupul are șase entități juridice, dintre care două cu activitate curentă, iar între ele circulă tranzacții de vânzare-cumpărare operate astăzi de două ori. Charisma generează automat documentul corespondent în a doua societate, astfel încât o singură operare să producă două evidențe contabile distincte.",
    "puncte": [

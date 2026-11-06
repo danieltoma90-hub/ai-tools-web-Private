@@ -23,6 +23,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Modulul CashFlow",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Modulul CashFlow este suportul pentru controlul fluxului de intrări și ieșiri de numerar din organizație. Obiectivul lui este de a informa corect și rapid managementul companiei și de a menține un nivel optim al fluxului de bani. Acoperă cerința de previzionare a fluxului de numerar din zona de trezorerie.",
    "puncte": [
@@ -52,6 +53,7 @@
   {
    "client": "Teldo",
    "denumire": "Modulul CashFlow",
+   "vertical": "industrie-alimentara",
    "sursa": "continut_teldo.SUPLIMENTARE",
    "descriere": "Modulul CashFlow este suportul pentru controlul fluxului de intrări și ieșiri de numerar. Obiectivul lui este de a informa corect și rapid managementul companiei și de a menține un nivel optim al fluxului de bani. Scopul de Producție îl enumeră, alături de aprobarea plăților, ca arie tratată într-o secțiune distinctă.",
    "puncte": [

@@ -24,6 +24,7 @@
   {
    "client": "Teldo",
    "denumire": "Activitatea agenților de vânzări",
+   "vertical": "industrie-alimentara",
    "sursa": "continut_teldo.SUPLIMENTARE",
    "descriere": "Activitatea agenților este enumerată explicit în scopul de Producție ca arie tratată în această secțiune a ofertei. Ea se urmărește prin portofolii de clienți și prin atribuirea comenzilor pe agentul care le-a generat.",
    "puncte": [

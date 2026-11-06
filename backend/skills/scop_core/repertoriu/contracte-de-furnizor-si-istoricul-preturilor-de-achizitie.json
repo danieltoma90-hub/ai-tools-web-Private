@@ -16,6 +16,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Contracte de furnizor și istoricul prețurilor de achiziție",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Relația cu furnizorii se administrează prin contracte, din care rezultă listele de prețuri folosite la comandă.",
    "puncte": [

@@ -15,6 +15,7 @@
   {
    "client": "Teldo",
    "denumire": "Gestiunile comerciale și pregătirea livrării",
+   "vertical": "industrie-alimentara",
    "sursa": "continut_teldo.SUPLIMENTARE",
    "descriere": "Gestiunile de secție, consumurile normate și inventarul pe secții sunt descrise în scopul de Producție. Prezentul document acoperă gestiunile din aval: depozitul de livrare, marfa de la terți și stocul alocat magazinelor.",
    "puncte": [

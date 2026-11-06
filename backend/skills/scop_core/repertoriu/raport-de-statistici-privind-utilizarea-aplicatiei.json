@@ -16,6 +16,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Raport de statistici privind utilizarea aplicației",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Raport de administrare care arată activitatea utilizatorilor în aplicație.",
    "puncte": [

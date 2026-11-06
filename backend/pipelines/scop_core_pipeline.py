@@ -1004,6 +1004,12 @@ def catalog_scop_core() -> dict:
     Fiecare element adiacent vine cu toate variantele lui de text, nu cu una singură: același
     subiect scris pentru un grup de lactate și pentru un industrial nu e același text, iar
     alegerea e a omului care face oferta. Varianta implicită e prima (cea mai detaliată).
+
+    **Verticalele** sunt al treilea plan al catalogului, peste capitol și client: la un scop nou
+    întrebarea utilă nu e „ce am scris vreodată", ci „ce propunem de obicei în industria asta".
+    Fiecare verticală spune câte proiecte și câte module are, iar un element care s-a repetat la
+    mai mulți clienți din aceeași industrie e marcat cu numărul lor — repetarea e singurul semn
+    obiectiv că modulul chiar ține de industrie, nu de un client anume.
     Elementul bifat intră în `continut.suplimentare` ca orice element suplimentar — cu fluxurile
     lui, în capitolul `in_modul` —, deci nu există cale separată de generare pentru el.
 
@@ -1022,17 +1028,25 @@ def catalog_scop_core() -> dict:
         for s in SECTIUNI
     ]
 
+    elemente = repertoriu.incarca()
     adiacente = []
-    for el in repertoriu.incarca():
+    for el in elemente:
+        proiecte_pe_verticala: dict[str, int] = {}
+        for v in el.variante:
+            if v.vertical:
+                proiecte_pe_verticala[v.vertical] = proiecte_pe_verticala.get(v.vertical, 0) + 1
         adiacente.append({
             "cheie": el.cheie,
             "denumire": el.denumire,
             "capitol": el.capitol,
             "incadrare": el.incadrare,
             "clienti": el.clienti,
+            "verticale": el.verticale,
+            "proiecte_pe_verticala": proiecte_pe_verticala,
             "variante": [
                 {
                     "client": v.client,
+                    "vertical": v.vertical,
                     "intro": v.descriere,
                     "puncte": list(v.puncte),
                     "fluxuri": [dict(f) for f in v.fluxuri],
@@ -1042,4 +1056,18 @@ def catalog_scop_core() -> dict:
             ],
         })
     adiacente.sort(key=lambda a: (a["capitol"] or "~propriu", a["denumire"]))
-    return {"core": core, "adiacente": adiacente}
+
+    verticale = []
+    for cheie, nume in repertoriu.VERTICALE.items():
+        ale_ei = [a for a in adiacente if cheie in a["verticale"]]
+        if not ale_ei:
+            continue          # o verticală la care n-am ofertat încă n-are ce selecta
+        clienti = {v["client"] for a in ale_ei for v in a["variante"]
+                   if v["vertical"] == cheie and v["client"]}
+        verticale.append({
+            "cheie": cheie, "nume": nume,
+            "module": len(ale_ei), "proiecte": len(clienti),
+            "clienti": sorted(clienti),
+        })
+    verticale.sort(key=lambda v: (-v["module"], v["nume"]))
+    return {"core": core, "adiacente": adiacente, "verticale": verticale}

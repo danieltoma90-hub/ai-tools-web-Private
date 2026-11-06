@@ -26,6 +26,7 @@
   {
    "client": "Agro Seed Muntenia S.R.L.",
    "denumire": "Silozul de cereale",
+   "vertical": "agricultura",
    "sursa": "continut_agroseed.SUPLIMENTARE",
    "descriere": "Producția recoltată trece prin silozul propriu înainte de a fi livrată: se recepționează la cântar, se condiționează acolo unde este cazul, se depozitează pe loturi și se descarcă la livrare. Silozul se tratează ca locație de stocare în sistem, iar documentele care îl alimentează sunt cele descrise la funcționalitățile de agricultură; capitolul de față arată cum se leagă ele de evidența de stoc.",
    "puncte": [

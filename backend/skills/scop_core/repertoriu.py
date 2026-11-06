@@ -33,6 +33,48 @@ from .minute import fara_diacritice
 
 NUME_DOSAR = "repertoriu"
 
+# Verticalele de business pe care le-am ofertat. Lista e scurtă cu bună știință: la 35 de
+# elemente și câteva proiecte, douăzeci de categorii ar însemna o categorie pe client, adică
+# nicio grupare. Se completează când apare un proiect care chiar nu intră în niciuna.
+VERTICALE: dict[str, str] = {
+    "agricultura": "Agricultură și zootehnie",
+    "industrie-alimentara": "Industrie alimentară",
+    "productie-industriala": "Producție industrială",
+    "industrie-pe-proiecte": "Industrie pe proiecte și construcții",
+    "distributie": "Distribuție și comerț",
+    "servicii": "Servicii",
+}
+
+# Ghicirea verticalei din descrierea clientului, când modulul de conținut nu o declară prin
+# `VERTICALA`. Ordinea contează: „producător de mezeluri" atinge și „producator", și „mezel", iar
+# ce spune mai mult despre afacere trebuie întrebat primul. Ghicitul se raportează la culegere,
+# ca omul să-l poată contrazice cu o declarație explicită.
+GHICESTE: list[tuple[str, str]] = [
+    ("agricultura", r"agricultur|agrozooteh|zooteh|cultur[ăa] vegetal|\bferm[ăa]|cereal|siloz|"
+                    r"[îi]ns[ăa]m[âa]n[țt]|recolt"),
+    ("industrie-alimentara", r"aliment|mezel|preparate din carne|\bcarne\b|abator|carmanger|"
+                             r"lactate|br[âa]nz|\blapte\b|panifica[țt]|b[ăa]utur|morărit|mor[ăa]rit"),
+    ("industrie-pe-proiecte", r"pe proiecte|construc[țt]|montaj|[șs]antier|instala[țt]ii industriale|"
+                              r"antrepriz"),
+    ("productie-industriala", r"produc[ăa]tor|fabric|produc[țt]ie|uzin|h[âa]rtie|metal|plastic|"
+                              r"prelucr[ăa]toare"),
+    ("distributie", r"distribu[țt]i|comer[țt] cu|retail|angro|re[țt]ea de magazine"),
+    ("servicii", r"servicii|consultan[țt]|transport|logistic[ăa] ter[țt]"),
+]
+
+
+def ghiceste_verticala(descriere: str) -> str:
+    """Cheia de verticală pentru descrierea unui client, sau „" dacă nu se potrivește niciuna."""
+    text = fara_diacritice(descriere or "").lower()
+    for cheie, tipar in GHICESTE:
+        if re.search(fara_diacritice(tipar), text):
+            return cheie
+    return ""
+
+
+def nume_verticala(cheie: str) -> str:
+    return VERTICALE.get(cheie, cheie or "neclasificat")
+
 
 def dosar(cale: Path | str | None = None) -> Path:
     """Unde stă repertoriul. Căutat în sus de la modul, ca să meargă din orice skill; pe web nu
@@ -66,6 +108,7 @@ class Varianta:
     nota: str = ""
     sursa: str = ""
     denumire: str = ""        # titlul sub care a apărut la clientul acela
+    vertical: str = ""        # cheia verticalei clientului (vezi VERTICALE)
 
     @property
     def greutate(self) -> int:
@@ -114,6 +157,23 @@ class Element:
         return [v.client for v in self.variante if v.client]
 
     @property
+    def verticale(self) -> list[str]:
+        """Verticalele la care l-am propus. Un element livrat la doi clienți din aceeași
+        industrie apare o singură dată aici, dar cu două variante de text."""
+        return list(dict.fromkeys(v.vertical for v in self.variante if v.vertical))
+
+    def varianta_pentru_verticala(self, vertical: str) -> Varianta | None:
+        """Varianta scrisă la un client din aceeași industrie, dacă există.
+
+        Textul ofertat unui procesator de carne pleacă de la alte presupuneri decât cel scris
+        pentru o fermă vegetală; când alegem dintre variante, apropierea de industrie spune mai
+        mult decât lungimea textului."""
+        for v in self.variante:
+            if v.vertical and v.vertical == vertical:
+                return v
+        return None
+
+    @property
     def nou(self) -> bool:
         """Un element fără nicio variantă scrisă e un subiect ridicat în ședință și nimic mai
         mult: intră în document marcat ca atare, nu cu text inventat aici."""
@@ -136,9 +196,9 @@ class Element:
             "implicit": self.implicit,
             "actualizat": self.actualizat or datetime.date.today().isoformat(),
             "variante": [
-                {"client": v.client, "denumire": v.denumire, "sursa": v.sursa,
-                 "descriere": v.descriere, "puncte": v.puncte, "fluxuri": v.fluxuri,
-                 "nota": v.nota}
+                {"client": v.client, "denumire": v.denumire, "vertical": v.vertical,
+                 "sursa": v.sursa, "descriere": v.descriere, "puncte": v.puncte,
+                 "fluxuri": v.fluxuri, "nota": v.nota}
                 for v in self.variante
             ],
         }
@@ -248,7 +308,7 @@ def cauta(termeni, elemente: list[Element] | None = None, prag: int = 2) -> list
     return sorted(out, key=lambda x: (-x[0], x[1].cheie))
 
 
-def ca_suplimentar(el: Element, client: str | None = None) -> dict:
+def ca_suplimentar(el: Element, client: str | None = None, vertical: str = "") -> dict:
     """Elementul în forma pe care o mănâncă generatorul (`scope.Suplimentar`).
 
     Elementul fără text scris intră cu încadrarea de dezvoltare și cu descrierea goală: scopul
@@ -256,7 +316,9 @@ def ca_suplimentar(el: Element, client: str | None = None) -> dict:
     """
     from .charisma_core import Flux
 
-    v = (el.pentru(client) if client else None) or el.varianta
+    v = ((el.pentru(client) if client else None)
+         or (el.varianta_pentru_verticala(vertical) if vertical else None)
+         or el.varianta)
     return {
         "titlu": el.denumire,
         "intro": v.descriere,
@@ -284,10 +346,12 @@ def index_md(elemente: list[Element]) -> str:
         "`skills/generare-scope-core/continut_<client>.py`, ca pentru orice ofertă, apoi "
         "`repertoriu_scop.py seminteaza` reconstruiește repertoriul din toate modulele de "
         "conținut. Un singur loc de ținut la zi — cel în care oricum se lucrează.", "",
-        "| Element | Unde intră | Livrat la | Fluxuri |", "|---|---|---|---|"]
+        "| Element | Unde intră | Verticale | Livrat la | Fluxuri |",
+        "|---|---|---|---|---|"]
     for el in sorted(elemente, key=lambda e: (e.capitol or "~propriu", e.denumire)):
         unde = el.capitol or "capitol propriu"
-        linii.append(f"| [{el.denumire}]({el.cheie}.json) | {unde} | "
+        verticale = ", ".join(nume_verticala(v) for v in el.verticale) or "—"
+        linii.append(f"| [{el.denumire}]({el.cheie}.json) | {unde} | {verticale} | "
                      f"{', '.join(el.clienti) or '—'} | {len(el.fluxuri)} |")
     return "\n".join(linii) + "\n"
 
@@ -300,11 +364,15 @@ def repertoriu_md(elemente: list[Element]) -> str:
         bucati.append("")
         bucati.append(f"- **Unde intră:** {el.capitol or 'capitol propriu în cap. 4'}")
         bucati.append(f"- **Încadrare:** {el.incadrare}")
+        bucati.append(f"- **Verticale:** "
+                      f"{', '.join(nume_verticala(v) for v in el.verticale) or '—'}")
         bucati.append(f"- **Livrat la:** {', '.join(el.clienti) or '—'}")
         bucati.append(f"- **Termeni:** {', '.join(el.termeni)}")
         bucati.append("")
         for v in el.variante:
-            bucati.append(f"### Varianta {v.client or '(fără client)'}")
+            eticheta = nume_verticala(v.vertical) if v.vertical else ""
+            bucati.append(f"### Varianta {v.client or '(fără client)'}"
+                          + (f" — {eticheta}" if eticheta else ""))
             bucati.append("")
             if v.descriere:
                 bucati.append(v.descriere)

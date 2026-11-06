@@ -28,6 +28,7 @@
   {
    "client": "Teldo",
    "denumire": "Integrarea cu aplicația rețelei de magazine",
+   "vertical": "industrie-alimentara",
    "sursa": "continut_teldo.SUPLIMENTARE",
    "descriere": "Rețeaua de magazine proprii funcționează pe o aplicație dedicată. Integrarea are ca obiectiv consolidarea vânzărilor și a stocului magazinelor în evidența centrală, astfel încât rețeaua să nu constituie o evidență paralelă.",
    "puncte": [

@@ -15,6 +15,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Import din Excel al liniilor de factură",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Facturile cu multe poziții se încarcă dintr-un fișier Excel, în locul introducerii linie cu linie.",
    "puncte": [

@@ -49,6 +49,7 @@
   {
    "client": "Agro Seed Muntenia S.R.L.",
    "denumire": "Rapoarte standard ale modulului de Agricultură",
+   "vertical": "agricultura",
    "sursa": "continut_agroseed.SUPLIMENTARE",
    "descriere": "Modulul de agricultură pune la dispoziție un set de rapoarte standard, care acoperă urmărirea lucrărilor, a consumurilor și a costurilor pe an agricol, fermă, solă și cultură. Ele se rulează în contextul anului agricol și nu necesită dezvoltare suplimentară. Capturile de mai jos sunt din aplicație.",
    "puncte": [],

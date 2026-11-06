@@ -26,6 +26,7 @@
   {
    "client": "Agro Seed Muntenia S.R.L.",
    "denumire": "Valorificarea producției către traderi și firme de morărit",
+   "vertical": "agricultura",
    "sursa": "continut_agroseed.SUPLIMENTARE",
    "descriere": "Întreaga producție se valorifică pe piața internă, către traderi de cereale și către firme de morărit. Comercialul este prin urmare concentrat pe un număr restrâns de parteneri, cu relații contractuale repetitive și cu cantități mari pe document, nu pe o rețea de clienți mici.",
    "puncte": [

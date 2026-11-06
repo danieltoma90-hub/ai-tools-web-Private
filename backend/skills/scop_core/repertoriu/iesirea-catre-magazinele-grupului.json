@@ -24,6 +24,7 @@
   {
    "client": "Teldo",
    "denumire": "Ieșirea către magazinele grupului",
+   "vertical": "industrie-alimentara",
    "sursa": "continut_teldo.SUPLIMENTARE",
    "descriere": "Majoritatea pieselor rezultate din transare pleacă direct, ca carne proaspătă, către magazinele grupului, alături de produsul finit. Forma documentară a acestei ieșiri depinde de structura juridică a rețelei și se configurează în consecință; ambele variante sunt acoperite de soluție.",
    "puncte": [

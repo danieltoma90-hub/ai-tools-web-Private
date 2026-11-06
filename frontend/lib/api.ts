@@ -734,6 +734,8 @@ export type ScopCoreSectiuneCatalog = {
  * amestecă: alegerea e a omului care face oferta. */
 export type ScopCoreVariantaCatalog = {
   client: string;
+  /** Cheia verticalei clientului la care a fost scrisă varianta. */
+  vertical: string;
   intro: string;
   puncte: string[];
   fluxuri: { cod: string; flux: string; presupune: string }[];
@@ -747,12 +749,27 @@ export type ScopCoreElementCatalog = {
   capitol: string | null;
   incadrare: string;
   clienti: string[];
+  /** Verticalele la care l-am propus. */
+  verticale: string[];
+  /** Câte proiecte din fiecare verticală l-au primit — repetarea e semnul că modulul ține de
+   * industrie, nu de un client anume. */
+  proiecte_pe_verticala: Record<string, number>;
   variante: ScopCoreVariantaCatalog[];
+};
+
+/** O industrie la care am ofertat. Verticalele fără niciun modul nu ajung în listă. */
+export type ScopCoreVerticala = {
+  cheie: string;
+  nume: string;
+  module: number;
+  proiecte: number;
+  clienti: string[];
 };
 
 export type ScopCoreCatalog = {
   core: ScopCoreSectiuneCatalog[];
   adiacente: ScopCoreElementCatalog[];
+  verticale: ScopCoreVerticala[];
 };
 
 export async function getScopCoreCatalog(): Promise<ScopCoreCatalog> {

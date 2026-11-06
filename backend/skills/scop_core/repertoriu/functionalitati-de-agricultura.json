@@ -43,6 +43,7 @@
   {
    "client": "Agro Seed Muntenia S.R.L.",
    "denumire": "Funcționalități de agricultură",
+   "vertical": "agricultura",
    "sursa": "continut_agroseed.SUPLIMENTARE",
    "descriere": "Zona de agricultură urmărește activitatea de câmp pe anul agricol, pe fermă și pe solă: de la planul de cultură și preluarea suprafețelor, prin raportarea lucrărilor și consumurile generate din ele, până la recepția recoltei din câmp și evidența serviciilor de recepție și condiționare. Punctele de lucru sunt fermele, iar solele constituie nivelul la care se acumulează consumurile și rezultatul.",
    "puncte": [

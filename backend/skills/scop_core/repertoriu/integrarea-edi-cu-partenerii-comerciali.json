@@ -34,6 +34,7 @@
   {
    "client": "Gixen S.R.L.",
    "denumire": "Integrarea EDI cu partenerii comerciali",
+   "vertical": "productie-industriala",
    "sursa": "continut_gixen.SUPLIMENTARE",
    "descriere": "Schimbul electronic de documente cu partenerii comerciali intră în scopul ofertat. Comenzile primite de la partener se preiau direct în sistem, iar documentele emise se transmit în formatul agreat, eliminând reintroducerea manuală și diferențele care apar din ea.",
    "puncte": [

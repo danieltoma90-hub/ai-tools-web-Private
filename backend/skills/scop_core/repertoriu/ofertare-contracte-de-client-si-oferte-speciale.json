@@ -15,6 +15,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Ofertare, contracte de client și oferte speciale",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Ciclul comercial acoperă ofertarea, conversia în comandă, contractele și politica promoțională.",
    "puncte": [

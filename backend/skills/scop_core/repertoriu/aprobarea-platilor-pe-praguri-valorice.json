@@ -25,6 +25,7 @@
   {
    "client": "Teldo",
    "denumire": "Aprobarea plăților pe praguri valorice",
+   "vertical": "industrie-alimentara",
    "sursa": "continut_teldo.SUPLIMENTARE",
    "descriere": "Aprobarea plăților este enumerată explicit în scopul de Producție, alături de zona de cash-flow, ca arie tratată în această secțiune a ofertei. Plățile parcurg fluxul de aprobare înainte de execuție.",
    "puncte": [
@@ -55,6 +56,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Aprobarea plăților pe praguri valorice",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Plățile parcurg un flux de aprobare înainte de execuție.",
    "puncte": [

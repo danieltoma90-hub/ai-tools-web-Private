@@ -57,6 +57,7 @@
   {
    "client": "Agro Seed Muntenia S.R.L.",
    "denumire": "Postcalcul — costul culturii și al producției obținute",
+   "vertical": "agricultura",
    "sursa": "continut_agroseed.SUPLIMENTARE",
    "descriere": "Postcalculul determină costul real al culturii, din două straturi. Primul strat sunt costurile directe de input — semințe, îngrășăminte, erbicide și celelalte produse de protecție, motorină, piese de schimb — care se acumulează pe solă și pe cultură chiar în momentul consumului, din bonurile de consum generate la raportarea lucrărilor (AGR4, AGR7); raportul de costuri cultură (RA2) le prezintă cantitativ și valoric. Al doilea strat sunt cheltuielile indirecte, pe care postcalculul le repartizează pe culturi după chei, în pași succesivi. Costul culturii este suma celor două, iar postcalculul adaugă peste ele costul unitar al producției recoltate, pe care raportul de costuri directe nu îl conține.\nObiectul de cost este cultura pe solă, în contextul anului agricol. Acest lucru este esențial aici: anul agricol nu coincide cu exercițiul financiar — o cultură înființată toamna se recoltează în vara anului următor, deci acumulează cheltuieli în două exerciții succesive, dar costul ei se formează pe un singur an agricol. Calculul se rulează prin urmare pe anul agricol, iar rezultatul se raportează la hectar și la unitatea de producție recoltată.",
    "puncte": [
@@ -118,6 +119,7 @@
   {
    "client": "Gixen S.R.L.",
    "denumire": "Postcalcul — costul complet de producție",
+   "vertical": "productie-industriala",
    "sursa": "continut_gixen.SUPLIMENTARE",
    "descriere": "Postcalculul determină costul real de producție, prin alocarea parțială sau totală a cheltuielilor indirecte în costul produselor obținute. Rezultatul permite identificarea produselor și a comenzilor eficiente și fundamentează deciziile de preț.",
    "puncte": [
@@ -160,6 +162,7 @@
   {
    "client": "AGRIFIELDS S.R.L.",
    "denumire": "Postcalcul — costul efectiv de producere",
+   "vertical": "agricultura",
    "sursa": "continut_agrifields.SUPLIMENTARE",
    "descriere": "Postcalculul determină prețul real de producere, prin alocarea parțială sau totală a cheltuielilor directe și indirecte în costul produselor obținute. Într-o exploatație integrată, în care furajul se transferă intern de la fabrică la fermă și prețul de piață nu există ca reper pe fazele intermediare, el este singurul mod de a ști cât costă efectiv kilogramul de spor.\nIntrarea modulului este evidența contabilă descrisă în capitolele de mai sus: cheltuielile înregistrate pe conturi și alocările făcute pe documentele operaționale, pe dimensiunile de analiză configurate. De aceea structura dimensiunilor și modelele de contare se stabilesc o singură dată, pentru ambele arii.",
    "puncte": [

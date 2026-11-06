@@ -16,6 +16,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Configurarea generală: limbă, monedă și acces",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Elemente de configurare cerute la nivel de sistem, comune tuturor modulelor.",
    "puncte": [

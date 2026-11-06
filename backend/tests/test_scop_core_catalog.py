@@ -121,3 +121,43 @@ async def test_elementul_atasat_unei_sectiuni_excluse_e_422(client):
     })
     assert r.status_code == 422
     assert "financiar" in r.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_verticalele_spun_cate_proiecte_si_module_au(client):
+    c = (await client.get("/api/scop-core/catalog")).json()
+    assert c["verticale"], "repertoriul are clienți din mai multe industrii"
+    chei = {v["cheie"] for v in c["verticale"]}
+    assert {"agricultura", "industrie-alimentara"} <= chei
+
+    agro = next(v for v in c["verticale"] if v["cheie"] == "agricultura")
+    assert agro["module"] > 0 and agro["proiecte"] >= 2
+    assert len(agro["clienti"]) == agro["proiecte"]
+
+
+@pytest.mark.anyio
+async def test_nu_se_listeaza_verticale_fara_module(client):
+    """O industrie la care n-am ofertat încă n-are ce selecta — nu apare în selector."""
+    c = (await client.get("/api/scop-core/catalog")).json()
+    for v in c["verticale"]:
+        assert v["module"] > 0
+
+
+@pytest.mark.anyio
+async def test_elementul_spune_la_ce_verticale_a_fost_propus(client):
+    c = (await client.get("/api/scop-core/catalog")).json()
+    fiscal = next(a for a in c["adiacente"] if a["cheie"] == "conformitate-fiscala")
+    assert "agricultura" in fiscal["verticale"]
+    # Repetarea la mai mulți clienți din aceeași industrie e semnul că ține de industrie.
+    assert fiscal["proiecte_pe_verticala"]["agricultura"] >= 2
+    assert all(v["vertical"] in fiscal["verticale"] or not v["vertical"]
+               for v in fiscal["variante"])
+
+
+@pytest.mark.anyio
+async def test_verticalele_elementului_acopera_variantele(client):
+    c = (await client.get("/api/scop-core/catalog")).json()
+    chei = {v["cheie"] for v in c["verticale"]}
+    for a in c["adiacente"]:
+        assert set(a["verticale"]) <= chei, a["cheie"]
+        assert sum(a["proiecte_pe_verticala"].values()) <= len(a["variante"])

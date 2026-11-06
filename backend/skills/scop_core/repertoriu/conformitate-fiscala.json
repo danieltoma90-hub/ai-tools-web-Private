@@ -35,6 +35,7 @@
   {
    "client": "AGRIFIELDS S.R.L.",
    "denumire": "Conformitate fiscală și integrare cu ANAF",
+   "vertical": "agricultura",
    "sursa": "continut_agrifields.SUPLIMENTARE",
    "descriere": "Obligațiile declarative și schimbul de documente cu ANAF se acoperă din platformă, pe baza documentelor deja operate, fără prelucrări în afara sistemului.",
    "puncte": [
@@ -70,6 +71,7 @@
   {
    "client": "Agro Seed Muntenia S.R.L.",
    "denumire": "Conformitate fiscală și integrare cu ANAF",
+   "vertical": "agricultura",
    "sursa": "continut_agroseed.SUPLIMENTARE",
    "descriere": "Zona acoperă obligațiile declarative și schimbul electronic de documente cu ANAF. Este parte a scopului standard, întrucât documentele operate în modulele descrise mai sus constituie baza raportării.",
    "puncte": [
@@ -105,6 +107,7 @@
   {
    "client": "Teldo",
    "denumire": "Conformitate fiscală: e-Factura și declarațiile",
+   "vertical": "industrie-alimentara",
    "sursa": "continut_teldo.SUPLIMENTARE",
    "descriere": "Zona acoperă obligațiile declarative și schimbul electronic de documente cu ANAF, enumerate în scopul de Producție drept arie tratată într-o secțiune distinctă a ofertei.",
    "puncte": [
@@ -140,6 +143,7 @@
   {
    "client": "Gixen S.R.L.",
    "denumire": "Conformitate fiscală și integrare cu ANAF",
+   "vertical": "productie-industriala",
    "sursa": "continut_gixen.SUPLIMENTARE",
    "descriere": "Zona acoperă obligațiile declarative și schimbul electronic de documente cu ANAF, pe baza documentelor deja operate în modulele descrise mai sus.",
    "puncte": [

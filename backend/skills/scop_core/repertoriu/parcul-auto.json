@@ -33,6 +33,7 @@
   {
    "client": "AGRIFIELDS S.R.L.",
    "denumire": "Parcul auto — Fleet Management",
+   "vertical": "agricultura",
    "sursa": "continut_agrifields.SUPLIMENTARE",
    "descriere": "Scopul de Producție lasă gestiunea flotei în afara ariei lui și o trimite către modulul de Parc Auto; prezentul document o cuprinde. Modulul ține registrul vehiculelor și al utilajelor cu documentele și termenele lor, consumurile de combustibil, foile de parcurs, reviziile și reparațiile, iar cheltuiala rezultată se alocă pe dimensiunile de analiză ale companiei.",
    "puncte": [

@@ -14,6 +14,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Raport parteneri fără tranzacții",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Raport care identifică partenerii fără activitate într-un interval selectat, acoperind cerința de urmărire a furnizorilor activi și inactivi.",
    "puncte": [

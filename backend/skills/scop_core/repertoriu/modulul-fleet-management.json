@@ -30,6 +30,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Modulul Fleet Management",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof.SUPLIMENTARE",
    "descriere": "Modulul acoperă evidența parcului auto și a echipamentelor, împreună cu documentele asociate, reviziile și consumul de combustibil.",
    "puncte": [

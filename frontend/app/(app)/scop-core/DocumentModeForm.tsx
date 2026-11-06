@@ -112,6 +112,10 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
   const [coreExcluse, setCoreExcluse] = useState<string[]>([]);
   /** Pentru fiecare modul adiacent bifat, clientul variantei alese. */
   const [varianteAlese, setVarianteAlese] = useState<Record<string, string>>({});
+  /** Industria clientului: restrânge lista de module la ce am propus acolo și alege, dintre
+   * variantele unui modul, pe cea scrisă în aceeași industrie. "" = toate. */
+  const [verticala, setVerticala] = useState("");
+  const [aratToateModulele, setAratToateModulele] = useState(false);
 
   useEffect(() => {
     let activ = true;
@@ -230,6 +234,17 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
     .map((s) => s.sursa?.cheie)
     .filter((c): c is string => Boolean(c));
 
+  /** Varianta implicită a unui modul: cea scrisă în industria clientului, dacă există —
+   * textul ofertat unui procesator de carne pleacă de la alte presupuneri decât cel scris
+   * pentru o fermă vegetală. Altfel, prima (cea mai detaliată). */
+  function clientImplicit(el: ScopCoreElementCatalog): string {
+    if (varianteAlese[el.cheie]) return varianteAlese[el.cheie];
+    const dinIndustrie = verticala
+      ? el.variante.find((v) => v.vertical === verticala)
+      : undefined;
+    return (dinIndustrie ?? el.variante[0])?.client ?? "";
+  }
+
   function elementDinVarianta(el: ScopCoreElementCatalog, client: string): SuplimentarUI {
     const v = el.variante.find((x) => x.client === client) ?? el.variante[0];
     return {
@@ -250,7 +265,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
       if (els.some((x) => x.sursa?.cheie === el.cheie)) {
         return els.filter((x) => x.sursa?.cheie !== el.cheie);
       }
-      return [...els, elementDinVarianta(el, varianteAlese[el.cheie] ?? el.variante[0]?.client ?? "")];
+      return [...els, elementDinVarianta(el, clientImplicit(el))];
     });
   }
 
@@ -263,6 +278,12 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
           : x
       )
     );
+  }
+
+  /** Bifează dintr-o dată tot ce am propus la industria aleasă. Elementele deja bifate și
+   * cele dintr-o secțiune CORE debifată sunt excluse din listă de apelant. */
+  function bifeazaVerticala(elemente: ScopCoreElementCatalog[]) {
+    setSuplimentare((els) => [...els, ...elemente.map((el) => elementDinVarianta(el, clientImplicit(el)))]);
   }
 
   /** Debifarea unei secțiuni CORE scoate și modulele adiacente care intrau în ea — au venit
@@ -933,7 +954,8 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
           <h3 className="text-sm font-semibold text-[#18257f]">Ce intră în document</h3>
           <p className="text-xs text-slate-500 leading-relaxed mt-1">
             Standardul CORE e același la toți clienții și intră implicit; modulele adiacente
-            se adaugă doar unde au obiect, cu textul scris la proiectul unde au apărut.
+            se adaugă doar unde au obiect, cu textul scris la proiectul unde au apărut. Alege
+            industria clientului ca să vezi ce am propus la verticala respectivă.
           </p>
         </div>
         <SelectieContinut
@@ -946,6 +968,11 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
           variante={varianteAlese}
           onComutaAdiacent={comutaAdiacent}
           onSchimbaVarianta={schimbaVarianta}
+          verticala={verticala}
+          onSchimbaVerticala={setVerticala}
+          aratTot={aratToateModulele}
+          onComutaAratTot={() => setAratToateModulele((v) => !v)}
+          onBifeazaVerticala={bifeazaVerticala}
         />
       </div>
 

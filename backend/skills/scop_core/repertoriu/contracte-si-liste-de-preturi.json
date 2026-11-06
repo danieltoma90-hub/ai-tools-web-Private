@@ -25,6 +25,7 @@
   {
    "client": "Teldo",
    "denumire": "Contracte și liste de prețuri",
+   "vertical": "industrie-alimentara",
    "sursa": "continut_teldo.SUPLIMENTARE",
    "descriere": "Scopul de Producție enumeră listele de prețuri între ariile tratate în această secțiune a ofertei. Prețul efectiv aplicat pe document rezultă din combinația dintre contract, lista de prețuri și mecanismele promoționale.",
    "puncte": [

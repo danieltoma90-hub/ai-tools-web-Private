@@ -24,6 +24,7 @@
   {
    "client": "Teldo",
    "denumire": "Controlul creditului",
+   "vertical": "industrie-alimentara",
    "sursa": "continut_teldo.SUPLIMENTARE",
    "descriere": "Controlul creditului este enumerat explicit în scopul de Producție ca arie tratată în această secțiune a ofertei. El acționează la preluarea comenzii, înainte ca marfa să plece din depozit.",
    "puncte": [

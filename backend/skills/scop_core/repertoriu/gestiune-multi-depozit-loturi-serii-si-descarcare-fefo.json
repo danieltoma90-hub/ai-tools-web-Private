@@ -18,6 +18,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Gestiune multi-depozit, loturi, serii și descărcare FEFO",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Stocurile se urmăresc pe mai multe depozite și locații, cu identificare pe lot și serie, iar descărcarea urmează regula configurată pe articol.",
    "puncte": [

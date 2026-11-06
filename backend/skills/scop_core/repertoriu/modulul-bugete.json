@@ -18,6 +18,7 @@
   {
    "client": "Christof Industries",
    "denumire": "Modulul Bugete",
+   "vertical": "industrie-pe-proiecte",
    "sursa": "continut_christof_fara_fleet.SUPLIMENTARE",
    "descriere": "Modulul susține cerința de alertare la depășirea bugetului, exprimată în zona de achiziții, și oferă cadrul de urmărire buget față de realizat.",
    "puncte": [
