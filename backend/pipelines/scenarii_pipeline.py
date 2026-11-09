@@ -7,7 +7,7 @@ Fluxul:
 2. Porneste de la catalogul CORE standard (170 scenarii validate);
    scenariile ale caror capitole standard lipsesc din spec sunt EXCLUSE
    si listate in sheet-ul "Excluse vs Standard"
-3. AI (Claude Sonnet sau Groq gratuit) genereaza scenarii pentru fiecare
+3. Claude genereaza scenarii pentru fiecare
    cerinta specifica — marcate galben, cu codul de trasabilitate
 4. Pass de dependente: scenariile noi primesc preconditiile de executie
    (ID-uri din catalog), apoi totul intra in Plan Executie (ordine topologica)
@@ -75,21 +75,19 @@ def _apply_exclusions(catalog: dict, titles: set[str]) -> list[tuple[str, dict]]
 
 
 def estimate_scenarii_job(docx_path: Path) -> dict:
-    """Pre-check: cerinte specifice gasite, apeluri si durate pe ambele variante."""
+    """Pre-check: cerinte specifice gasite, apeluri si durata estimata."""
     spec = parse_client_spec(docx_path)
     total_chars = sum(len(r.text) + len(r.title) for r in spec.requirements)
 
     claude_batches = max(1, len(ai_gen.batch_requirements(spec.requirements, ai_gen.CLAUDE_BATCH_CHARS))) if spec.requirements else 0
-    groq_batches = max(1, len(ai_gen.batch_requirements(spec.requirements, ai_gen.GROQ_BATCH_CHARS))) if spec.requirements else 0
 
-    est_tokens = round(total_chars / ai_gen.ROMANIAN_CHARS_PER_TOKEN) + (groq_batches + 1) * 3_000
+    est_tokens = round(total_chars / ai_gen.ROMANIAN_CHARS_PER_TOKEN) + (claude_batches + 1) * 3_000
     return {
         "requirements": len(spec.requirements),
         "est_tokens": est_tokens,
         "calls": claude_batches + 1,
         "modules": len({r.module_h2 for r in spec.requirements}) or 1,
         "est_minutes": max(1, math.ceil((claude_batches + 1) * 25 / 60)),
-        "est_minutes_free": max(1, groq_batches + 2),
         "fits_budget": True,
     }
 
@@ -105,7 +103,6 @@ def _next_cs_id(items: list[dict], prefix: str) -> str:
 
 async def run_scenarii_pipeline(
     docx_path: Path,
-    engine: str = "claude",   # "claude" | "groq"
     on_step=None,
 ) -> tuple[Path, dict]:
     """Returneaza (xlsx_path, sumar)."""
@@ -120,7 +117,7 @@ async def run_scenarii_pipeline(
     generated = []
     if spec.requirements:
         generated = await ai_gen.generate_specific_scenarios(
-            spec.requirements, engine=engine, on_step=on_step)
+            spec.requirements, on_step=on_step)
 
     new_index: list[tuple[str, str, str]] = []
     for it in generated:
@@ -156,7 +153,7 @@ async def run_scenarii_pipeline(
             for sheet, items in catalog.items() for s in items if not s["_specific"]
         ]
         deps_map = await ai_gen.generate_dependencies(
-            core_index, new_index, engine=engine, on_step=on_step)
+            core_index, new_index, on_step=on_step)
         by_id = {s["ID"]: s for items in catalog.values() for s in items}
         for sid, dlist in deps_map.items():
             if sid in by_id:

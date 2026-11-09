@@ -10,9 +10,12 @@ Fluxul din UI are doi pași, în oglindă cu `pipelines/scop_core_pipeline.py`:
      standard CORE cu elementele (eventual editate) și, dacă i se cere, o
      copie a documentului gazdă cu capitolul inserat.
 
-Nu există parametru `engine` nicăieri: `extractie.py` rulează exclusiv pe
-`llm_client` (Mistral) — un singur furnizor, un singur drum (vezi
-docstring-ul de sus al `extractie.py`).
+Nu există parametru `engine` nicăieri: `extractie.py` rulează pe Claude, prin
+drumul comun `claude.py` — un singur furnizor, un singur drum.
+
+`/scop-core/propune` e job în fundal, nu cerere sincronă: răspunsul copiază
+verbatim textul documentului, iar pe un model cu gândire mereu pornită poate
+trece de cele ~58 de secunde după care proxy-ul Vercel taie o cerere.
 
 Ca și în `scenarii.py`/`mockup.py`/`training.py`, routerul NU importă
 `skills.scop_core` direct — trece exclusiv prin pipeline, care face deja
@@ -125,19 +128,41 @@ class GenerateRequest(BaseModel):
     continut: dict | None = None
 
 
+async def _run_propune(job_id: str, supliment_path: Path) -> None:
+    jobs.set_step(job_id, "citire")
+    try:
+        elemente = await propune_job(supliment_path)
+        jobs.finish(job_id, propunere_id=str(uuid.uuid4()), elemente=elemente)
+    except DocumentInvalid as e:
+        # Fișierul are extensia .docx, dar nu e un document Word valid (ex. un
+        # .xlsx redenumit) — vina e a fișierului. Mesajul e mereu curat, fără căi
+        # de fișier de pe server, deci sigur de arătat direct.
+        jobs.esueaza(job_id, e)
+    except ValueError as e:
+        # Răspuns de model ilizibil sau tăiat — mesajul spune deja ce e de făcut.
+        jobs.esueaza(job_id, e, f"Nu s-a putut extrage conținutul din documentul suplimentar: {e}")
+    except Exception as e:
+        logger.error("scop-core propune %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
+        jobs.esueaza(job_id, e)
+    finally:
+        supliment_path.unlink(missing_ok=True)
+
+
 @router.post("/scop-core/propune")
 async def propune_scop_core(
     req: PropuneRequest,
+    background_tasks: BackgroundTasks,
     user=Depends(cere_modul("scop-core")),
 ):
-    """Descarcă documentul suplimentar deja încărcat în storage, îl
-    segmentează prin model și întoarce elementele propuse — utilizatorul le
-    corectează în browser înainte de `/scop-core/genereaza`."""
+    """Descarcă documentul suplimentar deja încărcat în storage și pornește
+    segmentarea lui în fundal. Pagina urmărește jobul pe `/scop-core/job/{id}`,
+    iar rezultatul (`elemente`) e corectat de utilizator înainte de
+    `/scop-core/genereaza`."""
     if Path(req.filename).suffix.lower() != ".docx":
         raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .docx")
 
-    if not os.environ.get("MISTRAL_API_KEY"):
-        raise HTTPException(status_code=500, detail="MISTRAL_API_KEY lipsă pe server")
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY lipsă pe server")
 
     try:
         supliment_path = download_upload(req.storage_path)
@@ -149,30 +174,10 @@ async def propune_scop_core(
             detail="Fișierul încărcat nu a fost găsit în storage — reîncarcă fișierul.",
         )
 
-    try:
-        elemente = await propune_job(supliment_path)
-    except DocumentInvalid as e:
-        # Fișierul are extensia .docx dar conținutul nu e un document Word
-        # valid (ex. un .xlsx redenumit) — vina e a fișierului încărcat, nu a
-        # furnizorului de model. Mesajul lui `DocumentInvalid` e mereu curat
-        # (fără nicio cale de fișier de pe server) — sigur de arătat direct.
-        raise HTTPException(status_code=422, detail=str(e))
-    except (ValueError, RuntimeError) as e:
-        # Model/rețea: JSON invalid întors de model sau eroare la `llm_client`
-        # (cheie respinsă, 429/5xx după reîncercări epuizate) — vina nu e a
-        # fișierului încărcat, ci a furnizorului din amonte.
-        raise HTTPException(
-            status_code=502,
-            detail=f"Nu s-a putut extrage conținutul din documentul suplimentar: {e}",
-        )
-    except Exception as e:
-        # Orice altă excepție neprevăzută e tratată tot ca fișier invalid,
-        # nu ca eroare de server.
-        raise HTTPException(status_code=422, detail=f"Fișier .docx invalid: {e}")
-    finally:
-        supliment_path.unlink(missing_ok=True)
-
-    return {"propunere_id": str(uuid.uuid4()), "elemente": elemente}
+    user_email = getattr(user, "email", None) or "anonymous"
+    job_id = jobs.create_job(user_email, "scop-core")
+    background_tasks.add_task(_run_propune, job_id, supliment_path)
+    return {"job_id": job_id}
 
 
 @router.post("/scop-core/minute")
@@ -298,7 +303,7 @@ async def _run_job(
         )
     except Exception as e:
         logger.error("scop-core job %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
-        jobs.fail(job_id, str(e) or type(e).__name__)
+        jobs.esueaza(job_id, e)
     finally:
         gazda_path.unlink(missing_ok=True)
         if capitol_path is not None:
@@ -388,7 +393,7 @@ async def _genereaza_document(req: GenerateRequest, user) -> dict:
         with open(document_path, "rb") as f:
             docx_b64 = base64.b64encode(f.read()).decode()
 
-        job_id = jobs.create_job(user_email)
+        job_id = jobs.create_job(user_email, "scop-core")
         jobs.finish(
             job_id,
             filename=filename,
@@ -464,7 +469,7 @@ async def genereaza_scop_core(
         raise HTTPException(status_code=422, detail=str(e))
 
     user_email = getattr(user, "email", None) or "anonymous"
-    job_id = jobs.create_job(user_email)
+    job_id = jobs.create_job(user_email, "scop-core")
     background_tasks.add_task(
         _run_job, job_id, gazda_path, req.gazda_filename, req.client, req.elemente, req.insereaza,
         req.delimitari, req.curata_antet_subsol,

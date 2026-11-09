@@ -77,16 +77,16 @@ def test_exclusions_remove_missing_chapters(tmp_path):
             assert not (set(s.get("deps", [])) & excluded_ids)
 
 
-def test_estimate_returns_both_variants(tmp_path):
+def test_estimate_are_o_singura_varianta(tmp_path):
     est = estimate_scenarii_job(_make_spec(tmp_path))
     assert est["requirements"] == 2
     assert est["est_minutes"] >= 1
-    assert est["est_minutes_free"] >= 1
+    assert "est_minutes_free" not in est
 
 
 @pytest.mark.asyncio
 async def test_pipeline_with_mocked_ai(tmp_path, monkeypatch):
-    async def fake_generate(reqs, engine, on_step=None):
+    async def fake_generate(reqs, on_step=None):
         return [{
             "cerinta_index": i,
             "sheet": "🏷️ Articole",
@@ -98,14 +98,14 @@ async def test_pipeline_with_mocked_ai(tmp_path, monkeypatch):
             "Prioritate": "High",
         } for i in range(len(reqs))]
 
-    async def fake_deps(core_index, new_index, engine, on_step=None):
+    async def fake_deps(core_index, new_index, on_step=None):
         first_core = core_index[0][0]
         return {new_index[0][0]: [first_core]}
 
     monkeypatch.setattr(ai_gen, "generate_specific_scenarios", fake_generate)
     monkeypatch.setattr(ai_gen, "generate_dependencies", fake_deps)
 
-    xlsx, summary = await run_scenarii_pipeline(_make_spec(tmp_path), engine="claude")
+    xlsx, summary = await run_scenarii_pipeline(_make_spec(tmp_path))
     try:
         assert summary["specific_count"] == 2
         assert summary["excluded_count"] > 0

@@ -5,7 +5,6 @@ import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import ResultPanel from "@/components/ResultPanel";
 import HistoryPanel from "@/components/HistoryPanel";
-import EstimateCard from "@/components/EstimateCard";
 import {
   uploadSourceFile,
   postMockupEstimate,
@@ -40,6 +39,7 @@ export default function MockupPage() {
     docxB64: string;
     html: string;
     aiUsed: boolean;
+    motivFaraAi: string;
   } | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
   const cancelledRef = useRef(false);
@@ -86,15 +86,15 @@ export default function MockupPage() {
     }
   }
 
-  async function handleGenerate(useAi: boolean) {
+  async function handleGenerate() {
     if (!estimate) return;
     setState("processing");
     setStep(null);
-    setProgressLabel(useAi ? "Pornesc generarea cu AI..." : "Generez documentația...");
+    setProgressLabel("Pornesc generarea...");
     setError("");
     cancelledRef.current = false;
     try {
-      const { job_id } = await postMockupGenerate(estimate.estimate_id, useAi);
+      const { job_id } = await postMockupGenerate(estimate.estimate_id);
 
       const job = await pollJob(() => getMockupJob(job_id), {
         cancelled: () => cancelledRef.current,
@@ -110,6 +110,7 @@ export default function MockupPage() {
         docxB64: job.docx_b64!,
         html: job.html ?? "",
         aiUsed: job.ai_used ?? false,
+        motivFaraAi: job.motiv_fara_ai ?? "",
       });
       setState("done");
       setHistoryKey((k) => k + 1);
@@ -165,13 +166,25 @@ export default function MockupPage() {
         {state === "estimating" && <ProcessingSpinner label="Analizez fișierul..." />}
 
         {state === "ready" && estimate && (
-          <EstimateCard
-            estimate={estimate}
-            toolLabel="documentația"
-            onAi={() => handleGenerate(true)}
-            onNoAi={() => handleGenerate(false)}
-            onCancel={reset}
-          />
+          <div className="bg-white border border-[#e2e5f0] rounded-xl p-5 flex flex-col gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-[#18257f] mb-1">Ecran recunoscut</h3>
+              <p className="text-xs text-slate-500">
+                Structura ecranului a fost citită. Claude scrie prezentarea generală și
+                completează descrierile câmpurilor.
+              </p>
+            </div>
+            <button
+              onClick={handleGenerate}
+              className="border border-[#18257f] bg-[#18257f] text-white rounded-lg p-3 text-left hover:bg-[#131e66] transition-colors"
+            >
+              <span className="block text-sm font-bold">✨ Generează documentația</span>
+              <span className="block text-xs mt-1 text-[#d5d8f5]">~{estimate.est_minutes} min · Claude</span>
+            </button>
+            <button onClick={reset} className="text-xs text-slate-400 hover:underline w-fit">
+              Anulează
+            </button>
+          </div>
         )}
 
         {state === "processing" && (
@@ -189,6 +202,12 @@ export default function MockupPage() {
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                 Documentația a fost generată fără AI — descrierile provin direct
                 din fișierul sursă.
+                {result.motivFaraAi && (
+                  <>
+                    {" "}
+                    <strong>Motiv:</strong> {result.motivFaraAi}
+                  </>
+                )}
               </p>
             )}
             <ResultPanel

@@ -26,11 +26,10 @@ def _spec(tmp_path, text="Fluxul de producție trece prin Moară, Presă și Amb
 
 
 def _raspuns(payload: str):
-    resp = MagicMock()
-    resp.content = [MagicMock(text=payload)]
-    client = MagicMock()
-    client.messages.create = AsyncMock(return_value=resp)
-    return client
+    """Simulează claude.raspunde cu textul dat."""
+    import claude
+
+    return AsyncMock(return_value=claude.Raspuns(payload, "end_turn"))
 
 
 PAYLOAD_BUN = """{"module": [
@@ -43,7 +42,7 @@ PAYLOAD_BUN = """{"module": [
 
 
 async def test_modulele_vin_din_specificatie(tmp_path):
-    with patch("anthropic.AsyncAnthropic", return_value=_raspuns(PAYLOAD_BUN)):
+    with patch("claude.raspunde", _raspuns(PAYLOAD_BUN)):
         module = await construieste_module_din_spec(_spec(tmp_path), "sk-x")
 
     assert [m["nume"] for m in module] == [
@@ -58,13 +57,13 @@ async def test_modulele_vin_din_specificatie(tmp_path):
 
 async def test_niciun_modul_protejat_de_comprimare(tmp_path):
     """Nimic nu e „standard", deci nimic nu e obligatoriu de păstrat."""
-    with patch("anthropic.AsyncAnthropic", return_value=_raspuns(PAYLOAD_BUN)):
+    with patch("claude.raspunde", _raspuns(PAYLOAD_BUN)):
         module = await construieste_module_din_spec(_spec(tmp_path), "sk-x")
     assert all(m["esential"] is False for m in module)
 
 
 async def test_specificatie_fara_material_de_training_da_eroare_explicita(tmp_path):
-    with patch("anthropic.AsyncAnthropic", return_value=_raspuns('{"module": []}')):
+    with patch("claude.raspunde", _raspuns('{"module": []}')):
         with pytest.raises(ValueError) as e:
             await construieste_module_din_spec(_spec(tmp_path), "sk-x")
     assert "niciun modul" in str(e.value)
@@ -75,17 +74,17 @@ async def test_document_gol_nu_ajunge_la_ai(tmp_path):
 
     p = tmp_path / "gol.docx"
     Document().save(str(p))
-    client = _raspuns(PAYLOAD_BUN)
-    with patch("anthropic.AsyncAnthropic", return_value=client):
+    apel = _raspuns(PAYLOAD_BUN)
+    with patch("claude.raspunde", apel):
         with pytest.raises(ValueError) as e:
             await construieste_module_din_spec(p, "sk-x")
     assert "text" in str(e.value)
-    client.messages.create.assert_not_called()
+    apel.assert_not_called()
 
 
 async def test_raspuns_ciobit_se_repara(tmp_path):
     ciobit = '{"module": [{"nume": "Configurări", "ore": 2, "grupe": [{"titlu": "T", "subiecte": ["S"'
-    with patch("anthropic.AsyncAnthropic", return_value=_raspuns(ciobit)):
+    with patch("claude.raspunde", _raspuns(ciobit)):
         module = await construieste_module_din_spec(_spec(tmp_path), "sk-x")
     assert module[0]["nume"] == "Configurări"
 
@@ -115,6 +114,6 @@ async def test_nu_se_accepta_mai_mult_de_limita_de_module(tmp_path):
         for i in range(20)
     )
     payload = f'{{"module": [{multe}]}}'
-    with patch("anthropic.AsyncAnthropic", return_value=_raspuns(payload)):
+    with patch("claude.raspunde", _raspuns(payload)):
         module = await construieste_module_din_spec(_spec(tmp_path), "sk-x")
     assert len(module) == MAX_MODULE

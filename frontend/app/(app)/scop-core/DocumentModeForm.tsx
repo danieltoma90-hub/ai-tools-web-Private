@@ -15,6 +15,7 @@ import {
   type TipEntitati,
 } from "@/lib/api";
 import { isColdStartError, pollJob } from "@/lib/poll";
+import { ETAPE_SCOP_CORE } from "@/lib/progres";
 import { SECTIUNI_CORE, titluSectiune } from "./sectiuniCore";
 import ComutatoareCapitole, { type CheieCapitol } from "./ComutatoareCapitole";
 import TabelEditabil, { type ColoanaTabel } from "./TabelEditabil";
@@ -614,7 +615,14 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
   }
 
   if (state === "processing") {
-    return <ProcessingSpinner label={progress} onCancel={renuntaLaAsteptare} step={step} />;
+    return (
+      <ProcessingSpinner
+        label={progress}
+        onCancel={renuntaLaAsteptare}
+        etape={ETAPE_SCOP_CORE}
+        step={step}
+      />
+    );
   }
 
   if (state === "error") {

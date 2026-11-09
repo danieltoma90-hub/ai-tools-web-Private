@@ -60,7 +60,7 @@ async def test_run_minuta_pipeline_calls_claude_and_returns_docx(tmp_path):
          patch("pipelines.minuta_pipeline._extract_sections", return_value=mock_sections), \
          patch("pipelines.minuta_pipeline._extract_action_items", return_value=mock_actions), \
          patch("pipelines.minuta_pipeline._extract_profile", return_value=mock_profile):
-        docx_path, preview_html = await run_minuta_pipeline(vtt, api_key="fake-key")
+        docx_path, preview_html = await run_minuta_pipeline(vtt)
 
     assert docx_path.exists()
     assert docx_path.suffix == ".docx"
@@ -88,7 +88,7 @@ async def test_pipeline_without_profile_data_keeps_minuta_clean(tmp_path):
          patch("pipelines.minuta_pipeline._extract_profile",
                return_value={"profil_beneficiar": [], "cerinte_beneficiar": [],
                              "puncte_deschise": []}):
-        docx_path, preview_html = await run_minuta_pipeline(vtt, api_key="fake-key")
+        docx_path, preview_html = await run_minuta_pipeline(vtt)
 
     assert "Profilul beneficiarului" not in preview_html
     assert "Puncte rămase deschise" not in preview_html

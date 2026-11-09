@@ -15,7 +15,6 @@ from reguli import build_rules, with_legend  # noqa: E402
 
 from auth import verify_token  # noqa: E402
 from main import app  # noqa: E402
-from pipelines import minuta_free_pipeline as free  # noqa: E402
 from pipelines.minuta_pipeline import _call_claude, run_minuta_pipeline  # noqa: E402
 from routers.minuta import _nume_fisier, _optiuni  # noqa: E402
 
@@ -94,14 +93,29 @@ def test_legenda_se_adauga_la_lista_existenta_sau_ca_paragraf():
 
 
 @pytest.mark.asyncio
-async def test_apelul_claude_pune_regulile_dupa_prompt_si_cere_tokenii_dati():
-    client = AsyncMock()
-    client.messages.create.return_value.content = [type("B", (), {"text": "{}"})()]
-    await _call_claude(client, "extract_sections.md", "[00:00:01] A: text", "CONTEXT", "REGULI", 16000)
-    kwargs = client.messages.create.call_args.kwargs
-    content = kwargs["messages"][0]["content"]
-    assert kwargs["max_tokens"] == 16000
-    assert content.index("REGULI") < content.index("CONTEXT") < content.index("---TRANSCRIPT---")
+async def test_apelul_claude_pune_transcriptul_in_prefixul_comun_si_regulile_dupa_prompt(monkeypatch):
+    """Transcriptul e prefixul comun, cu cache: se plătește întreg o singură dată pe minută,
+    nu la fiecare din cele 5 extrageri. Instrucțiunea și regulile, care diferă, vin după."""
+    import claude
+    from pipelines.minuta_pipeline import EFORT
+
+    apeluri = []
+
+    async def _raspunde(intrebare, **kw):
+        apeluri.append((intrebare, kw))
+        return claude.Raspuns("{}", "end_turn")
+
+    monkeypatch.setattr(claude, "raspunde", _raspunde)
+    await _call_claude("extract_sections.md", "[00:00:01] A: text", "CONTEXT", "REGULI", 16000)
+    await _call_claude("extract_action_items.md", "[00:00:01] A: text", "CONTEXT", "REGULI")
+
+    (intrebare, kw), (_, kw2) = apeluri
+    assert kw["max_tokens"] == 16000 and kw["efort"] == EFORT
+    assert kw["prefix_cache"].index("CONTEXT") < kw["prefix_cache"].index("---TRANSCRIPT---")
+    assert "REGULI" not in kw["prefix_cache"]
+    assert intrebare.endswith("\n\nREGULI")  # regulile vin imediat după prompt
+    # același prefix și același efort la extrageri diferite — altfel cache-ul ratează
+    assert kw2["prefix_cache"] == kw["prefix_cache"] and kw2["efort"] == kw["efort"]
 
 
 # ── Fit-Gap ──────────────────────────────────────────────────────────────────
@@ -144,9 +158,9 @@ async def test_minuta_in_engleza_cu_marcaje(tmp_path):
          patch("pipelines.minuta_pipeline._extract_sections", return_value=sections), \
          patch("pipelines.minuta_pipeline._extract_action_items", return_value=[]), \
          patch("pipelines.minuta_pipeline._extract_profile", return_value=profile):
-        docx_path, html = await run_minuta_pipeline(vtt, "k", marcaje=True, limba="en")
+        docx_path, html = await run_minuta_pipeline(vtt, marcaje=True, limba="en")
     # modelul primește transcrierea pregătită (cu ora) și regulile în engleză
-    transcript_arg, extra_arg = meta.call_args[0][1], meta.call_args[0][3]
+    transcript_arg, extra_arg = meta.call_args[0][0], meta.call_args[0][2]
     assert transcript_arg == "[00:00:01] Ion Popescu: Bugetul este de 5 milioane."
     assert "[INFERENCE: …]" in extra_arg
     assert "MEETING MINUTES" in html and "Client Profile" in html and "Marker legend" in html
@@ -163,7 +177,7 @@ async def test_minuta_fitgap_pe_formatul_f05(tmp_path):
     with patch("pipelines.minuta_pipeline._extract_metadata", return_value=META), \
          patch("pipelines.minuta_pipeline._extract_fitgap", return_value=FITGAP) as fg, \
          patch("pipelines.minuta_pipeline._extract_sections") as sectiuni:
-        docx_path, html = await run_minuta_pipeline(vtt, "k", marcaje=True, structura="fitgap")
+        docx_path, html = await run_minuta_pipeline(vtt, marcaje=True, structura="fitgap")
     sectiuni.assert_not_called()
     assert fg.call_count == 1
     assert "Rezumat executiv" in html and "Legenda marcajelor" in html and "Pași următori" not in html
@@ -187,30 +201,3 @@ def test_conversia_in_engleza_nu_lasa_etichete_romanesti(tmp_path):
     assert "Next Steps" in xml and "Meeting Minutes | Client Test" in xml
 
 
-# ── varianta Free ────────────────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_free_pune_regulile_doar_la_metadata_si_sinteza(tmp_path, monkeypatch):
-    vtt = tmp_path / "t.vtt"
-    vtt.write_text(VTT, encoding="utf-8")
-    monkeypatch.setattr(free, "CALL_DELAY_S", 0)
-    raspunsuri = {
-        "extract_meeting_metadata.md": json.dumps({"meta": META}),
-        "map_chunk_notes.md": json.dumps({"subiecte": ["buget"]}),
-        "reduce_synthesis.md": json.dumps({"context_si_scop": None, "sectiuni": [], "pasi_urmatori": []}),
-    }
-    apeluri = []
-
-    async def fals(client, prompt_file, content, state, out_tokens, extra=""):
-        apeluri.append((prompt_file, content, extra))
-        return raspunsuri[prompt_file]
-
-    with patch.object(free, "_call_groq", side_effect=fals):
-        docx_path, html = await free.run_minuta_free_pipeline(vtt, "k", marcaje=True, limba="ro")
-    extra = {f: e for f, _, e in apeluri}
-    assert "Nimic peste surse" in extra["extract_meeting_metadata.md"]
-    assert extra["map_chunk_notes.md"] == ""
-    assert "[DEDUCȚIE: …]" in extra["reduce_synthesis.md"]
-    assert "[00:00:01] Ion Popescu" in apeluri[1][1]
-    assert "Legenda marcajelor" in html
-    docx_path.unlink()

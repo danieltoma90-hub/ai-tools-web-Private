@@ -11,9 +11,11 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: MISTRAL_API_KEY
+      # Opționale (vezi claude.py): CLAUDE_MODEL (implicit claude-opus-5-5) și
+      # CLAUDE_FALLBACKS ("default" sau "off") — comutatoare fără deploy.
+      - key: CLAUDE_MODEL
         sync: false
-      - key: MISTRAL_MODEL
+      - key: CLAUDE_FALLBACKS
         sync: false
       - key: FRONTEND_URL
         sync: false

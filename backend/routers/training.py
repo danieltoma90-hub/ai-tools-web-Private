@@ -88,7 +88,7 @@ async def _run_job(
         )
     except Exception as e:
         logger.error("training job %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
-        jobs.fail(job_id, str(e) or type(e).__name__)
+        jobs.esueaza(job_id, e)
     finally:
         for p in (spec_path, docx_path, xlsx_path):
             if p is not None:
@@ -146,7 +146,7 @@ async def generate_training(
         )
 
     user_email = getattr(user, "email", None) or "anonymous"
-    job_id = jobs.create_job(user_email)
+    job_id = jobs.create_job(user_email, "training")
     background_tasks.add_task(_run_job, job_id, tip, zile, client, spec_path, api_key)
     return {"job_id": job_id}
 

@@ -8,6 +8,7 @@ const STATE_STYLE: Record<string, { badge: string; label: string }> = {
   fara_credit: { badge: "bg-red-100 text-red-800", label: "Fără credite" },
   limita_atinsa: { badge: "bg-amber-100 text-amber-800", label: "Limită atinsă" },
   model_indisponibil: { badge: "bg-amber-100 text-amber-800", label: "Model indisponibil" },
+  model_nepermis: { badge: "bg-amber-100 text-amber-800", label: "Model nepermis" },
   lipsa: { badge: "bg-slate-100 text-slate-600", label: "Neconfigurat" },
   eroare: { badge: "bg-red-100 text-red-800", label: "Eroare" },
 };
@@ -32,10 +33,10 @@ export default function ProviderDiagnostics() {
 
   return (
     <div className="mt-8 border-t border-slate-200 pt-6">
-      <h2 className="text-sm font-bold text-[#18257f] mb-1">Stare chei AI</h2>
+      <h2 className="text-sm font-bold text-[#18257f] mb-1">Stare Claude</h2>
       <p className="text-xs text-slate-500 mb-3">
-        Verifică dacă cheile configurate pe server funcționează. Se face câte un
-        apel minimal către fiecare provider.
+        Verifică dacă generările vor merge: cererile de test trec pe același drum ca
+        minutele, scenariile și restul modulelor, inclusiv cache-ul. Costă sub un cent.
       </p>
 
       <button
@@ -72,6 +73,15 @@ export default function ProviderDiagnostics() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-600">{r.message}</p>
+                {r.detalii && r.detalii.length > 0 && (
+                  <ul className="mt-1.5 text-[11px] text-slate-500 list-disc pl-4">
+                    {r.detalii.map((d) => (
+                      <li key={d} className={d.startsWith("Cache: NU") ? "text-amber-700" : ""}>
+                        {d}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {r.key_hint && (
                   <p className="text-[11px] text-slate-400 mt-1 font-mono">
                     cheie: {r.key_hint}

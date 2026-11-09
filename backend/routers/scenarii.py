@@ -25,7 +25,6 @@ class EstimateRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     estimate_id: str
-    engine: str = "claude"  # "claude" (credite API) | "groq" (gratuit)
 
 
 @router.post("/scenarii/estimate")
@@ -60,13 +59,13 @@ async def estimate_scenarii(
     return {"estimate_id": estimate_id, **est}
 
 
-async def _run_job(job_id: str, input_path: Path, orig_filename: str, engine: str) -> None:
+async def _run_job(job_id: str, input_path: Path, orig_filename: str) -> None:
     def _on_step(step: str) -> None:
         jobs.set_step(job_id, step)
 
     xlsx_path: Path | None = None
     try:
-        xlsx_path, summary = await run_scenarii_pipeline(input_path, engine=engine, on_step=_on_step)
+        xlsx_path, summary = await run_scenarii_pipeline(input_path, on_step=_on_step)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"Scenarii_{Path(orig_filename).stem}_{timestamp}.xlsx"
         job = jobs.get_job(job_id) or {}
@@ -81,12 +80,11 @@ async def _run_job(job_id: str, input_path: Path, orig_filename: str, engine: st
             filename=filename,
             xlsx_b64=xlsx_b64,
             summary=summary,
-            engine=engine,
             storage_path=storage_path,
         )
     except Exception as e:
         logger.error("scenarii job %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
-        jobs.fail(job_id, str(e) or type(e).__name__)
+        jobs.esueaza(job_id, e)
     finally:
         input_path.unlink(missing_ok=True)
         if xlsx_path is not None:
@@ -99,9 +97,7 @@ async def generate_scenarii(
     background_tasks: BackgroundTasks,
     user=Depends(cere_modul("scenarii")),
 ):
-    """Pas 2: pornește generarea (Claude sau Groq gratuit) pe fișierul din estimare."""
-    if req.engine not in ("claude", "groq"):
-        raise HTTPException(status_code=422, detail="engine trebuie să fie 'claude' sau 'groq'")
+    """Pas 2: pornește generarea pe fișierul din estimare."""
 
     est = jobs.pop_estimate(req.estimate_id)
     if est is None:
@@ -110,14 +106,13 @@ async def generate_scenarii(
             detail="Estimarea a expirat sau serverul a fost repornit — reîncarcă fișierul.",
         )
 
-    key_env = "ANTHROPIC_API_KEY" if req.engine == "claude" else "GROQ_API_KEY"
-    if not os.environ.get(key_env):
+    if not os.environ.get("ANTHROPIC_API_KEY"):
         Path(est["file_path"]).unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"{key_env} lipsă pe server")
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY lipsă pe server")
 
     user_email = getattr(user, "email", None) or "anonymous"
-    job_id = jobs.create_job(user_email)
-    background_tasks.add_task(_run_job, job_id, Path(est["file_path"]), est["filename"], req.engine)
+    job_id = jobs.create_job(user_email, "scenarii")
+    background_tasks.add_task(_run_job, job_id, Path(est["file_path"]), est["filename"])
     return {"job_id": job_id}
 
 

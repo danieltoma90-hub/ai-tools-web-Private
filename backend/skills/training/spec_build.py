@@ -8,13 +8,11 @@ documentul clientului. Ce nu scrie in document nu intra in training.
 """
 from __future__ import annotations
 
-import os
 
 from pathlib import Path
 
 from .spec_extract import MAX_SPEC_CHARS, _parse_json, extract_docx_text
 
-MODEL = os.environ.get("TRAINING_CLAUDE_MODEL", "claude-sonnet-4-6")
 
 MAX_MODULE = 12
 MIN_ORE_MODUL = 0.5
@@ -105,7 +103,7 @@ def _curata_modul(brut: dict, nr: int) -> dict | None:
 
 async def construieste_module_din_spec(spec_path: Path, api_key: str) -> list[dict]:
     """Modulele de training deduse din specificatie. Ridica eroare daca nu iese nimic."""
-    from anthropic import AsyncAnthropic
+    import claude
 
     text = extract_docx_text(spec_path)
     if not text.strip():
@@ -116,17 +114,14 @@ async def construieste_module_din_spec(spec_path: Path, api_key: str) -> list[di
     if len(text) > MAX_SPEC_CHARS:
         text = text[:MAX_SPEC_CHARS] + "\n[...specificație trunchiată...]"
 
-    client = AsyncAnthropic(api_key=api_key)
-    resp = await client.messages.create(
-        model=MODEL,
-        max_tokens=8192,
-        messages=[{
-            "role": "user",
-            "content": f"{_prompt()}\n\n---SPECIFICAȚIE CLIENT---\n{text}",
-        }],
+    raspuns = await claude.raspunde(
+        f"{_prompt()}\n\n---SPECIFICAȚIE CLIENT---\n{text}",
+        # Programul de 12 module încape în câteva mii de tokeni; restul e pentru gândire.
+        max_tokens=32000,
+        efort="medium",
     )
 
-    brute = _parse_json(resp.content[0].text).get("module", [])
+    brute = _parse_json(raspuns.text).get("module", [])
     module = []
     for b in brute[:MAX_MODULE]:
         if not isinstance(b, dict):

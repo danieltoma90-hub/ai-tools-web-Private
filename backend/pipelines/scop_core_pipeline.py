@@ -935,7 +935,7 @@ async def run_scope_document_pipeline(
 # Spre deosebire de `/propune`, aici NU intervine niciun model: minutele noastre există deja
 # ca JSON structurat (secțiuni, buline, pași următori), iar confruntarea cu documentul de scop
 # se face pe coduri de flux și pe cuvintele catalogului Charisma. Fără model înseamnă fără
-# cotă Mistral, fără așteptare și, mai ales, fără riscul ca o promisiune să fie reformulată:
+# cost, fără așteptare și, mai ales, fără riscul ca o promisiune să fie reformulată:
 # fiecare punct din raport e un extras, cuvânt cu cuvânt, din minută.
 # --------------------------------------------------------------------------------------
 

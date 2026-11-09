@@ -6,6 +6,7 @@ import pytest
 from docx import Document as WordDocument
 
 from pipelines.mockup_pipeline import run_mockup_pipeline, estimate_mockup_job
+import claude
 from skills.mockup import ai_enricher
 from skills.mockup.parser import ScreenSpec, Section, FilterField
 
@@ -43,7 +44,7 @@ def _mini_spec() -> tuple[ScreenSpec, dict]:
 
 async def test_enrich_merges_overview_and_descriptions():
     spec, descriptions = _mini_spec()
-    with patch("skills.mockup.ai_enricher.llm_client.chat", new=AsyncMock(return_value=_ENRICH_RESPONSE)):
+    with patch("claude.raspunde", new=AsyncMock(return_value=claude.Raspuns(_ENRICH_RESPONSE, "end_turn"))):
         merged = await ai_enricher.enrich(spec, descriptions)
     assert merged["prezentare_generala"]["scop"].startswith("Ecranul permite")
     assert merged["descrieri_filtre"]["Data"] == "Data de referință pentru calculul stocului FIFO."
@@ -57,7 +58,7 @@ async def test_enrich_ignores_unknown_fields():
         "prezentare_generala": {"scop": "x", "flux": [], "legaturi": ""},
         "descrieri_filtre": {"CampInexistent": "nu trebuie sa apara"},
     })
-    with patch("skills.mockup.ai_enricher.llm_client.chat", new=AsyncMock(return_value=response)):
+    with patch("claude.raspunde", new=AsyncMock(return_value=claude.Raspuns(response, "end_turn"))):
         merged = await ai_enricher.enrich(spec, descriptions)
     assert "CampInexistent" not in merged["descrieri_filtre"]
 
@@ -66,32 +67,36 @@ async def test_enrich_ignores_unknown_fields():
 async def test_pipeline_with_ai_failure_falls_back_deterministic():
     with patch(
         "pipelines.mockup_pipeline.ai_enricher.enrich",
-        new=AsyncMock(side_effect=RuntimeError("LLM down")),
+        new=AsyncMock(side_effect=RuntimeError("ANTHROPIC_API_KEY lipsă pe server")),
     ):
-        docx_path, html, ai_used = await run_mockup_pipeline(SAMPLE, use_ai=True)
+        docx_path, html, ai_used, motiv = await run_mockup_pipeline(SAMPLE)
     try:
         assert ai_used is False
         assert docx_path.exists()
+        # documentul iese oricum, dar motivul urcă — nu mai e o degradare tăcută
+        assert "ANTHROPIC_API_KEY" in motiv
     finally:
         docx_path.unlink(missing_ok=True)
 
 
 @pytest.mark.skipif(not SAMPLE.exists(), reason="fișierul exemplu lipsește local")
-def test_estimate_mockup_job_returns_budget_info():
+def test_estimate_mockup_job_fara_buget_gratuit():
     est = estimate_mockup_job(SAMPLE)
     assert est["est_tokens"] > 0
     assert est["est_minutes"] == 1
-    assert isinstance(est["fits_budget"], bool)
+    assert est["fits_budget"] is True  # nu mai există cotă zilnică gratuită
 
 
 @pytest.mark.skipif(not SAMPLE.exists(), reason="fișierul exemplu lipsește local")
 async def test_mockup_pipeline_smoke_docx():
-    docx_path, html, ai_used = await run_mockup_pipeline(SAMPLE)
+    with patch("claude.raspunde",
+               new=AsyncMock(return_value=claude.Raspuns(_ENRICH_RESPONSE, "end_turn"))):
+        docx_path, html, ai_used, motiv = await run_mockup_pipeline(SAMPLE)
     try:
         assert docx_path.exists()
         assert docx_path.suffix == ".docx"
         assert "<html" in html.lower()
-        assert ai_used is False
+        assert ai_used is True and motiv == ""
     finally:
         docx_path.unlink(missing_ok=True)
 
@@ -109,7 +114,7 @@ async def test_enrich_tolerates_null_overview_fields():
         "prezentare_generala": {"scop": None, "flux": [None, "Pas valid"], "legaturi": None},
         "descrieri_filtre": {},
     })
-    with patch("skills.mockup.ai_enricher.llm_client.chat", new=AsyncMock(return_value=response)):
+    with patch("claude.raspunde", new=AsyncMock(return_value=claude.Raspuns(response, "end_turn"))):
         merged = await ai_enricher.enrich(spec, descriptions)
     pg = merged["prezentare_generala"]
     assert pg["scop"] == ""

@@ -9,13 +9,11 @@ atasam modulului potrivit, marcate distinct fata de continutul standard.
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 
 from docx import Document
 
-MODEL = os.environ.get("TRAINING_CLAUDE_MODEL", "claude-sonnet-4-6")
 MAX_SPEC_CHARS = 120_000   # specificatiile trec de 150k; taiem cu marja de siguranta
 
 
@@ -149,7 +147,7 @@ async def extrage_particularitati(
     Erorile de provider urca la apelant: el stie daca specificatia e obligatorie
     (Productie) sau doar un plus (CORE) si decide daca opreste sau avertizeaza.
     """
-    from anthropic import AsyncAnthropic
+    import claude
 
     text = extract_docx_text(spec_path)
     if not text.strip():
@@ -157,18 +155,14 @@ async def extrage_particularitati(
     if len(text) > MAX_SPEC_CHARS:
         text = text[:MAX_SPEC_CHARS] + "\n[...specificație trunchiată...]"
 
-    client = AsyncAnthropic(api_key=api_key)
-    resp = await client.messages.create(
-        model=MODEL,
-        # 25 de particularitati cu detaliu incap in ~2500 de tokeni; lasam
-        # marja dubla, ca raspunsul sa nu se taie la mijlocul JSON-ului.
-        max_tokens=8192,
-        messages=[{
-            "role": "user",
-            "content": f"{_prompt(module_nume)}\n\n---SPECIFICAȚIE CLIENT---\n{text}",
-        }],
+    raspuns = await claude.raspunde(
+        f"{_prompt(module_nume)}\n\n---SPECIFICAȚIE CLIENT---\n{text}",
+        # 25 de particularitati incap in ~2500 de tokeni; restul limitei e
+        # pentru gandire, care pe Opus 5.5 se numara tot aici.
+        max_tokens=32000,
+        efort="medium",
     )
-    data = _parse_json(resp.content[0].text)
+    data = _parse_json(raspuns.text)
     items = data.get("particularitati", [])
 
     out = []

@@ -97,15 +97,21 @@ SUPABASE_URL=https://zjmtqitymnrmmmsfoolp.supabase.co
 SUPABASE_SERVICE_KEY=<service role key>
 ANTHROPIC_API_KEY=<cheia Anthropic>
 FRONTEND_URL=https://ai-tools-web-three.vercel.app
+# opționale — comutatoare fără deploy (vezi backend/claude.py)
+CLAUDE_MODEL=claude-opus-5-5        # implicit; alt model = schimbare fără cod
+CLAUDE_FALLBACKS=default            # „off” dacă CLAUDE_MODEL nu acceptă fallback (ex. claude-sonnet-4-6)
+ADMIN_EMAILS=daniel.toma@totalsoft.ro
 ```
 
 ## Deploy
 
 ### Frontend (Vercel)
+Se publică **automat** la push pe `master` (repo conectat la Vercel, Root Directory = `frontend`;
+confirmat 06.11.2026: un commit a apărut pe producție în ~100 s, fără `vercel --prod`). Verifică
+pe producție cu un text care există doar în commit-ul nou, nu presupune. Variabilele de mediu:
 ```bash
 cd frontend
 printf "valoare" | vercel env add NUME_VAR production   # fără BOM!
-vercel --prod
 ```
 
 ### Backend (Render)
@@ -133,17 +139,20 @@ Verificare rapidă: `curl -H "apikey: <cheia>" "https://zjmtqitymnrmmmsfoolp.sup
 
 ## Funcționalități implementate
 - [x] Login/logout cu cookie HttpOnly
-- [x] Middleware auth (JWT expiry check)
+- [x] Proxy auth — `frontend/proxy.ts` (fostul `middleware.ts`, redenumit pentru Next 16; funcția exportată e `proxy`): verificare de expirare JWT pentru rutare
 - [x] Proxy server-side pentru backend calls
 - [x] Pagina Minută (upload Excel → Word + preview HTML)
 - [x] Grupuri de utilizatori și acces pe module (`backend/acces.py`, `routers/grupuri.py`, pagina `/grupuri`, doar admini): un grup per utilizator; „Echipa ERP” = toate modulele (`*`, și cele viitoare), „TotalSoft” = doar Minută (grup implicit pentru utilizatorii noi). Configurația e în Supabase Storage, bucket privat `config`, fișierul `grupuri.json`; la prima pornire, utilizatorii activi (conectați cel puțin o dată) intră în Echipa ERP. Se reconstruiește DOAR la 404 — o eroare de Storage nu suprascrie configurația. Admini = env `ADMIN_EMAILS` (implicit daniel.toma@totalsoft.ro). Fiecare rută de tool cere modulul ei (`cere_modul`), Repository/Acasă arată doar documentele modulelor permise; meniul și paginile se filtrează din `/api/acces/eu`.
-- [x] Minută — metoda din minutele VEDAŞ (AI_Claude): transcrierea pregătită în blocuri „[hh:mm:ss] Vorbitor: text” (`skills/minuta/scripts/transcript_prep.py`, −52–55% text), reguli de redactare (`prompts/reguli_*.md`), opțiuni în pagină: marcaje [DEDUCȚIE]/[COMPLETARE]/[CLARIFICARE NEEDED] cu legendă, limba RO/EN, structura Fit-Gap pe formatul F.05 (`prompts/extract_fitgap.md`, `scripts/fitgap.py`), detaliu complet (16.000 tokeni). Varianta Free (Groq) a fost scoasă din site pe 16.10.2026 (ruta `/minuta-free` și UI); `pipelines/minuta_free_pipeline.py` rămâne în cod, inactiv. Verificarea cu dicționare Hunspell NU e pe site: turca are nevoie de ~700 MB RAM, Render free are 512 MB
+- [x] Minută — metoda din minutele VEDAŞ (AI_Claude): transcrierea pregătită în blocuri „[hh:mm:ss] Vorbitor: text” (`skills/minuta/scripts/transcript_prep.py`, −52–55% text), reguli de redactare (`prompts/reguli_*.md`), opțiuni în pagină: marcaje [DEDUCȚIE]/[COMPLETARE]/[CLARIFICARE NEEDED] cu legendă, limba RO/EN, structura Fit-Gap pe formatul F.05 (`prompts/extract_fitgap.md`, `scripts/fitgap.py`), detaliu complet. Cele 4–5 extrageri împart prefixul context + transcript, cu cache (vezi mai jos). Varianta Free (Groq) a fost scoasă din site pe 16.10.2026, iar codul ei șters pe 09.11.2026. Verificarea cu dicționare Hunspell NU e pe site: turca are nevoie de ~700 MB RAM, Render free are 512 MB
 - [x] Pagina Mockup (upload Excel → Word + HTML)
 - [x] Pagina Scenarii (upload Excel → Excel output)
 - [x] Pagina Repository (istoricul documentelor)
 - [x] Invite useri (email link, doar @totalsoft.ro)
 - [x] Auth callback pentru link-uri invite
 - [x] „Am uitat parola” (16.10.2026): buton pe /login → `/login/parola-uitata` (email) → `/api/auth/recover` (Supabase `/auth/v1/recover`, `redirect_to` = `/auth/callback`, aceeași adresă aprobată ca la invitații; același mesaj și pentru adresele fără cont) → linkul din email ajunge în `/auth/callback` cu `type=recovery` → `/auth/parola-noua` → `/api/auth/reset-password` (`PUT /auth/v1/user` cu jetonul din link, min. 8 caractere) → intră direct în cont. Linkurile expirate (resetare sau invitație) duc la „Am uitat parola”. Tot așa își pot crea parola și cei invitați care n-au avut niciodată una. Textul emailului se schimbă din Supabase → Authentication → Emails.
+- [x] Activare/dezactivare conturi (06.11.2026): pagina „Utilizatori și grupuri” (`/grupuri`, meniul „Utilizatori”), doar admini. Dezactivarea = ban nativ Supabase (`ban_duration`), deci contul e refuzat la login și la reînnoirea sesiunii; `auth.verify_token` respinge și tokenurile emise înainte de blocare și golește cache-ul de sesiuni (`uita_utilizatorul`). Nu te poți dezactiva singur, iar adminii (ADMIN_EMAILS) nu se dezactivează din UI. Login, proxy și pagina de parolă nouă arată „cont dezactivat”, nu „parolă incorectă”.
+- [x] **Un singur drum spre Claude** (09.11.2026) — `backend/claude.py`, folosit de TOATE modulele (Minută, Scenarii, Mockup, Scop CORE, Training, „On this day”). Model `claude-opus-5-5`, efort explicit per apel, streaming (răspunsurile lungi cu gândire depășesc pragul SDK-ului pentru apeluri clasice), fallback la refuz pe server (`fallbacks: "default"`), răspunsul citit după tipul blocului (pe Opus 5.5 gândirea e mereu pornită și vine prima — `content[0].text` ar fi gol). Variantele gratuite (Groq, Mistral, `llm_client.py`) au fost scoase; Mockup și Scop CORE rulează acum tot pe Claude. **Minuta**: prefixul comun (context + transcript, 44–86k tokeni pe ședințe reale) e încălzit cu `max_tokens=0` înaintea extragerilor paralele, care apoi îl citesc din cache (fără încălzire, cererile paralele plătesc toate prețul întreg). Efortul e același la toate extragerile — face parte din cheia de cache. **Scop CORE `/propune`** e job în fundal (răspunsul copiază verbatim documentul și depășea limita proxy-ului). Versiunile din `requirements.txt` sunt fixate exact (producția instala ultima versiune la fiecare build — anthropic 2.x folosește `httpx2`). Teste: `conftest.py` blochează orice apel Claude nesimulat; `test_claude.py` verifică forma cererii pe fir cu SDK-ul real.
+- [x] Erori pe înțeles + jurnal (09.11.2026): orice generare eșuată trece prin `jobs.esueaza` → erorile Claude se traduc (`ai_errors.mesaj_pentru_utilizator`), cele de document își păstrează mesajul; fiecare eșec intră în `jurnal.py` (Storage `config/jurnal_erori.json`, ultimele 200), vizibil adminului în pagina Utilizatori. Diagnosticul din Cont trece pe același drum ca generările și face și o probă de cache.
 
 ## Probleme rezolvate (să nu se repete)
 

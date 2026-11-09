@@ -13,18 +13,17 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 
 import httpx
 
+import claude
 from storage import cache_citeste, cache_scrie
 
 WIKIPEDIA = "https://en.wikipedia.org/api/rest_v1/feed/onthisday/selected"
 # Wikipedia respinge cererile fara user-agent identificabil.
 UA = "AI-Tools-Web/1.0 (training si minute pentru consultanti ERP)"
 
-MODEL = os.environ.get("ISTORIE_CLAUDE_MODEL", "claude-sonnet-4-6")
 MAX_EVENIMENTE = 6
 CACHE_VERSIUNE = "v1"
 
@@ -71,24 +70,16 @@ Evenimentele:
 
 
 async def _selectie_claude(evenimente: list[dict], api_key: str) -> list[dict]:
-    from anthropic import AsyncAnthropic
-
     lista = "\n".join(
         f"[{i}] {e['an']}: {e['text']}" for i, e in enumerate(evenimente)
     )
-    client = AsyncAnthropic(api_key=api_key)
-    resp = await client.messages.create(
-        model=MODEL,
-        max_tokens=256,
-        messages=[{
-            "role": "user",
-            "content": PROMPT.format(maxim=MAX_EVENIMENTE, lista=lista),
-        }],
+    # O alegere dintr-o listă scurtă: efort mic. Limita de tokeni lasă loc și
+    # gândirii — la 256, cât era înainte, gândirea ar fi consumat-o toată.
+    raspuns = await claude.raspunde(
+        PROMPT.format(maxim=MAX_EVENIMENTE, lista=lista),
+        max_tokens=4096, efort="low",
     )
-
-    text = resp.content[0].text
-    bloc = re.search(r"\{[\s\S]*\}", text)
-    date = json.loads(bloc.group(0) if bloc else text)
+    date = claude.parse_json(raspuns.text)
 
     alese = []
     for i in date.get("alese", [])[:MAX_EVENIMENTE]:

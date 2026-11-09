@@ -26,7 +26,6 @@ class EstimateRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     estimate_id: str
-    use_ai: bool = True
 
 
 @router.post("/mockup/estimate")
@@ -61,13 +60,13 @@ async def estimate_mockup(
     return {"estimate_id": estimate_id, **est}
 
 
-async def _run_job(job_id: str, input_path: Path, orig_filename: str, use_ai: bool) -> None:
+async def _run_job(job_id: str, input_path: Path, orig_filename: str) -> None:
     def _on_step(step: str) -> None:
         jobs.set_step(job_id, step)
 
     docx_path: Path | None = None
     try:
-        docx_path, html, ai_used = await run_mockup_pipeline(input_path, use_ai=use_ai, on_step=_on_step)
+        docx_path, html, ai_used, motiv_fara_ai = await run_mockup_pipeline(input_path, on_step=_on_step)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{Path(orig_filename).stem}_{timestamp}.docx"
         job = jobs.get_job(job_id) or {}
@@ -83,11 +82,12 @@ async def _run_job(job_id: str, input_path: Path, orig_filename: str, use_ai: bo
             docx_b64=docx_b64,
             html=html,
             ai_used=ai_used,
+            motiv_fara_ai=motiv_fara_ai,
             storage_path=storage_path,
         )
     except Exception as e:
         logger.error("mockup job %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
-        jobs.fail(job_id, str(e) or type(e).__name__)
+        jobs.esueaza(job_id, e)
     finally:
         input_path.unlink(missing_ok=True)
         if docx_path is not None:
@@ -100,24 +100,17 @@ async def generate_mockup(
     background_tasks: BackgroundTasks,
     user=Depends(cere_modul("mockup")),
 ):
-    """Pas 2: pornește generarea (cu sau fără AI) pe fișierul din estimare."""
+    """Pas 2: pornește generarea pe fișierul din estimare."""
     est = jobs.pop_estimate(req.estimate_id)
     if est is None:
         raise HTTPException(
             status_code=404,
             detail="Estimarea a expirat sau serverul a fost repornit — reîncarcă fișierul.",
         )
-    if req.use_ai and not est.get("fits_budget", False):
-        Path(est["file_path"]).unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=422,
-            detail="Fișierul necesită mai mulți tokeni decât bugetul zilnic gratuit disponibil. "
-                   "Continuă fără AI, revino mâine sau mărește LLM_DAILY_TOKEN_BUDGET.",
-        )
 
     user_email = getattr(user, "email", None) or "anonymous"
-    job_id = jobs.create_job(user_email)
-    background_tasks.add_task(_run_job, job_id, Path(est["file_path"]), est["filename"], req.use_ai)
+    job_id = jobs.create_job(user_email, "mockup")
+    background_tasks.add_task(_run_job, job_id, Path(est["file_path"]), est["filename"])
     return {"job_id": job_id}
 
 

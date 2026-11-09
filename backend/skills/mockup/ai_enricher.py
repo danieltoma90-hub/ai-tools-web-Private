@@ -1,13 +1,14 @@
 """Imbogatire AI a documentatiei de ecran: overview + descrieri mai bune.
 
-Un singur apel LLM per mockup. Orice esec => se pastreaza descrierile
-deterministe (apelantul decide fallback-ul).
+Un singur apel Claude per mockup. Orice esec => se pastreaza descrierile
+deterministe (apelantul decide fallback-ul si spune motivul).
 """
-import llm_client
+import claude
 from .parser import ScreenSpec
 
 OUT_TOKENS = 3000
 CALL_OVERHEAD_TOKENS = 900
+CHARS_PER_TOKEN = 2.2  # romana: ~2,2 caractere pe token
 
 _SYSTEM = """Ești analist de business senior pentru Charisma ERP. Primești structura unui ecran \
 (filtre, butoane, coloane, observații) și descrierile existente ale câmpurilor.
@@ -52,7 +53,7 @@ def _spec_digest(spec: ScreenSpec, descriptions: dict) -> str:
 
 def estimate_enrich_tokens(spec: ScreenSpec, descriptions: dict) -> int:
     return (
-        llm_client.estimate_tokens(_spec_digest(spec, descriptions))
+        round(len(_spec_digest(spec, descriptions)) / CHARS_PER_TOKEN)
         + CALL_OVERHEAD_TOKENS
         + OUT_TOKENS
     )
@@ -60,8 +61,11 @@ def estimate_enrich_tokens(spec: ScreenSpec, descriptions: dict) -> int:
 
 async def enrich(spec: ScreenSpec, descriptions: dict) -> dict:
     """Returneaza un dict descriptions nou, cu prezentare_generala + descrieri imbunatatite."""
-    content = await llm_client.chat(_SYSTEM, _spec_digest(spec, descriptions), max_tokens=OUT_TOKENS)
-    data = llm_client.parse_json(content)
+    # Descrieri de ecran: sarcina usoara, efort mic. Limita lasa loc si gandirii.
+    raspuns = await claude.raspunde(
+        _spec_digest(spec, descriptions), system=_SYSTEM, max_tokens=16000, efort="low",
+    )
+    data = claude.parse_json(raspuns.text)
 
     merged = dict(descriptions)
     pg = data.get("prezentare_generala")

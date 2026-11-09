@@ -12,6 +12,7 @@ import {
   type ScopCoreSummary,
 } from "@/lib/api";
 import { isColdStartError, pollJob } from "@/lib/poll";
+import { ETAPE_SCOP_CORE } from "@/lib/progres";
 import ElementCard, { type ElementUI } from "./ElementCard";
 import { SECTIUNI_CORE } from "./sectiuniCore";
 
@@ -115,7 +116,11 @@ export default function CapitolModeForm({ onGenerated }: { onGenerated: () => vo
     setAnaliza("loading");
     try {
       const storagePath = await incarcaFisier(file);
-      const { elemente: propuse } = await postScopCorePropune(storagePath, file.name);
+      // Propunerea rulează în fundal: răspunsul copiază verbatim documentul și
+      // poate depăși limita de timp a unei cereri obișnuite.
+      const { job_id } = await postScopCorePropune(storagePath, file.name);
+      const job = await pollJob(() => getScopCoreJob(job_id), { cancelled: () => false });
+      const propuse = job?.elemente ?? [];
       setElemente(propuse.map((el) => ({ ...el, id: idNou() })));
       setAnaliza("done");
     } catch (err) {
@@ -360,8 +365,7 @@ export default function CapitolModeForm({ onGenerated }: { onGenerated: () => vo
                   Elemente propuse ({elemente.length})
                 </h3>
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1.5 leading-relaxed">
-                  Modelul care propune plasarea e mic și inconsecvent — poate plasa altfel aceleași
-                  elemente la o rulare următoare. Verifică <strong>plasarea</strong> fiecărui element
+                  Plasarea e propusă de model. Verifică <strong>plasarea</strong> fiecărui element
                   înainte de generare: o plasare greșită înseamnă o cerință sub modulul greșit, într-o
                   ofertă comercială.
                 </p>
@@ -466,7 +470,12 @@ export default function CapitolModeForm({ onGenerated }: { onGenerated: () => vo
       )}
 
       {state === "processing" && (
-        <ProcessingSpinner label={progress} onCancel={renuntaLaAsteptare} step={step} />
+        <ProcessingSpinner
+          label={progress}
+          onCancel={renuntaLaAsteptare}
+          etape={ETAPE_SCOP_CORE}
+          step={step}
+        />
       )}
 
       {state === "done" && result && (

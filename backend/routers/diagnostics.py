@@ -1,20 +1,29 @@
-"""Diagnostic pentru cheile de API ale providerilor.
+"""Diagnostic pentru cheia Claude — singurul furnizor AI al site-ului.
 
-Face cate un apel minimal (max_tokens=1, cost neglijabil) si raporteaza starea
-reala a fiecarei chei. NU expune cheia — doar un indiciu (primele/ultimele
-caractere), ca sa se poata verifica daca pe server e cheia corecta.
+Nu e un simplu ping: cererile trec pe ACELAȘI drum ca generările reale
+(`claude.py` — modelul, efortul, fallback-ul, antetul beta), deci un „funcțional"
+aici înseamnă că și minuta, scenariile și restul vor merge. Proba de cache
+verifică, pe lângă, că încălzirea cu `max_tokens=0` și citirea din cache merg
+pe contul real. Costul: sub un cent per verificare.
+
+NU expune cheia — doar un indiciu (primele/ultimele caractere), ca să se poată
+verifica dacă pe server e cheia corectă.
 """
 import os
 
-import httpx
 from fastapi import APIRouter, Depends
 
+import claude
 from auth import verify_token
-from llm_client import _model
 
 router = APIRouter()
 
-TIMEOUT = 30.0
+# ~1.000 de tokeni: peste pragul minim de cache al modelelor curente (512).
+_PREFIX_PROBA = (
+    "Acest text există doar ca să verifice cache-ul de prompt al serverului. "
+    "Un cache e o potrivire de prefix: dacă două cereri încep cu aceiași octeți, "
+    "a doua citește partea comună din cache, la o fracțiune din preț. "
+) * 24
 
 
 def _hint(key: str) -> str:
@@ -45,82 +54,64 @@ def _classify(status: int, body: dict) -> tuple[str, str]:
         )
     if status == 429:
         return "limita_atinsa", "Limita de utilizare a fost atinsă (rate limit / cotă zilnică)."
-    if status == 403 or "tier_not_allowed" in low or "model subscription required" in low:
+    if status == 403:
         return "model_nepermis", (
-            "Modelul nu e disponibil pe nivelul de abonament curent. "
-            "Configurează MISTRAL_MODEL pe server cu un model disponibil pentru abonamentul tău."
+            "Cheia nu are acces la modelul configurat. Verifică în consola Anthropic "
+            "accesul organizației, sau pune alt model în CLAUDE_MODEL pe server."
         )
     if status == 404 and "model" in low:
         return "model_indisponibil", f"Cheia e validă, dar modelul nu e disponibil: {msg}"
     return "eroare", msg or f"Răspuns neașteptat (HTTP {status})."
 
 
-async def _check_anthropic(client: httpx.AsyncClient) -> dict:
+def _din_exceptie(e: Exception) -> tuple[str, str]:
+    if isinstance(e, claude.RefuzModel):
+        return "eroare", f"Cererea de test a fost refuzată (filtru: {e.categorie})."
+    if isinstance(e, RuntimeError) and "ANTHROPIC_API_KEY" in str(e):
+        return "lipsa", "ANTHROPIC_API_KEY nu e setată pe server."
+    status = getattr(e, "status_code", None)
+    if status is not None:
+        corp = getattr(e, "body", None)
+        return _classify(status, corp if isinstance(corp, dict) else {"message": str(e)})
+    return "eroare", f"Nu s-a putut contacta API-ul: {type(e).__name__}: {e}"
+
+
+async def _check_anthropic() -> dict:
     key = os.environ.get("ANTHROPIC_API_KEY", "")
+    baza = {"provider": "Claude (Anthropic)", "configured": bool(key)}
     if not key:
-        return {"provider": "Claude (Anthropic)", "configured": False,
-                "state": "lipsa", "message": "ANTHROPIC_API_KEY nu e setată pe server."}
+        return {**baza, "state": "lipsa", "message": "ANTHROPIC_API_KEY nu e setată pe server."}
+    baza["key_hint"] = _hint(key)
+
+    detalii = [
+        f"Model: {claude.model()}",
+        f"Fallback la refuz: {'activ' if claude.fallback_activ() else 'oprit'}",
+    ]
     try:
-        r = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": key, "anthropic-version": "2023-06-01",
-                     "content-type": "application/json"},
-            json={"model": "claude-sonnet-4-6", "max_tokens": 1,
-                  "messages": [{"role": "user", "content": "hi"}]},
-        )
-        state, message = _classify(r.status_code, r.json() if r.content else {})
+        r = await claude.raspunde("Răspunde doar cu: OK", max_tokens=2048, efort="low")
+        detalii.append(f"Răspuns de test: {r.text.strip()[:40] or '(gol)'}")
     except Exception as e:
-        state, message = "eroare", f"Nu s-a putut contacta API-ul: {type(e).__name__}"
-    return {"provider": "Claude (Anthropic)", "configured": True,
-            "key_hint": _hint(key), "state": state, "message": message}
+        state, message = _din_exceptie(e)
+        return {**baza, "state": state, "message": message, "detalii": detalii}
 
-
-async def _check_groq(client: httpx.AsyncClient) -> dict:
-    key = os.environ.get("GROQ_API_KEY", "")
-    if not key:
-        return {"provider": "Groq (gratuit)", "configured": False,
-                "state": "lipsa", "message": "GROQ_API_KEY nu e setată pe server."}
+    # Cache: încălzire, apoi o cerere care ar trebui să citească prefixul.
     try:
-        r = await client.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json={"model": "openai/gpt-oss-120b", "max_tokens": 1,
-                  "messages": [{"role": "user", "content": "hi"}]},
+        await claude.incalzeste_cache(_PREFIX_PROBA, efort="low")
+        r = await claude.raspunde(
+            "Răspunde doar cu: OK", max_tokens=2048, efort="low", prefix_cache=_PREFIX_PROBA,
         )
-        state, message = _classify(r.status_code, r.json() if r.content else {})
-    except Exception as e:
-        state, message = "eroare", f"Nu s-a putut contacta API-ul: {type(e).__name__}"
-    return {"provider": "Groq (gratuit)", "configured": True,
-            "key_hint": _hint(key), "state": state, "message": message}
-
-
-async def _check_mistral(client: httpx.AsyncClient) -> dict:
-    key = os.environ.get("MISTRAL_API_KEY", "")
-    if not key:
-        return {"provider": "Mistral (mockup)", "configured": False,
-                "state": "lipsa", "message": "MISTRAL_API_KEY nu e setată pe server."}
-    try:
-        r = await client.post(
-            "https://api.mistral.ai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json={"model": _model(),
-                  "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]},
+        citit = getattr(r.usage, "cache_read_input_tokens", 0) or 0
+        detalii.append(
+            f"Cache: funcționează ({citit} tokeni citiți din cache)" if citit
+            else "Cache: NU a citit nimic — generările plătesc transcriptul întreg"
         )
-        state, message = _classify(r.status_code, r.json() if r.content else {})
     except Exception as e:
-        state, message = "eroare", f"Nu s-a putut contacta API-ul: {type(e).__name__}"
-    return {"provider": "Mistral (mockup)", "configured": True,
-            "key_hint": _hint(key), "state": state, "message": message}
+        detalii.append(f"Cache: proba a eșuat ({_din_exceptie(e)[1]})")
+
+    return {**baza, "state": "ok", "message": "Cheia funcționează.", "detalii": detalii}
 
 
 @router.get("/diagnostics/providers")
 async def check_providers(user=Depends(verify_token)):
-    """Starea reală a cheilor de API — un apel minimal per provider."""
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        return {
-            "providers": [
-                await _check_anthropic(client),
-                await _check_groq(client),
-                await _check_mistral(client),
-            ]
-        }
+    """Starea reală a cheii Claude, pe drumul generărilor reale."""
+    return {"providers": [await _check_anthropic()]}

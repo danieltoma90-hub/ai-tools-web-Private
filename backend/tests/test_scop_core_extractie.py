@@ -7,37 +7,39 @@ are voie să introducă o denumire de flux Charisma în datele întoarse — vez
 `test_denumire_charisma_inventata_de_model_nu_ajunge_in_rezultat`, testul
 care probează exact asta.
 
-Toate testele lucrează pe răspunsuri de model SIMULATE, injectate la nivelul
-de transport HTTP al lui `llm_client` (`llm_client.TRANSPORT`, un
-`httpx.MockTransport`) — fără niciun apel de rețea real. Acesta e seam-ul
-comun al repo-ului pentru asta, vezi `test_llm_client.py`: modulul nu mai
-are apeluri proprii `_call_groq`/`_call_claude` de monkeypatch-uit direct.
+Toate testele lucrează pe răspunsuri de model SIMULATE, injectate în locul lui
+`claude.raspunde` — drumul comun spre Claude — fără niciun apel de rețea real.
+Forma cererii pe fir (SDK-ul real) e verificată separat, în test_claude.py.
 """
 from __future__ import annotations
 
 import json
 
-import httpx
 import pytest
 from docx import Document
 
-import llm_client
+import claude
 from skills.scop_core import extractie
 from skills.scop_core.charisma_core import SECTIUNI
 
+# Ce întoarce Claude în testul curent; `_simuleaza` îl setează.
+_SIM: dict = {}
+
 
 @pytest.fixture(autouse=True)
-def _reset_llm_client(monkeypatch):
-    """Cheie validă implicit, fără throttle/retry de test — la fel ca în
-    `test_llm_client.py`. Testele care vor să probeze cheia lipsă o șterg
-    explicit din mediu."""
-    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
-    monkeypatch.setattr(llm_client, "MIN_CALL_INTERVAL_S", 0)
-    monkeypatch.setattr(llm_client, "RETRY_DELAYS", [0, 0, 0])
-    llm_client._usage["day"] = ""
-    llm_client._usage["tokens"] = 0
-    yield
-    llm_client.TRANSPORT = None
+def _claude_simulat(monkeypatch):
+    _SIM.clear()
+
+    async def _raspunde(intrebare, **kw):
+        captura = _SIM.get("captura")
+        if captura is not None:
+            captura["intrebare"] = intrebare
+            captura.update(kw)
+        if "eroare" in _SIM:
+            raise _SIM["eroare"]
+        return claude.Raspuns(_SIM.get("payload", ""), _SIM.get("stop", "end_turn"))
+
+    monkeypatch.setattr(claude, "raspunde", _raspunde)
 
 
 def _docx(tmp_path, paragrafe=("Text simplu despre o cerință suplimentară.",)):
@@ -49,34 +51,13 @@ def _docx(tmp_path, paragrafe=("Text simplu despre o cerință suplimentară.",)
     return p
 
 
-def _raspuns_mistral(content: str, total_tokens: int = 50) -> dict:
-    return {
-        "choices": [{"message": {"content": content}}],
-        "usage": {"total_tokens": total_tokens},
-    }
+def _simuleaza(payload: str, captura: dict | None = None, stop: str = "end_turn") -> None:
+    """Claude întoarce `payload`, oprit cu `stop`. Cu `captura`, se salvează acolo
+    întrebarea și parametrii apelului — ca să verificăm ce se trimite."""
+    _SIM.update(payload=payload, captura=captura, stop=stop)
 
 
-def _simuleaza(payload: str, captura: dict | None = None) -> None:
-    """Instalează un `MockTransport` care întoarce `payload` ca text de
-    răspuns al modelului, indiferent de conținutul cererii. Dacă i se dă
-    `captura`, salvează acolo body-ul cererii trimise — util ca să verificăm
-    ce ajunge de fapt în `system`/`user`."""
-    def handler(request: httpx.Request) -> httpx.Response:
-        if captura is not None:
-            captura["body"] = json.loads(request.content)
-            captura["headers"] = request.headers
-        return httpx.Response(200, json=_raspuns_mistral(payload))
-
-    llm_client.TRANSPORT = httpx.MockTransport(handler)
-
-
-def _simuleaza_eroare(status: int) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(status, json={"message": "eroare simulată"})
-
-    llm_client.TRANSPORT = httpx.MockTransport(handler)
-
-
+@pytest.mark.asyncio
 async def test_raspuns_bine_format_produce_elementele_asteptate(tmp_path):
     payload = json.dumps({"elemente": [
         {"titlu": "Integrare cu cântarul electronic", "text": "Cântarul trimite greutatea automat.",
@@ -174,7 +155,7 @@ async def test_json_invalid_ridica_value_error(tmp_path):
 
 
 async def test_raspuns_json_null_ridica_value_error(tmp_path):
-    """`null` e JSON sintactic valid — `llm_client.parse_json` îl întoarce ca
+    """`null` e JSON sintactic valid — parserul îl întoarce ca
     `None`, fără să ridice excepție. Fără verificarea de tip imediat după,
     `None.get("elemente")` ar pica cu `AttributeError` necontrolat, nu cu
     mesajul românesc pe care routerul îl poate arăta."""
@@ -260,7 +241,7 @@ async def test_prompt_cere_extras_verbatim_nu_reformulare():
 async def test_prompt_refera_toate_cele_zece_chei_de_sectiune():
     """Promptul e sursa constrângerii — dacă nu enumeră toate cele zece chei
     valide, modelul nu are cum să le respecte. Rulează pe mesajul `system`
-    trimis lui `llm_client.chat`: acolo trăiesc regulile, nu în mesajul
+    trimis lui Claude: acolo trăiesc regulile, nu în mesajul
     `user` (care e strict textul documentului clientului)."""
     system_prompt = extractie._construieste_system_prompt()
     for cheie in extractie.CHEI_SECTIUNI:
@@ -277,35 +258,25 @@ async def test_context_fluxuri_contine_toate_cele_47_de_coduri_dar_nu_apar_ca_te
 
 
 async def test_apelul_trimite_reguli_in_system_si_documentul_in_user(tmp_path):
-    """Cu un singur provider comun (`llm_client`), nu mai există un `engine`
-    de ales — dar rămâne de verificat CE se trimite: catalogul de fluxuri și
-    regulile de plasare trebuie să fie în mesajul `system`, iar textul
-    documentului clientului (și NUMAI el) în mesajul `user`, cu apelul cerut
-    explicit în format JSON. Această cerere de format e motivul pentru care
-    varianta veche a acestui test ("engine implicit e groq") nu mai poate fi
-    exprimată identic: nu mai există un al doilea furnizor cu care să
-    comparăm alegerea implicită — vezi și
-    `test_engine_nu_mai_este_parametru_acceptat` mai jos."""
+    """Catalogul de fluxuri și regulile de plasare stau în `system`, iar textul
+    documentului clientului (și NUMAI el) în mesajul utilizatorului."""
     captura: dict = {}
     _simuleaza(json.dumps({"elemente": []}), captura=captura)
 
     doc_path = _docx(tmp_path, paragrafe=("Paragraf unic despre o cerință suplimentară.",))
     await extractie.propune_elemente(doc_path)
 
-    body = captura["body"]
-    assert body["messages"][0]["role"] == "system"
-    assert "vanzari" in body["messages"][0]["content"]  # o cheie de secțiune, din reguli
-    assert body["messages"][1]["role"] == "user"
-    assert "Paragraf unic despre o cerință suplimentară." in body["messages"][1]["content"]
-    # regulile nu trebuie duplicate în mesajul user, nici textul in system
-    assert "Paragraf unic despre o cerință suplimentară." not in body["messages"][0]["content"]
-    assert body["response_format"] == {"type": "json_object"}
-    assert captura["headers"]["authorization"] == "Bearer test-key"
+    assert "vanzari" in captura["system"]  # o cheie de secțiune, din reguli
+    assert "Paragraf unic despre o cerință suplimentară." in captura["intrebare"]
+    # regulile nu trebuie duplicate în mesajul utilizatorului, nici textul în system
+    assert "Paragraf unic despre o cerință suplimentară." not in captura["system"]
+    assert "vanzari" not in captura["intrebare"]
 
 
+@pytest.mark.asyncio
 async def test_engine_nu_mai_este_parametru_acceptat(tmp_path):
     """Înainte, `engine="groq"|"claude"` alegea providerul. Cu un singur
-    furnizor comun (`llm_client`), parametrul a fost eliminat — nu păstrat și
+    drum comun (`claude.py`), parametrul a fost eliminat — nu păstrat și
     ignorat — tocmai ca un apel vechi care încă îl trimite să pice tare și
     vizibil (`TypeError`), nu tăcut, ca routerul (Task 5) și frontend-ul
     (Task 6) să nu poată oferi o alegere de provider care nu mai există."""
@@ -313,32 +284,13 @@ async def test_engine_nu_mai_este_parametru_acceptat(tmp_path):
         await extractie.propune_elemente(_docx(tmp_path), engine="claude")
 
 
-async def test_lipsa_cheie_mistral_ridica_mesaj_clar(tmp_path, monkeypatch):
-    """O cheie lipsă e un mod de eșec frecvent (vezi apelul real din Step 5,
-    unde GROQ_API_KEY lipsea efectiv) — trebuie să iasă ca mesaj clar în
-    română, care numește variabila de mediu, nu ca un `KeyError` brut.
-    Verificarea trăiește acum în `llm_client._api_key` (`RuntimeError`, nu
-    `ValueError` — modulul nu mai reimplementează propria verificare de
-    cheie, ci se bazează pe cea a clientului comun), dar claritatea
-    mesajului pentru utilizator rămâne."""
-    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+async def test_lipsa_cheie_anthropic_urca_cu_mesaj_clar(tmp_path):
+    """O cheie lipsă trebuie să iasă ca mesaj clar, care numește variabila de
+    mediu — nu ca un `KeyError` brut și nu înghițită."""
+    _SIM["eroare"] = RuntimeError("ANTHROPIC_API_KEY lipsă pe server")
 
-    with pytest.raises(RuntimeError, match="MISTRAL_API_KEY"):
+    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
         await extractie.propune_elemente(_docx(tmp_path))
-
-
-async def test_lipsa_groq_si_anthropic_key_nu_afecteaza_apelul(tmp_path, monkeypatch):
-    """Regresie pentru cuplarea veche: acest modul nu mai citește deloc
-    `GROQ_API_KEY`/`ANTHROPIC_API_KEY` — chiar șterse amândouă din mediu,
-    apelul trebuie să meargă normal, cât timp `MISTRAL_API_KEY` (singura
-    cheie folosită acum) e prezentă."""
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    _simuleaza(json.dumps({"elemente": []}))
-
-    rezultat = await extractie.propune_elemente(_docx(tmp_path))
-
-    assert rezultat == []
 
 
 def test_extrage_text_include_randurile_tabelului(tmp_path):
@@ -369,28 +321,26 @@ def test_extrage_text_include_randurile_tabelului(tmp_path):
     assert "Sistemul trebuie să valideze codul de bare la recepție." in text
 
 
-async def test_apelul_foloseste_max_tokens_8192(tmp_path):
-    """`text` trebuie extras verbatim — lungimea lui scalează cu documentul,
-    nu cu un rezumat. Implicitul lui `llm_client.chat` (4000) taie JSON-ul la
-    jumătate pe un document de dimensiune reală (peste ~40 de elemente) —
-    vezi raportul. Alte extractoare din acest repo cu aceeași nevoie (extras
-    integral, nu rezumat) folosesc deja 8192 — `skills/training/spec_extract.py`
-    și `skills/training/spec_build.py`."""
+async def test_apelul_lasa_loc_si_textului_verbatim_si_gandirii(tmp_path):
+    """`text` se extrage verbatim — lungimea lui scalează cu documentul. Pe
+    Opus 5.5 gândirea se numără tot în `max_tokens`, deci limita trebuie să
+    încapă ambele."""
     captura: dict = {}
     _simuleaza(json.dumps({"elemente": []}), captura=captura)
 
     await extractie.propune_elemente(_docx(tmp_path))
 
-    assert captura["body"]["max_tokens"] == 8192
+    assert captura["max_tokens"] == extractie.MAX_TOKENS_RASPUNS >= 32000
 
 
+@pytest.mark.asyncio
 async def test_raspuns_trunchiat_da_mesaj_distinct_de_document_prea_mare(tmp_path):
     """Un răspuns tăiat la mijlocul JSON-ului (depășire de `max_tokens`) nu
     trebuie confundat cu un răspuns garbage oarecare din alt motiv (ex.
     modelul refuză cererea) — utilizatorul trebuie să înțeleagă că documentul
     e prea mare pentru un singur apel, nu că extragerea a eșuat aleatoriu."""
     trunchiat = '{"elemente": [{"titlu": "X", "text": "Un text lung care se taie la mij'
-    _simuleaza(trunchiat)
+    _simuleaza(trunchiat, stop="max_tokens")
 
     with pytest.raises(ValueError, match="prea mare"):
         await extractie.propune_elemente(_docx(tmp_path))
@@ -398,8 +348,8 @@ async def test_raspuns_trunchiat_da_mesaj_distinct_de_document_prea_mare(tmp_pat
 
 async def test_raspuns_garbage_nu_trunchiat_pastreaza_mesajul_vechi(tmp_path):
     """Un răspuns care nu seamănă deloc cu JSON (ex. refuzul modelului) nu
-    trebuie etichetat drept „document prea mare” — euristica de trunchiere
-    (`_pare_trunchiat`) nu trebuie să se declanșeze pe orice eșec de parsare."""
+    trebuie etichetat drept „document prea mare” — acela vine doar dintr-o
+    oprire la `max_tokens`, nu din orice eșec de parsare."""
     _simuleaza("Ne pare rău, nu pot ajuta cu asta.")
 
     with pytest.raises(ValueError, match="nu este JSON valid"):
@@ -409,10 +359,10 @@ async def test_raspuns_garbage_nu_trunchiat_pastreaza_mesajul_vechi(tmp_path):
 async def test_document_gol_nu_apeleaza_deloc_modelul(tmp_path, monkeypatch):
     apelat = {"de_cate_ori": 0}
 
-    async def fals(system, user, max_tokens=4000, json_mode=True):
+    async def fals(intrebare, **kw):
         apelat["de_cate_ori"] += 1
-        return json.dumps({"elemente": []})
-    monkeypatch.setattr(llm_client, "chat", fals)
+        return claude.Raspuns(json.dumps({"elemente": []}), "end_turn")
+    monkeypatch.setattr(claude, "raspunde", fals)
 
     doc_gol = _docx(tmp_path, paragrafe=("   ", ""))
     rezultat = await extractie.propune_elemente(doc_gol)

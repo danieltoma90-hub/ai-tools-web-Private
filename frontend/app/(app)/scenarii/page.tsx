@@ -41,7 +41,6 @@ export default function ScenariPage() {
     filename: string;
     xlsxB64: string;
     summary: ScenariiSummary | null;
-    engine: string;
   } | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
   const cancelledRef = useRef(false);
@@ -88,17 +87,15 @@ export default function ScenariPage() {
     }
   }
 
-  async function handleGenerate(engine: "claude" | "groq") {
+  async function handleGenerate() {
     if (!estimate) return;
     setState("processing");
     setStep(null);
-    setProgressLabel(
-      engine === "claude" ? "Pornesc generarea cu Claude..." : "Pornesc generarea Free (Groq)..."
-    );
+    setProgressLabel("Pornesc generarea...");
     setError("");
     cancelledRef.current = false;
     try {
-      const { job_id } = await postScenariiGenerate(estimate.estimate_id, engine);
+      const { job_id } = await postScenariiGenerate(estimate.estimate_id);
 
       const job = await pollJob(() => getScenariiJob(job_id), {
         cancelled: () => cancelledRef.current,
@@ -113,7 +110,6 @@ export default function ScenariPage() {
         filename: job.filename!,
         xlsxB64: job.xlsx_b64!,
         summary: job.summary ?? null,
-        engine: job.engine ?? engine,
       });
       setState("done");
       setHistoryKey((k) => k + 1);
@@ -183,26 +179,15 @@ export default function ScenariPage() {
                 specificației
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <button
-                onClick={() => handleGenerate("claude")}
-                className="border border-[#18257f] bg-[#18257f] text-white rounded-lg p-3 text-left hover:bg-[#131e66] transition-colors"
-              >
-                <span className="block text-sm font-bold">✨ Generează cu Claude</span>
-                <span className="block text-xs mt-1 text-[#d5d8f5]">
-                  Calitate maximă · ~{estimate.est_minutes} min · folosește credite API
-                </span>
-              </button>
-              <button
-                onClick={() => handleGenerate("groq")}
-                className="border border-emerald-600 bg-emerald-600 text-white rounded-lg p-3 text-left hover:bg-emerald-700 transition-colors"
-              >
-                <span className="block text-sm font-bold">⚡ Generează Free (Groq)</span>
-                <span className="block text-xs mt-1 text-emerald-100">
-                  Gratuit · ~{estimate.est_minutes_free ?? "?"} min · limite zilnice partajate
-                </span>
-              </button>
-            </div>
+            <button
+              onClick={handleGenerate}
+              className="border border-[#18257f] bg-[#18257f] text-white rounded-lg p-3 text-left hover:bg-[#131e66] transition-colors"
+            >
+              <span className="block text-sm font-bold">✨ Generează scenariile</span>
+              <span className="block text-xs mt-1 text-[#d5d8f5]">
+                ~{estimate.est_minutes} min · Claude
+              </span>
+            </button>
             <button onClick={reset} className="text-xs text-slate-400 hover:underline w-fit">
               Anulează
             </button>
@@ -221,7 +206,7 @@ export default function ScenariPage() {
         {state === "done" && result && (
           <div className="flex flex-col gap-4">
             {result.summary && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
                   <p className="text-xl font-bold text-[#18257f]">{result.summary.core_count}</p>
                   <p className="text-[11px] text-slate-500">scenarii standard incluse</p>
@@ -235,14 +220,6 @@ export default function ScenariPage() {
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
                   <p className="text-xl font-bold text-red-600">{result.summary.excluded_count}</p>
                   <p className="text-[11px] text-red-600">excluse vs standard</p>
-                </div>
-                <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
-                  <p className="text-xl font-bold text-[#18257f]">
-                    {result.engine === "claude" ? "✨" : "⚡"}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {result.engine === "claude" ? "Claude" : "Groq (free)"}
-                  </p>
                 </div>
               </div>
             )}

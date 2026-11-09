@@ -1,8 +1,9 @@
+import logging
 import os
 import tempfile
 from pathlib import Path
 
-import llm_client
+from ai_errors import mesaj_eroare_ai
 from skills.mockup import ai_enricher
 from skills.mockup.parser import parse_excel
 from skills.mockup.word_parser import parse_word
@@ -10,6 +11,8 @@ from skills.mockup.word_writer import write_word
 from skills.mockup.html_writer import write_html
 from skills.mockup.descriptions_builder import build_descriptions
 
+
+logger = logging.getLogger(__name__)
 
 def _mktemp_path(suffix: str) -> Path:
     fd, name = tempfile.mkstemp(suffix=suffix)
@@ -44,29 +47,33 @@ def estimate_mockup_job(input_path: Path) -> dict:
     return {
         "est_tokens": est_tokens,
         "est_minutes": 1,
-        "fits_budget": est_tokens <= llm_client.remaining_budget(),
+        "fits_budget": True,
     }
 
 
 async def run_mockup_pipeline(
     input_path: Path,
-    use_ai: bool = False,
     on_step=None,
-) -> tuple[Path, str, bool]:
-    """Returns (docx_path, html_content, ai_used). Accepts .xlsx or .docx."""
+) -> tuple[Path, str, bool, str]:
+    """Returns (docx_path, html_content, ai_used, motiv_fara_ai). Accepts .xlsx or .docx.
+
+    Imbogatirea cu Claude se incearca mereu. Daca pica, documentul iese oricum, cu
+    descrierile deterministe — dar motivul urca pana in pagina: fara el, o cheie
+    revocata ar degrada fiecare mockup fara ca nimeni sa afle de ce.
+    """
     if on_step:
         on_step("parsing")
     spec, descriptions = _load_spec(input_path)
 
-    ai_used = False
-    if use_ai:
-        if on_step:
-            on_step("ai")
-        try:
-            descriptions = await ai_enricher.enrich(spec, descriptions)
-            ai_used = True
-        except Exception:
-            ai_used = False  # fallback silentios la varianta determinista
+    ai_used, motiv = False, ""
+    if on_step:
+        on_step("ai")
+    try:
+        descriptions = await ai_enricher.enrich(spec, descriptions)
+        ai_used = True
+    except Exception as e:
+        motiv = mesaj_eroare_ai(e)
+        logger.warning("mockup: imbogatirea AI a esuat, raman descrierile deterministe: %s", e)
 
     if on_step:
         on_step("building")
@@ -79,4 +86,4 @@ async def run_mockup_pipeline(
 
     docx_path = _mktemp_path(".docx")
     write_word(spec, descriptions, docx_path)
-    return docx_path, html, ai_used
+    return docx_path, html, ai_used, motiv

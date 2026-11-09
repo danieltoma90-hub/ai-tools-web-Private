@@ -84,8 +84,8 @@ async def test_notitele_ajung_la_model_dupa_context_si_in_legenda(tmp_path):
          patch("pipelines.minuta_pipeline._extract_action_items", return_value=[]), \
          patch("pipelines.minuta_pipeline._extract_profile", return_value=PROFILE):
         docx_path, html = await run_minuta_pipeline(
-            vtt, "k", marcaje=True, notite="Bugetul real: 4,5 milioane (Ion Popescu).")
-    context_arg, extra_arg = meta.call_args[0][2], meta.call_args[0][3]
+            vtt, marcaje=True, notite="Bugetul real: 4,5 milioane (Ion Popescu).")
+    context_arg, extra_arg = meta.call_args[0][1], meta.call_args[0][2]
     assert context_arg == "---NOTIȚELE ECHIPEI DIN ȘEDINȚĂ---\nBugetul real: 4,5 milioane (Ion Popescu)."
     assert "Notițele echipei din ședință" in extra_arg and "[NOTIȚE: în transcriere" in extra_arg
     assert "[NOTIȚE]" in html
@@ -99,9 +99,9 @@ async def test_fara_notite_minuta_ramane_neschimbata(tmp_path):
          patch("pipelines.minuta_pipeline._extract_sections", return_value=SECTIONS), \
          patch("pipelines.minuta_pipeline._extract_action_items", return_value=[]), \
          patch("pipelines.minuta_pipeline._extract_profile", return_value=PROFILE):
-        docx_path, html = await run_minuta_pipeline(vtt, "k", marcaje=True, notite="   ")
-    assert meta.call_args[0][2] == ""
-    assert "Notițele echipei" not in meta.call_args[0][3] and "[NOTIȚE]" not in html
+        docx_path, html = await run_minuta_pipeline(vtt, marcaje=True, notite="   ")
+    assert meta.call_args[0][1] == ""
+    assert "Notițele echipei" not in meta.call_args[0][2] and "[NOTIȚE]" not in html
     docx_path.unlink()
 
 
@@ -112,8 +112,8 @@ async def test_inregistrarile_aceleiasi_zile_ajung_intr_o_singura_transcriere(tm
          patch("pipelines.minuta_pipeline._extract_sections", return_value=SECTIONS), \
          patch("pipelines.minuta_pipeline._extract_action_items", return_value=[]), \
          patch("pipelines.minuta_pipeline._extract_profile", return_value=PROFILE):
-        docx_path, _ = await run_minuta_pipeline(a, "k", inregistrari=[(a, "Ziua 3"), (b, "Ziua 3 (1)")])
-    transcript_arg, extra_arg = meta.call_args[0][1], meta.call_args[0][3]
+        docx_path, _ = await run_minuta_pipeline(a, inregistrari=[(a, "Ziua 3"), (b, "Ziua 3 (1)")])
+    transcript_arg, extra_arg = meta.call_args[0][0], meta.call_args[0][2]
     assert "Înregistrarea 2 din 2" in transcript_arg and "[(2) 00:00:01] Ana Ionescu" in transcript_arg
     assert "Mai multe înregistrări din aceeași zi" in extra_arg
     docx_path.unlink()

@@ -29,11 +29,10 @@ def _fara_lacate():
 
 
 def _claude(alese):
-    resp = MagicMock()
-    resp.content = [MagicMock(text=json.dumps({"alese": alese}))]
-    client = MagicMock()
-    client.messages.create = AsyncMock(return_value=resp)
-    return client
+    """Simulează claude.raspunde: întoarce indicii aleși, ca JSON."""
+    import claude
+
+    return AsyncMock(return_value=claude.Raspuns(json.dumps({"alese": alese}), "end_turn"))
 
 
 async def test_cache_ul_opreste_al_doilea_apel():
@@ -42,7 +41,7 @@ async def test_cache_ul_opreste_al_doilea_apel():
     with patch("istorie.cache_citeste", side_effect=lambda c: salvat.get(c)), \
          patch("istorie.cache_scrie", side_effect=lambda c, d: salvat.__setitem__(c, d)), \
          patch("istorie._din_wikipedia", AsyncMock(return_value=FEED)) as wiki, \
-         patch("anthropic.AsyncAnthropic", return_value=_claude([0, 2])) as cl:
+         patch("claude.raspunde", _claude([0, 2])) as cl:
         prima = await istorie.evenimentele_zilei(7, 20, "sk-x")
         a_doua = await istorie.evenimentele_zilei(7, 20, "sk-x")
 
@@ -56,7 +55,7 @@ async def test_claude_alege_dintre_evenimentele_date():
     with patch("istorie.cache_citeste", return_value=None), \
          patch("istorie.cache_scrie"), \
          patch("istorie._din_wikipedia", AsyncMock(return_value=FEED)), \
-         patch("anthropic.AsyncAnthropic", return_value=_claude([2, 0])):
+         patch("claude.raspunde", _claude([2, 0])):
         rezultat = await istorie.evenimentele_zilei(8, 6, "sk-x")
     assert [e["an"] for e in rezultat] == [1945, 1969]
 
@@ -65,19 +64,18 @@ async def test_indici_inventati_sunt_ignorati():
     with patch("istorie.cache_citeste", return_value=None), \
          patch("istorie.cache_scrie"), \
          patch("istorie._din_wikipedia", AsyncMock(return_value=FEED)), \
-         patch("anthropic.AsyncAnthropic", return_value=_claude([0, 99, -3, "x"])):
+         patch("claude.raspunde", _claude([0, 99, -3, "x"])):
         rezultat = await istorie.evenimentele_zilei(8, 6, "sk-x")
     assert [e["an"] for e in rezultat] == [1969]
 
 
 async def test_claude_picat_cade_pe_cuvinte_cheie():
     """Fără AI rămâne selecția pe cuvinte — mai bine aproximativ decât gol."""
-    client = MagicMock()
-    client.messages.create = AsyncMock(side_effect=Exception("401"))
+    pica = AsyncMock(side_effect=Exception("401"))
     with patch("istorie.cache_citeste", return_value=None), \
          patch("istorie.cache_scrie"), \
          patch("istorie._din_wikipedia", AsyncMock(return_value=FEED)), \
-         patch("anthropic.AsyncAnthropic", return_value=client):
+         patch("claude.raspunde", pica):
         rezultat = await istorie.evenimentele_zilei(8, 6, "sk-x")
 
     ani = [e["an"] for e in rezultat]
@@ -90,7 +88,7 @@ async def test_fara_cheie_nu_se_apeleaza_claude():
     with patch("istorie.cache_citeste", return_value=None), \
          patch("istorie.cache_scrie"), \
          patch("istorie._din_wikipedia", AsyncMock(return_value=FEED)), \
-         patch("anthropic.AsyncAnthropic") as cl:
+         patch("claude.raspunde") as cl:
         rezultat = await istorie.evenimentele_zilei(8, 6, "")
     cl.assert_not_called()
     assert rezultat
@@ -107,7 +105,7 @@ async def test_cache_stricat_se_recalculeaza():
     with patch("istorie.cache_citeste", return_value=b"nu e json"), \
          patch("istorie.cache_scrie"), \
          patch("istorie._din_wikipedia", AsyncMock(return_value=FEED)), \
-         patch("anthropic.AsyncAnthropic", return_value=_claude([0])):
+         patch("claude.raspunde", _claude([0])):
         rezultat = await istorie.evenimentele_zilei(8, 6, "sk-x")
     assert [e["an"] for e in rezultat] == [1969]
 

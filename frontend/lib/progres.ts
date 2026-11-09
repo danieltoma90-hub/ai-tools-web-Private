@@ -88,9 +88,17 @@ export const ETAPE_MOCKUP: Etapa[] = [
   { id: "building", pondere: 0.15, secundeTipice: 5 },
 ];
 
+// Generarea în Scop CORE nu cheamă modelul: citește documentul gazdă, construiește
+// capitolul și, la cerere, îl inserează. Durează secunde, nu minute.
+export const ETAPE_SCOP_CORE: Etapa[] = [
+  { id: "parsing", pondere: 0.25, secundeTipice: 3 },
+  { id: "building", pondere: 0.6, secundeTipice: 8 },
+  { id: "inserare", pondere: 0.15, secundeTipice: 3 },
+];
+
 export const ETAPE_TRAINING: Etapa[] = [
   { id: "catalog", pondere: 0.05, secundeTipice: 2 },
-  { id: "specificatie", pondere: 0.6, secundeTipice: 30 },
+  { id: "specificatie", pondere: 0.6, secundeTipice: 60 },
   { id: "planificare", pondere: 0.05, secundeTipice: 2 },
   { id: "documente", pondere: 0.3, secundeTipice: 5 },
 ];

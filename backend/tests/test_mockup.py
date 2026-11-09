@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from main import app
 from auth import verify_token
@@ -61,7 +61,7 @@ async def test_generate_with_expired_estimate_returns_404(client):
     try:
         response = await client.post(
             "/api/mockup/generate",
-            json={"estimate_id": "inexistent", "use_ai": False},
+            json={"estimate_id": "inexistent"},
             headers={"Authorization": "Bearer fake"},
         )
     finally:
@@ -86,10 +86,13 @@ async def test_estimate_then_generate_then_job_done(client):
         est = est_res.json()
         assert est["est_tokens"] > 0
 
-        with patch("routers.mockup.upload_file", return_value="mockup/x.docx"):
+        # AI-ul pică: documentul iese oricum, iar jobul spune de ce
+        with patch("routers.mockup.upload_file", return_value="mockup/x.docx"), \
+             patch("pipelines.mockup_pipeline.ai_enricher.enrich",
+                   new=AsyncMock(side_effect=RuntimeError("ANTHROPIC_API_KEY lipsă pe server"))):
             gen_res = await client.post(
                 "/api/mockup/generate",
-                json={"estimate_id": est["estimate_id"], "use_ai": False},
+                json={"estimate_id": est["estimate_id"]},
                 headers={"Authorization": "Bearer fake"},
             )
         assert gen_res.status_code == 200
@@ -102,39 +105,9 @@ async def test_estimate_then_generate_then_job_done(client):
         job = job_res.json()
         assert job["status"] == "done"
         assert job["ai_used"] is False
+        assert "ANTHROPIC_API_KEY" in job["motiv_fara_ai"]
         assert job["filename"].endswith(".docx")
         assert job["docx_b64"]
         assert "<html" in job["html"].lower()
     finally:
         app.dependency_overrides.clear()
-
-
-async def test_generate_ai_over_budget_returns_422(client, monkeypatch):
-    import pytest
-    if not SAMPLE.exists():
-        pytest.skip("fișierul exemplu lipsește local")
-    monkeypatch.setenv("LLM_DAILY_TOKEN_BUDGET", "10")
-    import llm_client
-    llm_client._usage["day"] = ""
-    llm_client._usage["tokens"] = 0
-
-    app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
-    try:
-        with patch("routers.mockup.download_upload", return_value=_sample_tempfile()):
-            est_res = await client.post(
-                "/api/mockup/estimate",
-                json={"storage_path": "mockup/x.docx", "filename": SAMPLE.name},
-                headers={"Authorization": "Bearer fake"},
-            )
-        est = est_res.json()
-        assert est["fits_budget"] is False
-
-        response = await client.post(
-            "/api/mockup/generate",
-            json={"estimate_id": est["estimate_id"], "use_ai": True},
-            headers={"Authorization": "Bearer fake"},
-        )
-    finally:
-        app.dependency_overrides.clear()
-    assert response.status_code == 422
-    assert "buget" in response.json()["detail"].lower()

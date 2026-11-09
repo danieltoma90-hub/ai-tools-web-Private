@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 _jobs: dict[str, dict[str, Any]] = {}
-_job_meta: dict[str, dict[str, float | None]] = {}
+_job_meta: dict[str, dict[str, Any]] = {}
 _estimates: dict[str, dict[str, Any]] = {}
 
 ESTIMATE_TTL_S = 600  # fisierul temporar traieste 10 minute
@@ -36,11 +36,12 @@ def _cleanup_jobs() -> None:
             _job_meta.pop(job_id, None)
 
 
-def create_job(user_email: str) -> str:
+def create_job(user_email: str, modul: str = "") -> str:
+    """`modul` nu ajunge în răspunsul către pagină — e pentru jurnalul de erori."""
     _cleanup_jobs()
     job_id = str(uuid.uuid4())
     _jobs[job_id] = {"status": "processing", "user_email": user_email}
-    _job_meta[job_id] = {"creat": time.monotonic(), "terminat": None}
+    _job_meta[job_id] = {"creat": time.monotonic(), "terminat": None, "modul": modul}
     return job_id
 
 
@@ -57,6 +58,23 @@ def finish(job_id: str, **payload: Any) -> None:
 def fail(job_id: str, error: str) -> None:
     _jobs[job_id] = {"status": "error", "error": error}
     _marcheaza_terminat(job_id)
+
+
+def esueaza(job_id: str, exc: Exception, mesaj: str | None = None) -> None:
+    """Marchează jobul eșuat cu un mesaj pe înțeles și îl notează în jurnalul
+    administratorului. Toate generările eșuate trec pe aici.
+
+    `mesaj` suprascrie traducerea automată, pentru cazurile în care apelantul
+    știe mai bine ce să spună (de exemplu, un document invalid).
+    """
+    from ai_errors import mesaj_pentru_utilizator
+    import jurnal
+
+    email = (_jobs.get(job_id) or {}).get("user_email", "")
+    modul = str((_job_meta.get(job_id) or {}).get("modul") or "")
+    text = mesaj or mesaj_pentru_utilizator(exc)
+    fail(job_id, text)
+    jurnal.inregistreaza(modul, email, text, f"{type(exc).__name__}: {exc}")
 
 
 def _marcheaza_terminat(job_id: str) -> None:

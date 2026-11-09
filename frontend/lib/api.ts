@@ -171,9 +171,8 @@ export type EstimateResponse = {
   estimate_id: string;
   est_tokens: number;
   est_minutes: number;
-  est_minutes_free?: number;
   requirements?: number;
-  fits_budget: boolean;
+  fits_budget?: boolean;
   calls?: number;
   modules?: number;
 };
@@ -191,7 +190,6 @@ export type ScenariiJob = {
   filename?: string;
   xlsx_b64?: string;
   summary?: ScenariiSummary;
-  engine?: "claude" | "groq";
   storage_path?: string;
   error?: string;
 };
@@ -203,15 +201,17 @@ export type MockupJob = {
   docx_b64?: string;
   html?: string;
   ai_used?: boolean;
+  /** Setat când AI-ul a picat: documentul a ieșit cu descrierile deterministe. */
+  motiv_fara_ai?: string;
   storage_path?: string;
   error?: string;
 };
 
-function postGenerate(path: string, estimateId: string, useAi: boolean) {
+function postGenerate(path: string, estimateId: string) {
   return apiFetch(`${PROXY}/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ estimate_id: estimateId, use_ai: useAi }),
+    body: JSON.stringify({ estimate_id: estimateId }),
   });
 }
 
@@ -253,15 +253,8 @@ export async function postScenariiEstimate(
   return postEstimate("scenarii/estimate", storagePath, filename) as Promise<EstimateResponse>;
 }
 
-export async function postScenariiGenerate(
-  estimateId: string,
-  engine: "claude" | "groq"
-): Promise<{ job_id: string }> {
-  return apiFetch(`${PROXY}/scenarii/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ estimate_id: estimateId, engine }),
-  }) as Promise<{ job_id: string }>;
+export async function postScenariiGenerate(estimateId: string): Promise<{ job_id: string }> {
+  return postGenerate("scenarii/generate", estimateId) as Promise<{ job_id: string }>;
 }
 
 export async function getScenariiJob(jobId: string): Promise<ScenariiJob> {
@@ -275,11 +268,8 @@ export async function postMockupEstimate(
   return postEstimate("mockup/estimate", storagePath, filename) as Promise<EstimateResponse>;
 }
 
-export async function postMockupGenerate(
-  estimateId: string,
-  useAi: boolean
-): Promise<{ job_id: string }> {
-  return postGenerate("mockup/generate", estimateId, useAi) as Promise<{ job_id: string }>;
+export async function postMockupGenerate(estimateId: string): Promise<{ job_id: string }> {
+  return postGenerate("mockup/generate", estimateId) as Promise<{ job_id: string }>;
 }
 
 export async function getMockupJob(jobId: string): Promise<MockupJob> {
@@ -355,9 +345,12 @@ export type ProviderStatus = {
     | "fara_credit"
     | "limita_atinsa"
     | "model_indisponibil"
+    | "model_nepermis"
     | "lipsa"
     | "eroare";
   message: string;
+  /** Model, fallback, răspunsul de test și proba de cache. */
+  detalii?: string[];
 };
 
 export async function getProviderDiagnostics(): Promise<{
@@ -430,7 +423,7 @@ export async function getTrainingJob(jobId: string): Promise<TrainingJob> {
 // --- scop-core ---------------------------------------------------------
 // Capitolul standard „Charisma ERP CORE" clonat pe stilurile documentului
 // gazdă, cu elemente suplimentare plasate unde le confirmă utilizatorul.
-// Fără parametru `engine`: `/propune` rulează pe un singur furnizor.
+// Fără parametru `engine`: totul rulează pe Claude.
 
 export type ScopCoreElement = {
   titlu: string;
@@ -447,15 +440,17 @@ export type ScopCoreDelimitare = {
   precizare: string;
 };
 
+/** Pornește propunerea de elemente — job în fundal, urmărit pe `getScopCoreJob`.
+ * Răspunsul copiază verbatim documentul și poate depăși limita de timp a proxy-ului. */
 export async function postScopCorePropune(
   storagePath: string,
   filename: string
-): Promise<{ propunere_id: string; elemente: ScopCoreElement[] }> {
+): Promise<{ job_id: string }> {
   return apiFetch(`${PROXY}/scop-core/propune`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ storage_path: storagePath, filename }),
-  }) as Promise<{ propunere_id: string; elemente: ScopCoreElement[] }>;
+  }) as Promise<{ job_id: string }>;
 }
 
 export type MinutaPunct = {
@@ -716,6 +711,9 @@ export type ScopCoreJob = {
    * „document”. Apelantul știe în ce mod a trimis cererea și tratează câmpul corespunzător. */
   summary?: ScopCoreSummary | ScopCoreDocumentSummary;
   cuprins_avertisment?: string | null;
+  /** Doar la propunerea de elemente (`/scop-core/propune`). */
+  propunere_id?: string;
+  elemente?: ScopCoreElement[];
   error?: string;
 };
 
@@ -856,6 +854,20 @@ export async function seteazaStareUtilizator(
   return trimiteJson("PUT", `acces/utilizatori/${encodeURIComponent(id)}/stare`, {
     activ,
   }) as Promise<{ ok: boolean; email: string; activ: boolean }>;
+}
+
+export type IntrareJurnal = {
+  cand: string;
+  modul: string;
+  email: string;
+  /** Ce a văzut utilizatorul. */
+  mesaj: string;
+  /** Eroarea brută, pentru administrator. */
+  tehnic: string;
+};
+
+export async function getJurnalErori(): Promise<{ intrari: IntrareJurnal[] }> {
+  return apiFetch(`${PROXY}/acces/jurnal`) as Promise<{ intrari: IntrareJurnal[] }>;
 }
 
 export async function seteazaGrupImplicit(grup: string): Promise<ConfigAcces> {

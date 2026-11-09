@@ -107,18 +107,33 @@ async def test_propune_upload_lipsa_da_422(client):
 
 
 async def test_propune_fara_cheie_api_da_500(client, monkeypatch):
-    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     response = await client.post(
         "/api/scop-core/propune",
         json={"storage_path": "scop-core/x.docx", "filename": "supliment.docx"},
         headers=AUTH,
     )
     assert response.status_code == 500
-    assert "MISTRAL_API_KEY" in response.json()["detail"]
+    assert "ANTHROPIC_API_KEY" in response.json()["detail"]
+
+
+async def _propune_si_asteapta(client, supliment, **patches):
+    """Pornește propunerea și citește jobul. Propunerea rulează în fundal: răspunsul
+    copiază verbatim documentul și poate depăși limita de timp a proxy-ului."""
+    with patch("routers.scop_core.download_upload", return_value=supliment):
+        pornire = await client.post(
+            "/api/scop-core/propune",
+            json={"storage_path": "scop-core/x.docx", "filename": "supliment.docx"},
+            headers=AUTH,
+        )
+    assert pornire.status_code == 200
+    job_id = pornire.json()["job_id"]
+    job = await client.get(f"/api/scop-core/job/{job_id}", headers=AUTH)
+    return job.json()
 
 
 async def test_propune_succes_intoarce_propunere_id_si_elemente(client, monkeypatch):
-    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     supliment = _docx_tempfile()
     elemente_asteptate = [
         {"titlu": "Integrare cântar", "text": "Text extras.", "plasare": "vanzari",
@@ -129,78 +144,80 @@ async def test_propune_succes_intoarce_propunere_id_si_elemente(client, monkeypa
         assert path == supliment
         return elemente_asteptate
 
-    with patch("routers.scop_core.download_upload", return_value=supliment), \
-         patch("routers.scop_core.propune_job", side_effect=fals_propune):
-        response = await client.post(
-            "/api/scop-core/propune",
-            json={"storage_path": "scop-core/x.docx", "filename": "supliment.docx"},
-            headers=AUTH,
-        )
-    assert response.status_code == 200
-    body = response.json()
-    assert "propunere_id" in body and body["propunere_id"]
-    assert body["elemente"] == elemente_asteptate
+    with patch("routers.scop_core.propune_job", side_effect=fals_propune):
+        job = await _propune_si_asteapta(client, supliment)
+    assert job["status"] == "done"
+    assert job["propunere_id"]
+    assert job["elemente"] == elemente_asteptate
     # fisierul temporar descarcat trebuie curatat, cu succes sau fara
     assert not supliment.exists()
 
 
-async def test_propune_eroare_model_da_502(client, monkeypatch):
-    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+async def test_propune_eroare_model_ajunge_in_job(client, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     supliment = _docx_tempfile()
 
     async def fals_propune(path):
         raise ValueError("Răspunsul modelului nu este JSON valid")
 
-    with patch("routers.scop_core.download_upload", return_value=supliment), \
-         patch("routers.scop_core.propune_job", side_effect=fals_propune):
-        response = await client.post(
-            "/api/scop-core/propune",
-            json={"storage_path": "scop-core/x.docx", "filename": "supliment.docx"},
-            headers=AUTH,
-        )
-    assert response.status_code == 502
+    with patch("routers.scop_core.propune_job", side_effect=fals_propune):
+        job = await _propune_si_asteapta(client, supliment)
+    assert job["status"] == "error"
+    assert "nu este JSON valid" in job["error"]
     assert not supliment.exists()
+
+
+async def test_propune_eroare_api_e_tradusa(client, monkeypatch):
+    """O cheie revocată nu ajunge la utilizator ca „Error code: 401 - {...}"."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    supliment = _docx_tempfile()
+
+    import anthropic
+    import httpx2
+
+    cerere = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+
+    async def fals_propune(path):
+        raise anthropic.AuthenticationError(
+            "Error code: 401 - {'type': 'authentication_error'}",
+            response=httpx2.Response(401, request=cerere), body=None)
+
+    with patch("routers.scop_core.propune_job", side_effect=fals_propune):
+        job = await _propune_si_asteapta(client, supliment)
+    assert job["status"] == "error"
+    assert "invalidă sau a fost revocată" in job["error"]
+    assert "Error code" not in job["error"]
 
 
 # --- /scop-core/genereaza ----------------------------------------------------
 
-async def test_propune_docx_corupt_da_422(client, monkeypatch):
+async def test_propune_docx_corupt_da_eroare_curata(client, monkeypatch):
     """Un fisier cu extensia .docx dar continut nevalid (python-docx nu poate
-    deschide pachetul) trebuie tratat ca input invalid al utilizatorului —
-    422 — nu ca o eroare de server nesurprinsa."""
-    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+    deschide pachetul) trebuie tratat ca input invalid al utilizatorului, cu
+    mesaj curat — nu ca o eroare de server nesurprinsa."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     fd, name = tempfile.mkstemp(suffix=".docx")
     os.close(fd)
     _P(name).write_bytes(b"nu sunt un docx valid")
     supliment = _P(name)
 
-    with patch("routers.scop_core.download_upload", return_value=supliment):
-        response = await client.post(
-            "/api/scop-core/propune",
-            json={"storage_path": "scop-core/x.docx", "filename": "supliment.docx"},
-            headers=AUTH,
-        )
-    assert response.status_code == 422
+    job = await _propune_si_asteapta(client, supliment)
+    assert job["status"] == "error"
     assert not supliment.exists()
 
 
-async def test_propune_xlsx_redenumit_docx_da_422_fara_cale_in_mesaj(client, monkeypatch):
+async def test_propune_xlsx_redenumit_docx_fara_cale_in_mesaj(client, monkeypatch):
     """Non-regresie pentru itemul 4: un .xlsx redenumit .docx trecea prin
     `except (ValueError, RuntimeError)` — categoria de eroare model/rețea —
     și ajungea 502 cu calea temporară a serverului scursă în mesaj. Acum
     `DocumentInvalid` (ridicat de `stil.deschide_docx`) e prins separat,
-    înaintea acelui catch, cu 422 și mesaj curat."""
-    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+    înaintea acelui catch, cu mesaj curat (acum în job, nu în cererea HTTP)."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     supliment = _xlsx_redenumit_docx()
 
-    with patch("routers.scop_core.download_upload", return_value=supliment):
-        response = await client.post(
-            "/api/scop-core/propune",
-            json={"storage_path": "scop-core/x.docx", "filename": "supliment.docx"},
-            headers=AUTH,
-        )
-    detail = response.json()["detail"]
-    assert response.status_code == 422
+    job = await _propune_si_asteapta(client, supliment)
+    detail = job["error"]
+    assert job["status"] == "error"
     assert not supliment.exists()
     assert str(supliment) not in detail
     assert supliment.name not in detail

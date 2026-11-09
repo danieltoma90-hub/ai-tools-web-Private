@@ -159,7 +159,7 @@ async def _run_job(
                 logger.warning("context %s indisponibil: %s", context_storage_path, e)
         inregistrari = [(input_path, stem)] + alte_inregistrari if alte_inregistrari else None
         docx_path, preview_html = await run_minuta_pipeline(
-            input_path, api_key, context_path=context_path,
+            input_path, context_path=context_path,
             on_step=lambda step: jobs.set_step(job_id, step),
             autor=autor,
             inregistrari=inregistrari,
@@ -180,7 +180,7 @@ async def _run_job(
         )
         docx_path.unlink(missing_ok=True)
     except Exception as e:
-        jobs.fail(job_id, str(e) or type(e).__name__)
+        jobs.esueaza(job_id, e)
     finally:
         input_path.unlink(missing_ok=True)
         for cale, _ in alte_inregistrari:
@@ -303,7 +303,7 @@ async def generate_minuta(
     stem = Path(nume).stem
 
     user_email = getattr(user, "email", None) or "anonymous"
-    job_id = jobs.create_job(user_email)
+    job_id = jobs.create_job(user_email, "minuta")
     background_tasks.add_task(
         _run_job, job_id, input_path, api_key, stem, timestamp, context_path, optiuni,
         nume_utilizator(user), alte_inregistrari=alte_inregistrari, notite=notite,

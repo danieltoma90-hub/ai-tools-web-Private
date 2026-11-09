@@ -69,7 +69,7 @@ async def test_estimate_then_generate_then_job_done(client, monkeypatch, tmp_pat
     out_xlsx = tmp_path / "out.xlsx"
     out_xlsx.write_bytes(b"PK-fake-xlsx")
 
-    async def fake_pipeline(input_path, engine="claude", on_step=None):
+    async def fake_pipeline(input_path, on_step=None):
         return out_xlsx, {"core_count": 100, "specific_count": 2,
                           "excluded_count": 5, "requirements": 2}
 
@@ -84,13 +84,13 @@ async def test_estimate_then_generate_then_job_done(client, monkeypatch, tmp_pat
         assert est_res.status_code == 200
         est = est_res.json()
         assert "estimate_id" in est
-        assert "est_minutes_free" in est
+        assert "est_minutes_free" not in est  # varianta gratuită a fost scoasă
 
         with patch("routers.scenarii.run_scenarii_pipeline", side_effect=fake_pipeline), \
              patch("routers.scenarii.upload_file", return_value="scenarii/x.xlsx"):
             gen_res = await client.post(
                 "/api/scenarii/generate",
-                json={"estimate_id": est["estimate_id"], "engine": "claude"},
+                json={"estimate_id": est["estimate_id"]},
                 headers={"Authorization": "Bearer fake"},
             )
         assert gen_res.status_code == 200
@@ -103,7 +103,6 @@ async def test_estimate_then_generate_then_job_done(client, monkeypatch, tmp_pat
         assert job_res.status_code == 200
         job = job_res.json()
         assert job["status"] == "done"
-        assert job["engine"] == "claude"
         assert job["filename"].endswith(".xlsx")
         assert job["summary"]["specific_count"] == 2
         assert job["xlsx_b64"]
@@ -116,7 +115,7 @@ async def test_generate_with_expired_estimate_returns_404(client):
     try:
         response = await client.post(
             "/api/scenarii/generate",
-            json={"estimate_id": "inexistent", "engine": "claude"},
+            json={"estimate_id": "inexistent"},
             headers={"Authorization": "Bearer fake"},
         )
     finally:
@@ -124,21 +123,8 @@ async def test_generate_with_expired_estimate_returns_404(client):
     assert response.status_code == 404
 
 
-async def test_generate_invalid_engine_returns_422(client):
-    app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
-    try:
-        response = await client.post(
-            "/api/scenarii/generate",
-            json={"estimate_id": "x", "engine": "mistral"},
-            headers={"Authorization": "Bearer fake"},
-        )
-    finally:
-        app.dependency_overrides.clear()
-    assert response.status_code == 422
-
-
 async def test_generate_missing_api_key_returns_500(client, monkeypatch):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
         with patch("routers.scenarii.download_upload", return_value=_P(_spec_tempfile())):
@@ -150,13 +136,13 @@ async def test_generate_missing_api_key_returns_500(client, monkeypatch):
         est = est_res.json()
         response = await client.post(
             "/api/scenarii/generate",
-            json={"estimate_id": est["estimate_id"], "engine": "groq"},
+            json={"estimate_id": est["estimate_id"]},
             headers={"Authorization": "Bearer fake"},
         )
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 500
-    assert "GROQ_API_KEY" in response.json()["detail"]
+    assert "ANTHROPIC_API_KEY" in response.json()["detail"]
 
 
 async def test_job_not_found_returns_404(client):

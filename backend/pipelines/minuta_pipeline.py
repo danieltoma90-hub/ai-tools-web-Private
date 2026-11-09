@@ -6,8 +6,9 @@ import tempfile
 from html import escape
 from pathlib import Path
 
-from anthropic import AsyncAnthropic
 from docx import Document
+
+import claude
 
 try:
     from json_repair import repair_json
@@ -27,10 +28,14 @@ from limba import PREVIEW, TEXT, docx_to_en, legenda
 from reguli import build_rules, with_legend
 from transcript_prep import prepare_transcripts
 
-DEFAULT_MAX_TOKENS = 4096
-# detaliul complet și structura Fit-Gap scriu toată ședința: ~12.000 de cuvinte încap în 16.000 de tokeni,
-# iar 16.000 rămâne sub pragul de la care SDK-ul Anthropic cere streaming (~21.000)
-LONG_MAX_TOKENS = 16000
+# Limitele cuprind și gândirea, care pe Opus 5.5 e mereu pornită și se numără tot aici:
+# un răspuns obișnuit are ~4.000 de tokeni, unul cu detaliu complet sau Fit-Gap ~16.000.
+# Apelurile merg prin streaming (claude.py), deci pragul SDK-ului pentru apeluri lungi nu mai contează.
+DEFAULT_MAX_TOKENS = 32000
+LONG_MAX_TOKENS = 64000
+# Același efort la toate extragerile: face parte din ce intră în cache, iar un efort
+# diferit pe o singură extragere ar rata cache-ul și ar plăti transcriptul întreg.
+EFORT = "medium"
 
 
 def extract_vtt_text(vtt_path: Path) -> str:
@@ -51,26 +56,30 @@ def extract_docx_text(docx_path: Path) -> str:
     return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
 
 
+def _prefix(transcript: str, context: str = "") -> str:
+    """Partea comună tuturor extragerilor dintr-o minută: contextul, apoi transcriptul.
+
+    Contextul precede transcriptul: numele, rolurile și glosarul trebuie citite înainte
+    de discuție, ca să corecteze ce a stâlcit transcrierea automată. Instrucțiunea
+    fiecărei extrageri vine DUPĂ — un cache e o potrivire de prefix, iar transcriptul
+    (zeci de mii de tokeni) se plătește întreg o singură dată, nu la fiecare extragere.
+    """
+    parti = [context] if context else []
+    parti.append(f"---TRANSCRIPT---\n{transcript}")
+    return "\n\n".join(parti)
+
+
 async def _call_claude(
-    client: AsyncAnthropic, prompt_file: str, transcript: str, context: str = "",
+    prompt_file: str, transcript: str, context: str = "",
     extra: str = "", max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
     prompt = (PROMPTS_DIR / prompt_file).read_text(encoding="utf-8")
-    # Contextul precede transcriptul: numele, rolurile si glosarul trebuie citite
-    # inainte de discutie, ca sa corecteze ce a stalcit transcrierea automata.
-    # Regulile de redactare (optiunile din pagina) vin imediat dupa prompt.
-    parts = [prompt]
-    if extra:
-        parts.append(extra)
-    if context:
-        parts.append(context)
-    parts.append(f"---TRANSCRIPT---\n{transcript}")
-    response = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": "\n\n".join(parts)}],
+    # Regulile de redactare (opțiunile din pagină) vin imediat după prompt.
+    intrebare = "\n\n".join(p for p in (prompt, extra) if p)
+    raspuns = await claude.raspunde(
+        intrebare, max_tokens=max_tokens, efort=EFORT, prefix_cache=_prefix(transcript, context),
     )
-    return response.content[0].text
+    return raspuns.text
 
 
 def _parse_json_from_response(text: str) -> dict | list:
@@ -103,39 +112,39 @@ def _parse_json_from_response(text: str) -> dict | list:
     raise ValueError(f"Nu s-a putut parsa JSON din răspunsul Claude (primii 200 chars): {text[:200]}")
 
 
-async def _extract_metadata(client: AsyncAnthropic, transcript: str, context: str = "", extra: str = "") -> dict:
-    raw = await _call_claude(client, "extract_meeting_metadata.md", transcript, context, extra)
+async def _extract_metadata(transcript: str, context: str = "", extra: str = "") -> dict:
+    raw = await _call_claude("extract_meeting_metadata.md", transcript, context, extra)
     return _parse_json_from_response(raw)
 
 
 async def _extract_sections(
-    client: AsyncAnthropic, transcript: str, context: str = "", extra: str = "",
+    transcript: str, context: str = "", extra: str = "",
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> dict:
-    raw = await _call_claude(client, "extract_sections.md", transcript, context, extra, max_tokens)
+    raw = await _call_claude("extract_sections.md", transcript, context, extra, max_tokens)
     return _parse_json_from_response(raw)
 
 
-async def _extract_action_items(client: AsyncAnthropic, transcript: str, context: str = "", extra: str = "") -> list:
-    raw = await _call_claude(client, "extract_action_items.md", transcript, context, extra)
+async def _extract_action_items(transcript: str, context: str = "", extra: str = "") -> list:
+    raw = await _call_claude("extract_action_items.md", transcript, context, extra)
     return _parse_json_from_response(raw)
 
 
-async def _extract_followup(client: AsyncAnthropic, transcript: str, context: str, extra: str = "") -> dict:
+async def _extract_followup(transcript: str, context: str, extra: str = "") -> dict:
     """Stadiul actiunilor deschise din context, dupa aceasta sedinta."""
-    raw = await _call_claude(client, "extract_followup.md", transcript, context, extra)
+    raw = await _call_claude("extract_followup.md", transcript, context, extra)
     return _parse_json_from_response(raw)
 
 
-async def _extract_profile(client: AsyncAnthropic, transcript: str, context: str = "", extra: str = "") -> dict:
+async def _extract_profile(transcript: str, context: str = "", extra: str = "") -> dict:
     """Profilul beneficiarului, cerintele lui explicite si punctele ramase deschise."""
-    raw = await _call_claude(client, "extract_profile_requirements.md", transcript, context, extra)
+    raw = await _call_claude("extract_profile_requirements.md", transcript, context, extra)
     return _parse_json_from_response(raw)
 
 
-async def _extract_fitgap(client: AsyncAnthropic, transcript: str, context: str = "", extra: str = "") -> dict:
+async def _extract_fitgap(transcript: str, context: str = "", extra: str = "") -> dict:
     """Conținutul pe capitolele Fit-Gap (rezumat, subiecte, probleme, soluție, acțiuni, riscuri, concluzie)."""
-    raw = await _call_claude(client, "extract_fitgap.md", transcript, context, extra, LONG_MAX_TOKENS)
+    raw = await _call_claude("extract_fitgap.md", transcript, context, extra, LONG_MAX_TOKENS)
     return _parse_json_from_response(raw)
 
 
@@ -331,7 +340,6 @@ async def _cu_raportare(tasks: list, on_step) -> list:
 
 async def run_minuta_pipeline(
     transcript_path: Path,
-    api_key: str,
     context_path: Path | None = None,
     on_step=None,
     marcaje: bool = False,
@@ -374,12 +382,16 @@ async def run_minuta_pipeline(
     extra = build_rules(marcaje, limba, detaliu, notite=bool(notite), inregistrari=len(fisiere))
     legend = legenda(limba, bool(notite)) if marcaje else None
 
-    client = AsyncAnthropic(api_key=api_key)
+    # Extragerile pornesc în paralel, iar un cache devine citibil abia după ce primul
+    # răspuns începe să curgă — fără pasul ăsta, fiecare ar plăti transcriptul întreg.
+    if on_step:
+        on_step("extrageri:0/5")
+    await claude.incalzeste_cache(_prefix(text, context_block), efort=EFORT)
 
     if structura == "fitgap":
         meta_raw, fitgap = await _cu_raportare([
-            _extract_metadata(client, text, context_block, extra),
-            _extract_fitgap(client, text, context_block, extra),
+            _extract_metadata(text, context_block, extra),
+            _extract_fitgap(text, context_block, extra),
         ], on_step)
         meta = _meta_din(meta_raw)
         data = {
@@ -393,15 +405,15 @@ async def run_minuta_pipeline(
         # Extragerile rulează în paralel — reduce timpul de la ~90s la ~30s
         sections_tokens = LONG_MAX_TOKENS if detaliu == "complet" else DEFAULT_MAX_TOKENS
         tasks = [
-            _extract_metadata(client, text, context_block, extra),
-            _extract_sections(client, text, context_block, extra, sections_tokens),
-            _extract_action_items(client, text, context_block, extra),
-            _extract_profile(client, text, context_block, extra),
+            _extract_metadata(text, context_block, extra),
+            _extract_sections(text, context_block, extra, sections_tokens),
+            _extract_action_items(text, context_block, extra),
+            _extract_profile(text, context_block, extra),
         ]
         # A cincea extragere doar daca exista actiuni deschise de urmarit
         track_followup = bool(project_ctx and project_ctx.actiuni_deschise)
         if track_followup:
-            tasks.append(_extract_followup(client, text, context_block, extra))
+            tasks.append(_extract_followup(text, context_block, extra))
 
         results = await _cu_raportare(tasks, on_step)
         meta_raw, sections, action_raw, profile = results[0], results[1], results[2], results[3]

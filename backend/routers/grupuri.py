@@ -181,6 +181,14 @@ def seteaza_stare(uid: str, body: StareIn, user=Depends(acces.cere_admin)):
     return {"ok": True, "email": email, "activ": body.activ}
 
 
+@router.get("/acces/jurnal")
+def jurnalul_erorilor(limita: int = 100, user=Depends(acces.cere_admin)):
+    """Ultimele generări eșuate: cine, ce modul, când și de ce."""
+    import jurnal
+
+    return {"intrari": jurnal.citeste(max(1, min(limita, jurnal.MAX_INTRARI)))}
+
+
 @router.put("/acces/grup-implicit")
 def seteaza_implicit(body: ImplicitIn, user=Depends(acces.cere_admin)):
     """Grupul în care intră utilizatorii fără grup ales (de exemplu, cei invitați de acum încolo)."""

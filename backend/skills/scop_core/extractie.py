@@ -11,16 +11,12 @@ apel de model care:
 Utilizatorul corectează plasările în UI înainte ca `capitol.Element` să fie
 construit dintr-un dict validat aici — vezi `capitol.py`.
 
-Apelul de model trece prin `llm_client` (rădăcina `backend/`), clientul comun
-provider-agnostic al repo-ului — nu prin apeluri proprii către Anthropic sau
-Groq. Varianta inițială a acestui modul avea `_call_claude`/`_call_groq`
-proprii, copiate din `skills/scenarii/ai_gen.py`; s-a renunțat la ele pentru
-că, la verificare, `ANTHROPIC_API_KEY` din acest proiect e invalidă și
-`GROQ_API_KEY` lipsește complet din `.env` — niciuna nu poate autentifica.
-`MISTRAL_API_KEY`, singura cheie validă disponibilă, e exact ceea ce
-`llm_client` folosește implicit, cu throttle și retry deja incluse pentru
-tier-ul ei gratuit. Nu mai există parametru de alegere a providerului
-(`engine`) — un singur furnizor, un singur drum.
+Apelul de model trece prin `claude.py`, drumul comun spre Claude al
+site-ului. Modulul a rulat o vreme pe Mistral (`ministral-8b`), ales doar
+pentru că la scrierea lui cheia Anthropic de pe mașina de dezvoltare era
+invalidă — motiv care nu a ținut niciodată pe server. Pentru extragerea de aici,
+unde un model mic plasa inconsecvent elementele, Claude e alegerea potrivită.
+Nu există parametru de alegere a providerului (`engine`) — un singur drum.
 
 Regula centrală, ținută prin construcție (nu doar prin instrucțiuni în prompt):
 modelul NU are voie să introducă o denumire de flux Charisma în datele
@@ -54,19 +50,16 @@ from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
-import llm_client
+import claude
 
 from . import stil
 from .charisma_core import SECTIUNI
 
-# Bugetul de tokeni al apelului de model — cât mai mare (limita practică a
-# providerului), pentru că `text` trebuie extras verbatim: lungimea lui
-# scalează cu documentul, nu cu un rezumat, iar implicitul lui `llm_client`
-# (4000) taie JSON-ul la jumătate pe orice document de dimensiune reală. Alte
-# extractoare din acest repo cu aceeași nevoie (extras integral, nu rezumat)
-# folosesc aceeași valoare — vezi `skills/training/spec_extract.py` și
-# `skills/training/spec_build.py`.
-MAX_TOKENS_RASPUNS = 8192
+# Bugetul de tokeni al apelului de model — mare, pentru că `text` trebuie extras
+# verbatim: lungimea lui scalează cu documentul, nu cu un rezumat. Cuprinde și
+# gândirea, care pe Opus 5.5 e mereu pornită și se numără tot aici. Apelul merge
+# prin streaming (claude.py), deci limita nu se lovește de pragul SDK-ului.
+MAX_TOKENS_RASPUNS = 64000
 
 # cele zece chei de secțiune CORE, în ordinea canonică din SECTIUNI
 CHEI_SECTIUNI: list[str] = [s.cheie for s in SECTIUNI]
@@ -176,7 +169,7 @@ Răspunde DOAR cu JSON valid, fără text în plus, fără explicații:
 
 def _construieste_system_prompt() -> str:
     """Regulile și catalogul de fluxuri — partea stabilă a interacțiunii,
-    trimisă ca mesaj `system` către `llm_client.chat`. Textul documentului
+    trimisă ca `system` către Claude. Textul documentului
     clientului NU intră aici, ci în mesajul `user` — vezi `propune_elemente`."""
     return _SYSTEM_TEMPLATE.format(
         chei=", ".join(CHEI_SECTIUNI), context_fluxuri=_context_fluxuri()
@@ -231,63 +224,54 @@ def _valideaza_elemente(bruti, coduri_valide: set[str]) -> list[dict]:
     return rezultat
 
 
-def _pare_trunchiat(raw: str) -> bool:
-    """Euristică pentru „răspunsul modelului s-a oprit la mijlocul JSON-ului”
-    (depășire de `max_tokens`), fără să inspecteze `finish_reason` —
-    `llm_client.chat` întoarce doar textul, nu și motivul opririi, iar a-l
-    expune ar cere modificarea lui `llm_client.py`, în afara acestui fix
-    (vezi raportul). Un răspuns JSON complet, chiar împachetat în
-    ```json ... ```, se termină mereu cu acolada de închidere a obiectului
-    de nivel de bază; unul tăiat la mijloc aproape sigur nu. Nu e o dovadă
-    matematică — un răspuns garbage complet, coincidental, s-ar putea și el
-    termina fără acoladă — dar diferențiază corect cazul care contează aici:
-    un document mare, valid, al cărui răspuns depășește bugetul de tokeni.
+def _parseaza(raw: str):
+    """JSON strict, acceptând doar împachetarea în ```json ... ```.
+
+    Fără reparare: textul elementelor e un extras verbatim din documentul
+    clientului, iar un JSON „reparat" ar putea livra în tăcere elemente
+    trunchiate. Un răspuns tăiat e prins înainte, după motivul opririi.
     """
     text = raw.strip()
     if text.startswith("```"):
         text = text.strip("`").strip()
         if text.lower().startswith("json"):
             text = text[4:]
-        text = text.strip()
-    return text.startswith("{") and not text.endswith("}")
+    return json.loads(text)
 
 
 async def propune_elemente(docx_path: Path) -> list[dict]:
     """Segmentează documentul suplimentar de la `docx_path` și propune, pentru
     fiecare element găsit, o plasare printre secțiunile CORE.
 
-    Apelul de model trece prin `llm_client` — clientul comun, provider-agnostic
-    al repo-ului (implicit Mistral La Plateforme, tier gratuit), cu throttle,
-    retry pe 429/5xx și buget zilnic incluse acolo. Nu mai există alegere de
-    provider aici: modulul nu mai apelează Anthropic sau Groq direct (vezi
-    docstring-ul de sus al fișierului pentru motiv) — un singur furnizor,
-    un singur drum.
+    Apelul de model trece prin `claude.py` — drumul comun spre Claude (vezi
+    docstring-ul de sus al fișierului). Nu există alegere de provider.
 
     Întoarce o listă de dicturi validate — gata să alimenteze `capitol.Element`
     într-un pas ulterior, după ce utilizatorul le corectează în UI. Un răspuns
     care nu e JSON valid ridică `ValueError`; orice altă formă de răspuns
     garbage (elemente malformate, chei lipsă, tipuri greșite) e filtrată aici,
-    nu propagată — vezi `_valideaza_elemente`. O eroare de rețea/autentificare
-    la nivelul lui `llm_client` (cheie lipsă, 429 după reîncercări epuizate)
-    urcă neschimbată, ca `RuntimeError` — vezi `llm_client.chat`.
+    nu propagată — vezi `_valideaza_elemente`. O eroare de API (cheie lipsă sau
+    revocată, credit epuizat, refuz) urcă neschimbată, cu tipul ei.
     """
     text = _extrage_text(docx_path)
     if not text:
         return []
 
-    raw = await llm_client.chat(
-        _construieste_system_prompt(), text, max_tokens=MAX_TOKENS_RASPUNS, json_mode=True,
+    raspuns = await claude.raspunde(
+        text, system=_construieste_system_prompt(),
+        max_tokens=MAX_TOKENS_RASPUNS, efort="medium",
     )
+    raw = raspuns.text
+    if raspuns.trunchiat:
+        raise ValueError(
+            "Documentul suplimentar e prea mare pentru un singur răspuns al "
+            "modelului — răspunsul a fost tăiat înainte să se termine JSON-ul. "
+            "Încarcă un document mai scurt sau împarte-l în mai multe."
+        )
 
     try:
-        data = llm_client.parse_json(raw)
+        data = _parseaza(raw)
     except json.JSONDecodeError as exc:
-        if _pare_trunchiat(raw):
-            raise ValueError(
-                "Documentul suplimentar e prea mare pentru un singur răspuns al "
-                "modelului — răspunsul a fost tăiat înainte să se termine JSON-ul. "
-                "Încarcă un document mai scurt sau împarte-l în mai multe."
-            ) from exc
         raise ValueError(f"Răspunsul modelului nu este JSON valid: {raw[:300]!r}") from exc
 
     if not isinstance(data, dict):

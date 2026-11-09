@@ -10,7 +10,6 @@ import {
 import { isColdStartError } from "@/lib/poll";
 
 type State = "idle" | "processing" | "done" | "error";
-type Fisier = { file: File; storage_path: string };
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
@@ -34,8 +33,11 @@ const CULORI: Record<string, string> = {
 };
 
 export default function MinuteModeForm() {
-  const [minute, setMinute] = useState<Fisier[]>([]);
-  const [scop, setScop] = useState<Fisier | null>(null);
+  // Fișierele stau în browser până la confruntare și se urcă abia atunci: storage-ul
+  // e releu (obiectul dispare la prima citire), deci un fișier urcat la adăugare n-ar
+  // mai exista la o a doua încercare, după o confruntare eșuată.
+  const [minute, setMinute] = useState<File[]>([]);
+  const [scop, setScop] = useState<File | null>(null);
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState("");
   const [rezultat, setRezultat] = useState<MinutaRaspuns | null>(null);
@@ -55,28 +57,22 @@ export default function MinuteModeForm() {
     }
   }
 
-  async function adaugaMinuta(file: File) {
+  function adaugaMinuta(file: File) {
     if (file.size > MAX_UPLOAD_BYTES) {
       setError(`„${file.name}” depășește 50 MB.`);
       return;
     }
     setError("");
-    try {
-      const storage_path = await incarca(file);
-      setMinute((m) => [...m, { file, storage_path }]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Încărcarea a eșuat");
-    }
+    setMinute((m) => [...m, file]);
   }
 
-  async function alegeScop(file: File) {
-    setError("");
-    try {
-      const storage_path = await incarca(file);
-      setScop({ file, storage_path });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Încărcarea a eșuat");
+  function alegeScop(file: File) {
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(`„${file.name}” depășește 50 MB.`);
+      return;
     }
+    setError("");
+    setScop(file);
   }
 
   async function confrunta() {
@@ -87,20 +83,16 @@ export default function MinuteModeForm() {
     setState("processing");
     setError("");
     try {
+      // Urcăm la fiecare confruntare: lista din pagină rămâne valabilă și după un eșec.
+      const urcate = await Promise.all(minute.map((f) => incarca(f)));
+      const scopUrcat = scop ? await incarca(scop) : undefined;
       const raspuns = await postScopCoreMinute({
-        minute: minute.map((m) => ({
-          storage_path: m.storage_path,
-          filename: m.file.name,
-        })),
-        scopStoragePath: scop?.storage_path,
-        scopFilename: scop?.file.name,
+        minute: minute.map((f, i) => ({ storage_path: urcate[i], filename: f.name })),
+        scopStoragePath: scopUrcat,
+        scopFilename: scop?.name,
       });
       setRezultat(raspuns);
       setState("done");
-      // Storage-ul e releu: obiectele se șterg la descărcare, deci o a doua
-      // confruntare are nevoie de fișiere reîncărcate.
-      setMinute([]);
-      setScop(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Eroare necunoscută");
       setState("error");
@@ -130,7 +122,7 @@ export default function MinuteModeForm() {
           <ul className="mt-3 space-y-1">
             {minute.map((m, i) => (
               <li key={i} className="flex items-center justify-between text-xs text-slate-600">
-                <span>📝 {m.file.name}</span>
+                <span>📝 {m.name}</span>
                 <button
                   onClick={() => setMinute((lista) => lista.filter((_, j) => j !== i))}
                   className="text-slate-400 hover:text-red-600"
@@ -158,7 +150,7 @@ export default function MinuteModeForm() {
         />
         {scop && (
           <p className="mt-3 flex items-center justify-between text-xs text-slate-600">
-            <span>📄 {scop.file.name}</span>
+            <span>📄 {scop.name}</span>
             <button onClick={() => setScop(null)} className="text-slate-400 hover:text-red-600">
               scoate
             </button>

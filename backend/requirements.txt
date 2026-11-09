@@ -1,15 +1,19 @@
+# Versiuni fixate exact: Render instalează la fiecare build ce scrie aici. Cu `>=`,
+# un deploy oarecare putea aduce o versiune majoră nouă (anthropic 2.x a schimbat
+# biblioteca HTTP și versiunea API-ului) netestată. Acestea sunt versiunile pe care
+# trec testele; o actualizare se face deliberat: crești versiunea, rulezi testele.
+# Necesită Python >= 3.11 (httpx2, supabase, Pillow).
 fastapi==0.115.0
 uvicorn[standard]==0.30.0
 python-multipart==0.0.9
 httpx==0.27.0
-groq>=0.11.0
 pytest==8.3.0
 pytest-asyncio==0.24.0
-supabase>=2.31.0
+supabase==2.34.1
 python-dotenv==1.0.0
-anthropic>=0.25.0
-python-docx>=1.1.0
-openpyxl>=3.1.0
-defusedxml>=0.7.1
-Pillow>=10.0.0
-json-repair>=0.30.0
+anthropic==2.6.0
+python-docx==1.2.0
+openpyxl==3.1.5
+defusedxml==0.7.1
+Pillow==13.0.0
+json-repair==0.64.6
