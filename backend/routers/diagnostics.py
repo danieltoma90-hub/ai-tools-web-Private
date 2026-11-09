@@ -4,7 +4,7 @@ Nu e un simplu ping: cererile trec pe ACELAȘI drum ca generările reale
 (`claude.py` — modelul, efortul, fallback-ul, antetul beta), deci un „funcțional"
 aici înseamnă că și minuta, scenariile și restul vor merge. Proba de cache
 verifică, pe lângă, că încălzirea cu `max_tokens=0` și citirea din cache merg
-pe contul real. Costul: sub un cent per verificare.
+pe contul real. Costul: câțiva cenți per verificare (proba de cache scrie ~6.000 de tokeni).
 
 NU expune cheia — doar un indiciu (primele/ultimele caractere), ca să se poată
 verifica dacă pe server e cheia corectă.
@@ -18,12 +18,15 @@ from auth import verify_token
 
 router = APIRouter()
 
-# ~1.000 de tokeni: peste pragul minim de cache al modelelor curente (512).
+# ~6.000 de tokeni. Documentația dă 512 tokeni ca prag minim de cache pentru Opus 5.5,
+# dar avertizează să nu te bazezi pe valoare, iar modele apropiate au 4.096. O probă
+# sub prag ar spune „nu" chiar dacă la minută (transcrieri de 44–86 mii de tokeni)
+# cache-ul merge — exact ce a făcut prima variantă, de ~2.000 de tokeni.
 _PREFIX_PROBA = (
     "Acest text există doar ca să verifice cache-ul de prompt al serverului. "
     "Un cache e o potrivire de prefix: dacă două cereri încep cu aceiași octeți, "
     "a doua citește partea comună din cache, la o fracțiune din preț. "
-) * 24
+) * 80
 
 
 def _hint(key: str) -> str:
@@ -94,17 +97,36 @@ async def _check_anthropic() -> dict:
         state, message = _din_exceptie(e)
         return {**baza, "state": state, "message": message, "detalii": detalii}
 
-    # Cache: încălzire, apoi o cerere care ar trebui să citească prefixul.
+    # Cache: încălzire, apoi o cerere care ar trebui să citească prefixul. Fiecare pas
+    # își spune rezultatul — un „nu" fără motiv nu poate fi reparat.
     try:
-        await claude.incalzeste_cache(_PREFIX_PROBA, efort="low")
+        inc = await claude.incalzeste_cache(_PREFIX_PROBA, efort="low")
+        if inc.eroare and not inc.usage:
+            detalii.append(f"Încălzire: refuzată — {inc.eroare[:300]}")
+        else:
+            detalii.append(
+                f"Încălzire: {inc.scris} tokeni scriși în cache "
+                f"({'cu' if inc.cu_fallback else 'fără'} fallback)"
+                + (f"; varianta cu fallback refuzată: {inc.eroare[:200]}" if inc.eroare else "")
+            )
+
         r = await claude.raspunde(
             "Răspunde doar cu: OK", max_tokens=2048, efort="low", prefix_cache=_PREFIX_PROBA,
         )
-        citit = getattr(r.usage, "cache_read_input_tokens", 0) or 0
-        detalii.append(
-            f"Cache: funcționează ({citit} tokeni citiți din cache)" if citit
-            else "Cache: NU a citit nimic — generările plătesc transcriptul întreg"
-        )
+        u = r.usage
+        citit = getattr(u, "cache_read_input_tokens", 0) or 0
+        scris = getattr(u, "cache_creation_input_tokens", 0) or 0
+        necache = getattr(u, "input_tokens", 0) or 0
+        detalii.append(f"Cererea reală: {citit} citiți din cache · {scris} scriși · {necache} fără cache")
+        if citit:
+            detalii.append(f"Cache: funcționează ({citit} tokeni citiți din cache)")
+        elif scris:
+            # Cererea reală a scris ea însăși cache-ul: încălzirea nu a pus nimic
+            # unde o caută cererile reale (prefix diferit sau încălzire refuzată).
+            detalii.append("Cache: NU a citit nimic — cererea reală a rescris cache-ul, "
+                           "deci încălzirea nu se potrivește cu cererile reale")
+        else:
+            detalii.append("Cache: NU a citit nimic — nici n-a scris; prefixul e probabil sub pragul minim")
     except Exception as e:
         detalii.append(f"Cache: proba a eșuat ({_din_exceptie(e)[1]})")
 

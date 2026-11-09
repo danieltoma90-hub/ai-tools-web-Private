@@ -29,7 +29,7 @@ def _fara_apeluri_reale_la_claude(monkeypatch):
     import claude
 
     async def _incalzire(*a, **k):
-        return None
+        return claude.Incalzire()
 
     async def _raspuns_nesimulat(*a, **k):
         raise AssertionError("Apel Claude nesimulat în test — simulează claude.raspunde.")

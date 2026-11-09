@@ -162,9 +162,27 @@ async def raspunde(
     return Raspuns(text_din(mesaj), mesaj.stop_reason, getattr(mesaj, "usage", None))
 
 
+@dataclass
+class Incalzire:
+    """Ce s-a întâmplat la încălzire — pentru Diagnostic, care altfel ar vedea doar
+    „cache: nu a citit nimic" fără să știe de ce."""
+    usage: Any = None
+    cu_fallback: bool = False
+    eroare: str = ""
+
+    @property
+    def scris(self) -> int:
+        return int(getattr(self.usage, "cache_creation_input_tokens", 0) or 0)
+
+
+# Textul de după punctul de cache, ca în exemplul oficial de încălzire: e citit la
+# prefill, dar nu primește răspuns (max_tokens=0). Nu intră în cache.
+_INLOCUITOR = "warmup"
+
+
 async def incalzeste_cache(
     prefix: str, *, efort: str = "medium", system: str | None = None
-) -> Any:
+) -> Incalzire:
     """Scrie în cache prefixul comun, înaintea cererilor paralele care îl folosesc.
 
     Un cache devine citibil abia după ce primul răspuns începe să curgă, așa că N
@@ -173,29 +191,29 @@ async def incalzeste_cache(
 
     Efortul și sistemul trebuie să fie identice cu ale cererilor reale — fac parte
     din ce se pune în cache. Totul e „best effort": dacă încălzirea eșuează,
-    cererile merg mai departe fără cache, adică exact ca înainte. Întoarce
-    `usage`, ca proba din Diagnostic să poată arăta ce s-a scris.
+    cererile merg mai departe fără cache, adică exact ca înainte — și nu ridică
+    excepții. Dacă varianta cu fallback e refuzată din orice motiv, se încearcă și
+    fără: fallback-ul e rutare, nu face parte din promptul pus în cache.
     """
     from anthropic import BadRequestError
 
-    for cu_fallback in (True, False):
+    erori = []
+    for cu_fallback in (True, False) if fallback_activ() else (False,):
         params = _parametri(
-            continut=_continut("", prefix), system=system,
+            continut=_continut(_INLOCUITOR, prefix), system=system,
             max_tokens=0, efort=efort, cu_fallback=cu_fallback,
         )
         try:
             mesaj = await client().beta.messages.create(**params)
-            return getattr(mesaj, "usage", None)
+            return Incalzire(getattr(mesaj, "usage", None), cu_fallback, "; ".join(erori))
         except BadRequestError as e:
-            # Dacă API-ul nu acceptă fallback la o cerere fără răspuns, reîncercăm fără.
-            if cu_fallback and "fallback" in str(e).lower():
-                continue
-            logger.warning("claude: încălzirea cache-ului refuzată: %s", e)
-            return None
+            erori.append(f"{'cu' if cu_fallback else 'fără'} fallback: {e}")
+            logger.warning("claude: încălzirea cache-ului refuzată (%s fallback): %s",
+                           "cu" if cu_fallback else "fără", e)
         except Exception as e:
             logger.warning("claude: încălzirea cache-ului a eșuat: %s", e)
-            return None
-    return None
+            return Incalzire(eroare=f"{type(e).__name__}: {e}")
+    return Incalzire(eroare="; ".join(erori))
 
 
 def parse_json(text: str) -> Any:

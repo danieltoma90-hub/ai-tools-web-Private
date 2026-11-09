@@ -24,8 +24,14 @@ class _EroareApi(Exception):
         self.body = {"type": "error", "error": {"type": "x", "message": mesaj}}
 
 
-def _ok(citit: int = 0):
-    return claude.Raspuns("OK", "end_turn", SimpleNamespace(cache_read_input_tokens=citit))
+def _ok(citit: int = 0, scris: int = 0):
+    return claude.Raspuns("OK", "end_turn", SimpleNamespace(
+        cache_read_input_tokens=citit, cache_creation_input_tokens=scris, input_tokens=12))
+
+
+def _incalzire(scris: int = 6000, eroare: str = "", cu_fallback: bool = True):
+    usage = SimpleNamespace(cache_creation_input_tokens=scris) if scris or not eroare else None
+    return claude.Incalzire(usage, cu_fallback, eroare)
 
 
 @pytest.fixture(autouse=True)
@@ -66,7 +72,7 @@ async def test_cheie_lipsa(monkeypatch):
 async def test_totul_functioneaza_si_cache_ul_citeste(monkeypatch):
     raspunsuri = AsyncMock(side_effect=[_ok(), _ok(citit=1024)])
     monkeypatch.setattr(claude, "raspunde", raspunsuri)
-    monkeypatch.setattr(claude, "incalzeste_cache", AsyncMock(return_value=None))
+    monkeypatch.setattr(claude, "incalzeste_cache", AsyncMock(return_value=_incalzire()))
 
     r = await _check_anthropic()
 
@@ -75,15 +81,34 @@ async def test_totul_functioneaza_si_cache_ul_citeste(monkeypatch):
     detalii = " | ".join(r["detalii"])
     assert claude.model() in detalii
     assert "Cache: funcționează (1024 tokeni" in detalii
+    assert "Încălzire: 6000 tokeni scriși în cache (cu fallback)" in detalii
     # a doua cerere poartă prefixul de cache, după încălzire
     assert raspunsuri.call_args_list[1].kwargs["prefix_cache"]
 
 
-async def test_cache_ul_care_nu_citeste_e_semnalat(monkeypatch):
-    monkeypatch.setattr(claude, "raspunde", AsyncMock(side_effect=[_ok(), _ok(citit=0)]))
+async def test_cache_ul_rescris_de_cererea_reala_spune_ca_incalzirea_nu_se_potriveste(monkeypatch):
+    monkeypatch.setattr(claude, "incalzeste_cache", AsyncMock(return_value=_incalzire()))
+    monkeypatch.setattr(claude, "raspunde", AsyncMock(side_effect=[_ok(), _ok(citit=0, scris=6000)]))
     r = await _check_anthropic()
+    detalii = " | ".join(r["detalii"])
     assert r["state"] == "ok"
-    assert any("NU a citit" in d for d in r["detalii"])
+    assert "NU a citit" in detalii and "încălzirea nu se potrivește" in detalii
+    assert "0 citiți din cache · 6000 scriși" in detalii
+
+
+async def test_incalzirea_refuzata_isi_spune_motivul(monkeypatch):
+    monkeypatch.setattr(claude, "incalzeste_cache", AsyncMock(
+        return_value=_incalzire(scris=0, eroare="cu fallback: max_tokens invalid")))
+    monkeypatch.setattr(claude, "raspunde", AsyncMock(side_effect=[_ok(), _ok(citit=0, scris=6000)]))
+    r = await _check_anthropic()
+    assert any("Încălzire: refuzată — cu fallback: max_tokens invalid" in d for d in r["detalii"])
+
+
+async def test_prefix_sub_prag_e_semnalat(monkeypatch):
+    monkeypatch.setattr(claude, "incalzeste_cache", AsyncMock(return_value=_incalzire(scris=0)))
+    monkeypatch.setattr(claude, "raspunde", AsyncMock(side_effect=[_ok(), _ok(citit=0, scris=0)]))
+    r = await _check_anthropic()
+    assert any("sub pragul minim" in d for d in r["detalii"])
 
 
 async def test_cheie_invalida_raportata_din_exceptia_sdk(monkeypatch):

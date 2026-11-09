@@ -36,7 +36,7 @@ export default function ProviderDiagnostics() {
       <h2 className="text-sm font-bold text-[#18257f] mb-1">Stare Claude</h2>
       <p className="text-xs text-slate-500 mb-3">
         Verifică dacă generările vor merge: cererile de test trec pe același drum ca
-        minutele, scenariile și restul modulelor, inclusiv cache-ul. Costă sub un cent.
+        minutele, scenariile și restul modulelor, inclusiv cache-ul. Costă câțiva cenți.
       </p>
 
       <button
@@ -76,7 +76,12 @@ export default function ProviderDiagnostics() {
                 {r.detalii && r.detalii.length > 0 && (
                   <ul className="mt-1.5 text-[11px] text-slate-500 list-disc pl-4">
                     {r.detalii.map((d) => (
-                      <li key={d} className={d.startsWith("Cache: NU") ? "text-amber-700" : ""}>
+                      <li
+                        key={d}
+                        className={
+                          d.startsWith("Cache: NU") || d.includes("refuzată") ? "text-amber-700" : ""
+                        }
+                      >
                         {d}
                       </li>
                     ))}

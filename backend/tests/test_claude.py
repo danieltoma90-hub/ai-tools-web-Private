@@ -70,7 +70,7 @@ def capturat(monkeypatch):
     înregistrează, iar răspunsul se alege per test."""
     from anthropic import AsyncAnthropic
 
-    stare = {"cereri": [], "raspuns": None}
+    stare = {"cereri": [], "raspuns": None, "refuza_incalzirea_cu_fallback": False}
 
     def handler(request: httpx.Request) -> httpx.Response:
         corp = json.loads(request.content or b"{}")
@@ -79,6 +79,11 @@ def capturat(monkeypatch):
             return httpx.Response(
                 200, headers={"content-type": "text/event-stream"}, content=stare["raspuns"]
             )
+        if stare["refuza_incalzirea_cu_fallback"] and "fallbacks" in corp:
+            # un refuz al cărui mesaj nu pomenește „fallback" — reîncercarea nu are voie
+            # să depindă de formularea erorii
+            return httpx.Response(400, json={"type": "error", "error": {
+                "type": "invalid_request_error", "message": "max_tokens: unsupported value"}})
         return httpx.Response(200, json={
             "id": "msg_w", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
             "content": [], "stop_reason": "max_tokens", "stop_sequence": None,
@@ -130,7 +135,7 @@ async def test_prefixul_de_cache_sta_primul_cu_marcaj(capturat):
 
 async def test_incalzirea_scrie_acelasi_prefix_fara_raspuns(capturat):
     capturat["raspuns"] = _flux_raspuns("ok")
-    usage = await claude.incalzeste_cache("TRANSCRIPT", efort="medium")
+    inc = await claude.incalzeste_cache("TRANSCRIPT", efort="medium")
     await claude.raspunde("Instrucțiunea", max_tokens=4000, prefix_cache="TRANSCRIPT")
 
     incalzire, reala = (c["corp"] for c in capturat["cereri"])
@@ -140,7 +145,31 @@ async def test_incalzirea_scrie_acelasi_prefix_fara_raspuns(capturat):
     assert incalzire["messages"][0]["content"][0] == reala["messages"][0]["content"][0]
     assert incalzire["output_config"] == reala["output_config"]
     assert incalzire["model"] == reala["model"]
-    assert usage.cache_creation_input_tokens == 1500
+    # ca în exemplul oficial: un text după punctul de cache, citit dar fără răspuns
+    assert incalzire["messages"][0]["content"][1]["text"] == "warmup"
+    assert "cache_control" not in incalzire["messages"][0]["content"][1]
+    assert inc.scris == 1500 and inc.cu_fallback and not inc.eroare
+
+
+async def test_incalzirea_refuzata_cu_fallback_se_reia_fara(capturat):
+    """Orice refuz al variantei cu fallback duce la o a doua încercare fără — nu doar
+    unul care pomenește cuvântul „fallback" în mesaj."""
+    capturat["refuza_incalzirea_cu_fallback"] = True
+    inc = await claude.incalzeste_cache("TRANSCRIPT")
+
+    prima, a_doua = (c["corp"] for c in capturat["cereri"])
+    assert "fallbacks" in prima and "fallbacks" not in a_doua
+    assert inc.scris == 1500 and not inc.cu_fallback
+    assert "max_tokens: unsupported value" in inc.eroare  # motivul rămâne vizibil
+
+
+async def test_incalzirea_nu_ridica_exceptii(capturat, monkeypatch):
+    async def pica(**kw):
+        raise ConnectionError("rețea căzută")
+
+    monkeypatch.setattr(claude.client().beta.messages, "create", pica)
+    inc = await claude.incalzeste_cache("TRANSCRIPT")
+    assert inc.scris == 0 and "rețea căzută" in inc.eroare
 
 
 async def test_refuzul_devine_exceptie_cu_categorie(capturat):
