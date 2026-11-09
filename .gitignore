@@ -17,3 +17,8 @@ Thumbs.db
 
 # Spatiu de lucru subagent-driven-development (scratch)
 .superpowers/
+
+# Date Tesseract descarcate automat la experimente OCR (3MB, nefolosite de site)
+*.traineddata
+# Documente de proba pentru depanarea Mockup — ale utilizatorului, nu ale repo-ului
+backend/skills/mockup/input/

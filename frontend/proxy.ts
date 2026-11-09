@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // Decode JWT payload without signature verification.
 // Real auth enforcement is on FastAPI (verifies signature on every API call).
-// Middleware only checks presence and expiry for routing decisions.
+// The proxy (fostul middleware, redenumit în Next 16) only checks presence and
+// expiry for routing decisions.
 function decodeJWTPayload(token: string): Record<string, unknown> | null {
   try {
     const parts = token.split(".");
@@ -24,7 +25,7 @@ function hasValidSession(token: string | undefined): boolean {
   return exp > Math.floor(Date.now() / 1000);
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublic =
     pathname.startsWith("/login") ||
