@@ -1,22 +1,16 @@
 "use client";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import ToolCard from "@/components/ToolCard";
+import Etape from "@/components/Etape";
 import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
-import HistoryPanel from "@/components/HistoryPanel";
-import {
-  uploadSourceFile,
-  postTrainingGenerate,
-  getTrainingJob,
-  type TrainingSummary,
-} from "@/lib/api";
-import { isColdStartError, pollJob } from "@/lib/poll";
+import EroareGenerare from "@/components/EroareGenerare";
+import { postTrainingGenerate, getTrainingJob, type TrainingJob } from "@/lib/api";
+import { useGenerare } from "@/lib/generare";
 import { ETAPE_TRAINING } from "@/lib/progres";
 
-type State = "idle" | "processing" | "done" | "error";
 type Tip = "core" | "productie";
 
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const ORE_PE_ZI = 6;
 
 function stepLabel(step: string): string {
@@ -44,107 +38,43 @@ export default function TrainingPage() {
   const [zile, setZile] = useState(3);
   const [client, setClient] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [state, setState] = useState<State>("idle");
-  const [error, setError] = useState("");
-  const [progress, setProgress] = useState("Se inițializează...");
-  const [step, setStep] = useState<string | null>(null);
-  const [result, setResult] = useState<{
-    docxName: string;
-    docxB64: string;
-    xlsxName: string;
-    xlsxB64: string;
-    summary: TrainingSummary | null;
-  } | null>(null);
-  const [historyKey, setHistoryKey] = useState(0);
-  const cancelledRef = useRef(false);
+  const g = useGenerare<TrainingJob>({ modul: "Training", etichetaPas: stepLabel });
 
   const specNecesara = tip === "productie";
   const potGenera = !specNecesara || file !== null;
 
-  async function handleGenerate() {
-    if (file && file.size > MAX_UPLOAD_BYTES) {
-      setError(
-        `Fișierul are ${(file.size / 1024 / 1024).toFixed(1)}MB — peste limita de 50MB.`
-      );
-      setState("error");
-      return;
-    }
-    setState("processing");
-    setProgress(file ? "Încarc specificația..." : "Generez programul standard...");
-    setStep(null);
-    setError("");
-    cancelledRef.current = false;
-
-    try {
+  function genereaza() {
+    g.porneste(async ({ incarca, eticheta }) => {
       let storagePath: string | undefined;
       if (file) {
-        try {
-          ({ storage_path: storagePath } = await uploadSourceFile(file, "training"));
-        } catch (initErr) {
-          // Render free tier adoarme — retry automat după 5s
-          const msg = initErr instanceof Error ? initErr.message : "";
-          if (!isColdStartError(msg)) throw initErr;
-          setProgress("Server pornit, se retransmite automat...");
-          await new Promise((r) => setTimeout(r, 5000));
-          if (cancelledRef.current) return;
-          ({ storage_path: storagePath } = await uploadSourceFile(file, "training"));
-        }
-        if (cancelledRef.current) return;
-        setProgress("Pornesc generarea...");
+        eticheta("Încarc specificația...");
+        storagePath = await incarca(file, "training");
       }
-
-      const { job_id } = await postTrainingGenerate({ tip, zile, client, storagePath });
-
-      const job = await pollJob(() => getTrainingJob(job_id), {
-        cancelled: () => cancelledRef.current,
-        onStep: (s) => {
-          setStep(s);
-          setProgress(stepLabel(s));
-        },
-      });
-      if (!job) return;
-
-      setResult({
-        docxName: job.filename!,
-        docxB64: job.docx_b64!,
-        xlsxName: job.xlsx_filename!,
-        xlsxB64: job.xlsx_b64!,
-        summary: job.summary ?? null,
-      });
-      setState("done");
-      setHistoryKey((k) => k + 1);
-    } catch (err: unknown) {
-      if (cancelledRef.current) return;
-      setError(err instanceof Error ? err.message : "Eroare necunoscută");
-      setState("error");
-    }
+      eticheta(file ? "Pornesc generarea..." : "Generez programul standard...");
+      return (await postTrainingGenerate({ tip, zile, client, storagePath })).job_id;
+    }, getTrainingJob);
   }
 
   function reset() {
-    cancelledRef.current = true;
     setFile(null);
-    setResult(null);
-    setState("idle");
-    setError("");
+    g.reset();
   }
 
-  /** Oprește doar urmărirea din pagină — jobul rulează mai departe pe server. */
-  function renuntaLaAsteptare() {
-    cancelledRef.current = true;
-    setState("idle");
-  }
+  const r = g.rezultat;
+  const sumar = r?.summary ?? null;
 
   return (
-    <div className="flex h-screen">
-      <div className="flex-1 p-6 overflow-auto">
+    <div className="p-6 max-w-5xl">
         <ToolCard
           icon="🎓"
           title="Agenda Training"
           description="Program de școlarizare utilizatori → agendă Word + plan Excel cu participanți"
           tool="training"
+          recentKey={g.recentKey}
         />
+        <Etape faza={g.faza} intrare="Tip, durată, specificație" rezultat="Agenda" />
 
-        {state === "idle" && (
+        {g.faza === "idle" && (
           <div className="flex flex-col gap-4">
             {/* Tip training */}
             <div className="flex rounded-lg border border-slate-200 overflow-hidden w-fit">
@@ -235,7 +165,7 @@ export default function TrainingPage() {
             </div>
 
             <button
-              onClick={handleGenerate}
+              onClick={genereaza}
               disabled={!potGenera}
               className="w-full bg-[#18257f] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-[#131e66] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
@@ -249,42 +179,37 @@ export default function TrainingPage() {
           </div>
         )}
 
-        {state === "processing" && (
-          <ProcessingSpinner
-            label={progress}
-            onCancel={renuntaLaAsteptare}
-            etape={ETAPE_TRAINING}
-            step={step}
-          />
+        {g.faza === "processing" && (
+          <ProcessingSpinner label={g.eticheta} onCancel={g.renunta} etape={ETAPE_TRAINING} step={g.step} />
         )}
 
-        {state === "done" && result && (
+        {g.faza === "done" && r && (
           <div className="flex flex-col gap-4">
-            {result.summary && (
+            {sumar && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
                     <p className="text-xl font-bold text-[#18257f]">
-                      {result.summary.zile}
+                      {sumar.zile}
                     </p>
                     <p className="text-[11px] text-slate-500">zile</p>
                   </div>
                   <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
                     <p className="text-xl font-bold text-[#18257f]">
-                      {String(result.summary.total_ore).replace(".", ",")}h
+                      {String(sumar.total_ore).replace(".", ",")}h
                     </p>
                     <p className="text-[11px] text-slate-500">efort total</p>
                   </div>
                   <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
                     <p className="text-xl font-bold text-[#18257f]">
-                      {result.summary.module}
+                      {sumar.module}
                     </p>
                     <p className="text-[11px] text-slate-500">module</p>
                   </div>
-                  {result.summary.tip === "productie" ? (
+                  {sumar.tip === "productie" ? (
                     <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
                       <p className="text-xl font-bold text-[#18257f]">
-                        {String(result.summary.ore_referinta ?? 0).replace(".", ",")}h
+                        {String(sumar.ore_referinta ?? 0).replace(".", ",")}h
                       </p>
                       <p className="text-[11px] text-slate-500">
                         cerute de specificație
@@ -293,58 +218,58 @@ export default function TrainingPage() {
                   ) : (
                     <div
                       className={`border rounded-lg p-3 text-center ${
-                        result.summary.particularitati > 0
+                        sumar.particularitati > 0
                           ? "bg-[#fff9c4] border-amber-200"
                           : "bg-white border-[#e2e5f0]"
                       }`}
                     >
                       <p
                         className={`text-xl font-bold ${
-                          result.summary.particularitati > 0
+                          sumar.particularitati > 0
                             ? "text-amber-700"
                             : "text-slate-300"
                         }`}
                       >
-                        {result.summary.particularitati}
+                        {sumar.particularitati}
                       </p>
                       <p className="text-[11px] text-slate-500">particularități client</p>
                     </div>
                   )}
                 </div>
 
-                {result.summary.tip === "productie" &&
-                  result.summary.ore_referinta != null &&
-                  Math.abs(result.summary.ore_referinta - result.summary.total_ore) >
+                {sumar.tip === "productie" &&
+                  sumar.ore_referinta != null &&
+                  Math.abs(sumar.ore_referinta - sumar.total_ore) >
                     0.01 && (
                     <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                       Specificația cere{" "}
                       <strong>
-                        {String(result.summary.ore_referinta).replace(".", ",")}h
+                        {String(sumar.ore_referinta).replace(".", ",")}h
                       </strong>
-                      , iar {result.summary.zile}{" "}
-                      {result.summary.zile === 1 ? "zi oferă" : "zile oferă"}{" "}
+                      , iar {sumar.zile}{" "}
+                      {sumar.zile === 1 ? "zi oferă" : "zile oferă"}{" "}
                       <strong>
-                        {String(result.summary.total_ore).replace(".", ",")}h
+                        {String(sumar.total_ore).replace(".", ",")}h
                       </strong>
                       . Conținutul a fost{" "}
-                      {result.summary.ore_referinta > result.summary.total_ore
+                      {sumar.ore_referinta > sumar.total_ore
                         ? "comprimat"
                         : "lărgit"}{" "}
                       proporțional — ajustează durata dacă vrei alt ritm.
                     </p>
                   )}
 
-                {result.summary.avertisment && (
+                {sumar.avertisment && (
                   <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                     <strong>Agenda conține doar programul standard.</strong>{" "}
-                    {result.summary.avertisment}
+                    {sumar.avertisment}
                   </p>
                 )}
 
-                {result.summary.excluse.length > 0 && (
+                {sumar.excluse.length > 0 && (
                   <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                     <strong>Nu încape la această durată:</strong>{" "}
-                    {result.summary.excluse.join(", ")}. Mărește numărul de zile
+                    {sumar.excluse.join(", ")}. Mărește numărul de zile
                     dacă modulele acestea sunt necesare.
                   </p>
                 )}
@@ -353,13 +278,13 @@ export default function TrainingPage() {
 
             <div className="bg-white border border-[#e2e5f0] rounded-xl p-4 flex flex-col gap-2">
               <button
-                onClick={() => descarca(result.docxB64, result.docxName)}
+                onClick={() => descarca(r.docx_b64!, r.filename!)}
                 className="w-full bg-[#18257f] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-[#131e66]"
               >
                 ↓ Descarcă agenda (.docx)
               </button>
               <button
-                onClick={() => descarca(result.xlsxB64, result.xlsxName)}
+                onClick={() => descarca(r.xlsx_b64!, r.xlsx_filename!)}
                 className="w-full bg-white border border-[#18257f] text-[#18257f] py-2.5 rounded-lg text-sm font-semibold hover:bg-[#eef0f8]"
               >
                 ↓ Descarcă planul cu participanți (.xlsx)
@@ -374,19 +299,7 @@ export default function TrainingPage() {
           </div>
         )}
 
-        {state === "error" && (
-          <div className="flex flex-col gap-3">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
-              {error}
-            </div>
-            <button onClick={reset} className="text-sm text-[#18257f] underline">
-              Încearcă din nou
-            </button>
-          </div>
-        )}
-      </div>
-
-      <HistoryPanel tool="training" refreshKey={historyKey} />
+        {g.faza === "error" && <EroareGenerare eroare={g.eroare} onReset={reset} />}
     </div>
   );
 }

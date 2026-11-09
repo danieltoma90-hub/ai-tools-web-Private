@@ -10,11 +10,6 @@ from docx import Document
 
 import claude
 
-try:
-    from json_repair import repair_json
-    _JSON_REPAIR_AVAILABLE = True
-except ImportError:
-    _JSON_REPAIR_AVAILABLE = False
 
 SKILL_DIR = Path(__file__).parent.parent / "skills" / "minuta"
 PROMPTS_DIR = SKILL_DIR / "prompts"
@@ -82,39 +77,10 @@ async def _call_claude(
     return raspuns.text
 
 
-def _parse_json_from_response(text: str) -> dict | list:
-    """Extrage primul bloc JSON din răspunsul Claude, cu repair ca fallback."""
-    # 1. Încearcă să extragă din bloc ```json ... ```
-    match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
-    candidate = match.group(1) if match else text
-
-    # 2. Încearcă parsare directă
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        pass
-
-    # 3. Extrage cel mai mare bloc { } sau [ ] din text
-    m = re.search(r"(\{[\s\S]*\}|\[[\s\S]*\])", candidate)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except json.JSONDecodeError:
-            pass
-
-    # 4. Folosește json-repair pentru JSON malformat (ghilimele neescapate, virgule lipsă etc.)
-    target = m.group(1) if m else candidate
-    if _JSON_REPAIR_AVAILABLE:
-        repaired = repair_json(target)
-        if repaired and repaired.strip() not in ("", "null", "{}"):
-            return json.loads(repaired)
-
-    raise ValueError(f"Nu s-a putut parsa JSON din răspunsul Claude (primii 200 chars): {text[:200]}")
-
 
 async def _extract_metadata(transcript: str, context: str = "", extra: str = "") -> dict:
     raw = await _call_claude("extract_meeting_metadata.md", transcript, context, extra)
-    return _parse_json_from_response(raw)
+    return claude.parse_json(raw)
 
 
 async def _extract_sections(
@@ -122,30 +88,30 @@ async def _extract_sections(
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> dict:
     raw = await _call_claude("extract_sections.md", transcript, context, extra, max_tokens)
-    return _parse_json_from_response(raw)
+    return claude.parse_json(raw)
 
 
 async def _extract_action_items(transcript: str, context: str = "", extra: str = "") -> list:
     raw = await _call_claude("extract_action_items.md", transcript, context, extra)
-    return _parse_json_from_response(raw)
+    return claude.parse_json(raw)
 
 
 async def _extract_followup(transcript: str, context: str, extra: str = "") -> dict:
     """Stadiul actiunilor deschise din context, dupa aceasta sedinta."""
     raw = await _call_claude("extract_followup.md", transcript, context, extra)
-    return _parse_json_from_response(raw)
+    return claude.parse_json(raw)
 
 
 async def _extract_profile(transcript: str, context: str = "", extra: str = "") -> dict:
     """Profilul beneficiarului, cerintele lui explicite si punctele ramase deschise."""
     raw = await _call_claude("extract_profile_requirements.md", transcript, context, extra)
-    return _parse_json_from_response(raw)
+    return claude.parse_json(raw)
 
 
 async def _extract_fitgap(transcript: str, context: str = "", extra: str = "") -> dict:
     """Conținutul pe capitolele Fit-Gap (rezumat, subiecte, probleme, soluție, acțiuni, riscuri, concluzie)."""
     raw = await _call_claude("extract_fitgap.md", transcript, context, extra, LONG_MAX_TOKENS)
-    return _parse_json_from_response(raw)
+    return claude.parse_json(raw)
 
 
 def _block_to_html(block: dict) -> str:

@@ -1,15 +1,10 @@
-import asyncio
-import base64
 import json
 import logging
 import os
 import sys
 import tempfile
-import traceback
-import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +15,8 @@ from fastapi import (
 from fastapi.responses import FileResponse
 
 import jobs
-from acces import cere_modul, nume_utilizator
+import claude
+from acces import admin_emails, cere_modul, email_din, nume_utilizator
 from pipelines.minuta_pipeline import run_minuta_pipeline
 from storage import download_document, download_upload, list_files, upload_file
 
@@ -136,7 +132,6 @@ async def upload_context(
 async def _run_job(
     job_id: str,
     input_path: Path,
-    api_key: str,
     stem: str,
     timestamp: str,
     context_storage_path: str = "",
@@ -144,12 +139,16 @@ async def _run_job(
     autor: str = "TotalSoft",
     alte_inregistrari: list[tuple[Path, str]] | None = None,
     notite: str = "",
+    efort: str | None = None,
 ) -> None:
     """Rulează minuta în fundal. `alte_inregistrari` — fișierele aceleiași zile de după
-    `input_path`, ca (cale locală, nume original); `notite` — notițele echipei din ședință."""
+    `input_path`, ca (cale locală, nume original); `notite` — notițele echipei din ședință;
+    `efort` — efortul impus de administrator, pentru comparația de cost și calitate."""
     context_path: Path | None = None
     alte_inregistrari = alte_inregistrari or []
-    try:
+
+    async def lucrare() -> dict:
+        nonlocal context_path
         if context_storage_path:
             try:
                 context_path = download_document(context_storage_path)
@@ -166,21 +165,20 @@ async def _run_job(
             notite=notite,
             **(optiuni or {}),
         )
-        filename = _nume_fisier(stem, timestamp, optiuni)
-        user_email = (jobs.get_job(job_id) or {}).get("user_email", "anonymous")
-        storage_path = upload_file(docx_path, tool="minuta", filename=filename, user_email=user_email)
-        with open(docx_path, "rb") as f:
-            docx_b64 = base64.b64encode(f.read()).decode()
-        jobs.finish(
-            job_id,
-            filename=filename,
-            docx_b64=docx_b64,
-            preview_html=preview_html,
-            storage_path=storage_path,
-        )
-        docx_path.unlink(missing_ok=True)
-    except Exception as e:
-        jobs.esueaza(job_id, e)
+        try:
+            filename = _nume_fisier(stem, timestamp, optiuni)
+            storage_path, docx_b64 = jobs.livreaza(job_id, docx_path, tool="minuta", filename=filename)
+        finally:
+            docx_path.unlink(missing_ok=True)
+        return {
+            "filename": filename,
+            "docx_b64": docx_b64,
+            "preview_html": preview_html,
+            "storage_path": storage_path,
+        }
+
+    try:
+        await jobs.ruleaza(job_id, lucrare, efort=efort)
     finally:
         input_path.unlink(missing_ok=True)
         for cale, _ in alte_inregistrari:
@@ -272,13 +270,21 @@ async def generate_minuta(
     detaliu: str = Form("standard"),
     notite: str = Form(""),
     inregistrari: str = Form(""),
+    efort: str = Form(""),
     user=Depends(cere_modul("minuta")),
 ):
     """Pornește procesarea minutei în fundal și returnează un job_id imediat.
 
     `notite` — notițele echipei din ședință, opționale; `inregistrari` — JSON cu celelalte
-    înregistrări ale aceleiași zile (`storage_path`, `filename`), reunite în aceeași minută."""
+    înregistrări ale aceleiași zile (`storage_path`, `filename`), reunite în aceeași minută;
+    `efort` — doar pentru administratori: impune efortul modelului (low/medium/high), ca
+    să poată compara costul și calitatea pe aceeași ședință. Pentru ceilalți se ignoră."""
     optiuni = _optiuni(marcaje, limba, structura, detaliu)
+    efort = (efort or "").strip().lower()
+    if efort and efort not in claude.EFORTURI:
+        raise HTTPException(status_code=422, detail=f"Efortul trebuie să fie unul din {claude.EFORTURI}")
+    if efort and email_din(user) not in admin_emails():
+        efort = ""
     notite = (notite or "").strip()
     if len(notite) > MAX_NOTITE:
         raise HTTPException(
@@ -292,8 +298,7 @@ async def generate_minuta(
         input_path.unlink(missing_ok=True)
         raise
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
+    if not os.environ.get("ANTHROPIC_API_KEY"):
         input_path.unlink(missing_ok=True)
         for cale, _ in alte_inregistrari:
             cale.unlink(missing_ok=True)
@@ -305,8 +310,9 @@ async def generate_minuta(
     user_email = getattr(user, "email", None) or "anonymous"
     job_id = jobs.create_job(user_email, "minuta")
     background_tasks.add_task(
-        _run_job, job_id, input_path, api_key, stem, timestamp, context_path, optiuni,
+        _run_job, job_id, input_path, stem, timestamp, context_path, optiuni,
         nume_utilizator(user), alte_inregistrari=alte_inregistrari, notite=notite,
+        efort=efort or None,
     )
 
     return {"job_id": job_id}

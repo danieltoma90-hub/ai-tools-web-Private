@@ -31,9 +31,10 @@ def _load_spec(input_path: Path):
     raise ValueError(f"Format nesuportat: {ext}. Folosiți .xlsx sau .docx.")
 
 
-def estimate_mockup_job(input_path: Path) -> dict:
-    """Pre-check: tokeni necesari pentru imbogatirea AI a acestui ecran."""
-    spec, descriptions = _load_spec(input_path)
+def verifica_fisierul(input_path: Path) -> None:
+    """Citește fișierul înainte de a porni generarea, ca un ecran nerecunoscut să
+    primească răspuns pe loc, nu după un minut de așteptare. Ridică ValueError."""
+    spec, _ = _load_spec(input_path)
     has_content = any(
         s.filter_fields or s.buttons or s.columns for s in spec.sections
     )
@@ -43,12 +44,6 @@ def estimate_mockup_job(input_path: Path) -> dict:
             "să conțină fie o zonă de filtrare („Zona de filtrare”/„Filtre” pe coloana A), "
             "fie titlul ecranului urmat de butoane și de antetul grid-ului."
         )
-    est_tokens = ai_enricher.estimate_enrich_tokens(spec, descriptions)
-    return {
-        "est_tokens": est_tokens,
-        "est_minutes": 1,
-        "fits_budget": True,
-    }
 
 
 async def run_mockup_pipeline(

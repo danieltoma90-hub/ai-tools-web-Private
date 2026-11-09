@@ -3,7 +3,6 @@ import { useRef, useState } from "react";
 import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import {
-  uploadSourceFile,
   postScopCorePropune,
   postScopCoreGenereaza,
   getScopCoreJob,
@@ -11,7 +10,8 @@ import {
   type ScopCoreDelimitare,
   type ScopCoreSummary,
 } from "@/lib/api";
-import { isColdStartError, pollJob } from "@/lib/poll";
+import { pollJob } from "@/lib/poll";
+import { anuntaTerminarea, incarcaFisier as incarcaInStorage } from "@/lib/generare";
 import { ETAPE_SCOP_CORE } from "@/lib/progres";
 import ElementCard, { type ElementUI } from "./ElementCard";
 import { SECTIUNI_CORE } from "./sectiuniCore";
@@ -19,9 +19,6 @@ import { SECTIUNI_CORE } from "./sectiuniCore";
 type State = "idle" | "processing" | "done" | "error";
 type AnalizaState = "none" | "loading" | "done" | "error";
 type DelimitareUI = ScopCoreDelimitare & { id: string };
-
-// Limita bucket-ului Supabase (plan free)
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 // Cele zece chei de secțiune CORE, plus "propriu" — singurele valori valide pentru `plasare`.
 const PLASARI: { cheie: string; titlu: string }[] = [
@@ -46,10 +43,6 @@ function descarca(b64: string, filename: string) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-function mesajFisierMarePrea(file: File): string {
-  return `Fișierul are ${(file.size / 1024 / 1024).toFixed(1)}MB — peste limita de 50MB a storage-ului.`;
 }
 
 /**
@@ -88,28 +81,13 @@ export default function CapitolModeForm({ onGenerated }: { onGenerated: () => vo
     return `el-${idRef.current}`;
   }
 
-  /** Urcă un fișier direct în storage, cu o reîncercare dacă serverul dormea. */
-  async function incarcaFisier(file: File): Promise<string> {
-    try {
-      const { storage_path } = await uploadSourceFile(file, "scop-core");
-      return storage_path;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      if (!isColdStartError(msg)) throw err;
-      await new Promise((r) => setTimeout(r, 5000));
-      const { storage_path } = await uploadSourceFile(file, "scop-core");
-      return storage_path;
-    }
+  /** Urcă un fișier direct în storage (limita de 50MB și reîncercarea sunt în lib/generare). */
+  function incarcaFisier(file: File): Promise<string> {
+    return incarcaInStorage(file, "scop-core", () => cancelledRef.current);
   }
 
   /** Urcă documentul suplimentar și cere segmentarea lui — pornește automat la alegerea fișierului. */
   async function analizeazaSupliment(file: File) {
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setSuplimentFile(file);
-      setAnalizaError(mesajFisierMarePrea(file));
-      setAnaliza("error");
-      return;
-    }
     setSuplimentFile(file);
     setElemente([]);
     setAnalizaError("");
@@ -160,11 +138,6 @@ export default function CapitolModeForm({ onGenerated }: { onGenerated: () => vo
 
   async function handleGenerate() {
     if (!gazdaFile) return;
-    if (gazdaFile.size > MAX_UPLOAD_BYTES) {
-      setError(mesajFisierMarePrea(gazdaFile));
-      setState("error");
-      return;
-    }
     setState("processing");
     setProgress("Încarc documentul gazdă...");
     setStep(null);
@@ -172,18 +145,7 @@ export default function CapitolModeForm({ onGenerated }: { onGenerated: () => vo
     cancelledRef.current = false;
 
     try {
-      let gazdaStoragePath: string;
-      try {
-        gazdaStoragePath = await incarcaFisier(gazdaFile);
-      } catch (initErr) {
-        // Render free tier adoarme — retry automat după 5s
-        const msg = initErr instanceof Error ? initErr.message : "";
-        if (!isColdStartError(msg)) throw initErr;
-        setProgress("Server pornit, se retransmite automat...");
-        await new Promise((r) => setTimeout(r, 5000));
-        if (cancelledRef.current) return;
-        gazdaStoragePath = await incarcaFisier(gazdaFile);
-      }
+      const gazdaStoragePath = await incarcaFisier(gazdaFile);
       if (cancelledRef.current) return;
       setProgress("Pornesc generarea...");
 
@@ -226,10 +188,12 @@ export default function CapitolModeForm({ onGenerated }: { onGenerated: () => vo
       });
       setState("done");
       onGenerated();
+      anuntaTerminarea("Scop CORE", true);
     } catch (err: unknown) {
       if (cancelledRef.current) return;
       setError(err instanceof Error ? err.message : "Eroare necunoscută");
       setState("error");
+      anuntaTerminarea("Scop CORE", false);
     }
   }
 

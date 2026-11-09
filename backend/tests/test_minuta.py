@@ -73,7 +73,7 @@ async def test_minuta_preia_fisierul_din_storage(client, tmp_path):
     assert response.status_code == 200
     descarcat.assert_called_once_with("minuta/abc.vtt")
     # numele documentului final vine din numele original, nu din cel din storage
-    assert rulat.call_args[0][3] == "Sedinta Godac"
+    assert rulat.call_args[0][2] == "Sedinta Godac"
 
 
 @pytest.mark.asyncio

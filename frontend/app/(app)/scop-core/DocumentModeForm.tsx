@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import {
-  uploadSourceFile,
   postScopCoreGenereazaDocument,
   getScopCoreJob,
   getScopCoreCatalog,
@@ -14,7 +13,8 @@ import {
   type ScopCoreDocumentSummary,
   type TipEntitati,
 } from "@/lib/api";
-import { isColdStartError, pollJob } from "@/lib/poll";
+import { pollJob } from "@/lib/poll";
+import { anuntaTerminarea, incarcaFisier } from "@/lib/generare";
 import { ETAPE_SCOP_CORE } from "@/lib/progres";
 import { SECTIUNI_CORE, titluSectiune } from "./sectiuniCore";
 import ComutatoareCapitole, { type CheieCapitol } from "./ComutatoareCapitole";
@@ -31,7 +31,6 @@ import type {
 } from "./tipuri";
 
 type State = "idle" | "processing" | "done" | "error";
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 const OPTIUNI_INCADRARE: ColoanaTabel<CerintaUI>["optiuni"] = [
   { valoare: "A", eticheta: "A — Acoperit" },
@@ -525,13 +524,6 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
 
   async function handleGenerate() {
     if (!nume.trim()) return;
-    if (gazdaFile && gazdaFile.size > MAX_UPLOAD_BYTES) {
-      setError(
-        `Fișierul are ${(gazdaFile.size / 1024 / 1024).toFixed(1)}MB — peste limita de 50MB a storage-ului.`
-      );
-      setState("error");
-      return;
-    }
     setState("processing");
     setFormError("");
     setError("");
@@ -544,18 +536,7 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
     if (gazdaFile) {
       setProgress("Încarc documentul gazdă...");
       try {
-        try {
-          const up = await uploadSourceFile(gazdaFile, "scop-core");
-          gazdaStoragePath = up.storage_path;
-        } catch (initErr) {
-          const msg = initErr instanceof Error ? initErr.message : "";
-          if (!isColdStartError(msg)) throw initErr;
-          setProgress("Server pornit, se retransmite automat...");
-          await new Promise((r) => setTimeout(r, 5000));
-          if (cancelledRef.current) return;
-          const up = await uploadSourceFile(gazdaFile, "scop-core");
-          gazdaStoragePath = up.storage_path;
-        }
+        gazdaStoragePath = await incarcaFisier(gazdaFile, "scop-core", () => cancelledRef.current);
       } catch (err) {
         if (cancelledRef.current) return;
         setError(err instanceof Error ? err.message : "Eroare necunoscută la încărcarea gazdei");
@@ -591,8 +572,10 @@ export default function DocumentModeForm({ onGenerated }: { onGenerated: () => v
       });
       setState("done");
       onGenerated();
+      anuntaTerminarea("Scop CORE", true);
     } catch (err: unknown) {
       if (cancelledRef.current) return;
+      anuntaTerminarea("Scop CORE", false);
       // Eroare din apelul sincron de generare (422 de validare, sau 500 neașteptat) — rămâne pe
       // formular, ca utilizatorul să corecteze fără să piardă ce a completat.
       setFormError(err instanceof Error ? err.message : "Eroare necunoscută");

@@ -2,16 +2,13 @@
 import { useState } from "react";
 import UploadZone from "@/components/UploadZone";
 import {
-  uploadSourceFile,
   postScopCoreMinute,
   type MinutaPunct,
   type MinutaRaspuns,
 } from "@/lib/api";
-import { isColdStartError } from "@/lib/poll";
+import { MAX_UPLOAD_BYTES, incarcaFisier } from "@/lib/generare";
 
 type State = "idle" | "processing" | "done" | "error";
-
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 // Ordinea în care se citește raportul: întâi ce cere acțiune, la urmă ce e deja în regulă.
 const ORDINE = [
@@ -43,20 +40,6 @@ export default function MinuteModeForm() {
   const [rezultat, setRezultat] = useState<MinutaRaspuns | null>(null);
   const [arataTot, setArataTot] = useState(false);
 
-  /** Urcă un fișier în storage, cu o reîncercare dacă serverul dormea (Render free tier). */
-  async function incarca(file: File): Promise<string> {
-    try {
-      const { storage_path } = await uploadSourceFile(file, "scop-core");
-      return storage_path;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      if (!isColdStartError(msg)) throw err;
-      await new Promise((r) => setTimeout(r, 5000));
-      const { storage_path } = await uploadSourceFile(file, "scop-core");
-      return storage_path;
-    }
-  }
-
   function adaugaMinuta(file: File) {
     if (file.size > MAX_UPLOAD_BYTES) {
       setError(`„${file.name}” depășește 50 MB.`);
@@ -84,8 +67,8 @@ export default function MinuteModeForm() {
     setError("");
     try {
       // Urcăm la fiecare confruntare: lista din pagină rămâne valabilă și după un eșec.
-      const urcate = await Promise.all(minute.map((f) => incarca(f)));
-      const scopUrcat = scop ? await incarca(scop) : undefined;
+      const urcate = await Promise.all(minute.map((f) => incarcaFisier(f, "scop-core")));
+      const scopUrcat = scop ? await incarcaFisier(scop, "scop-core") : undefined;
       const raspuns = await postScopCoreMinute({
         minute: minute.map((f, i) => ({ storage_path: urcate[i], filename: f.name })),
         scopStoragePath: scopUrcat,

@@ -160,7 +160,11 @@ async def evenimentele_zilei(luna: int, zi: int, api_key: str = "") -> list[dict
         alese: list[dict] = []
         if api_key:
             try:
-                alese = await _selectie_claude(toate, api_key)
+                import consum
+
+                # o dată pe zi, pentru tot site-ul — nu ține de un coleg anume
+                with consum.masoara("on-this-day", "site"):
+                    alese = await _selectie_claude(toate, api_key)
             except Exception:
                 alese = []
         if not alese:

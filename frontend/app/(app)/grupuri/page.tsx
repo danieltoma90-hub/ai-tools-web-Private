@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import JurnalErori from "@/components/JurnalErori";
+import ConsumClaude from "@/components/ConsumClaude";
 import {
   actualizeazaGrup,
   creeazaGrup,
@@ -340,6 +341,8 @@ export default function GrupuriPage() {
               </table>
             </div>
           </section>
+
+          <ConsumClaude />
 
           <JurnalErori />
         </>

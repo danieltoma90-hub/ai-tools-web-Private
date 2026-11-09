@@ -20,13 +20,25 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 MODEL_IMPLICIT = "claude-opus-5-5"
 BETA_FALLBACK = "server-side-fallback-2026-07-01"
+
+# Prețul pe milion de tokeni: intrare, ieșire (cu gândirea), citire din cache.
+# Scrierea în cache (5 minute) costă 1,25 × intrarea. Modelele necunoscute se
+# socotesc la prețul modelului implicit — costul rămâne o estimare.
+PRETURI_USD = {
+    "claude-opus-5-5": (4.0, 20.0, 0.20),
+    "claude-sonnet-5-5": (2.0, 10.0, 0.20),
+    "claude-opus-5": (5.0, 25.0, 0.50),
+    "claude-sonnet-4-6": (3.0, 15.0, 0.30),
+}
 
 _client = None
 
@@ -91,6 +103,56 @@ def _continut(intrebare: str, prefix_cache: str | None) -> str | list[dict]:
     return blocuri
 
 
+@dataclass
+class Consum:
+    """Tokenii și costul estimat al apelurilor dintr-o generare."""
+    apeluri: int = 0
+    intrare: int = 0
+    iesire: int = 0
+    cache_citit: int = 0
+    cache_scris: int = 0
+    cost_usd: float = 0.0
+    eforturi: set[str] = field(default_factory=set)
+
+    def adauga(self, usage: Any, model_folosit: str, efort: str) -> None:
+        def n(camp: str) -> int:
+            return int(getattr(usage, camp, 0) or 0)
+
+        intrare, iesire = n("input_tokens"), n("output_tokens")
+        citit, scris = n("cache_read_input_tokens"), n("cache_creation_input_tokens")
+        p_in, p_out, p_citit = PRETURI_USD.get(model_folosit, PRETURI_USD[MODEL_IMPLICIT])
+        self.apeluri += 1
+        self.intrare += intrare
+        self.iesire += iesire
+        self.cache_citit += citit
+        self.cache_scris += scris
+        self.cost_usd += (intrare * p_in + scris * p_in * 1.25 + citit * p_citit + iesire * p_out) / 1e6
+        self.eforturi.add(efort)
+
+
+# Contorul generării curente. Variabila de context trece și în sarcinile pornite
+# cu asyncio.gather, iar acestea adaugă în același obiect.
+_consum: ContextVar[Consum | None] = ContextVar("claude_consum", default=None)
+# Efortul impus pe o generare (testul low/medium al administratorului), peste
+# efortul ales de fiecare modul. Se aplică și încălzirii, ca cache-ul să se potrivească.
+_efort_impus: ContextVar[str | None] = ContextVar("claude_efort_impus", default=None)
+
+EFORTURI = ("low", "medium", "high")
+
+
+@contextmanager
+def numara(efort: str | None = None):
+    """Numără consumul apelurilor Claude din blocul `with`; opțional, le impune efortul."""
+    c = Consum()
+    jeton = _consum.set(c)
+    jeton_efort = _efort_impus.set(efort if efort in EFORTURI else None)
+    try:
+        yield c
+    finally:
+        _efort_impus.reset(jeton_efort)
+        _consum.reset(jeton)
+
+
 def _parametri(
     *, continut, system: str | None, max_tokens: int, efort: str, cu_fallback: bool
 ) -> dict:
@@ -99,7 +161,7 @@ def _parametri(
         "max_tokens": max_tokens,
         # Efortul e singurul control al gândirii pe Opus 5.5 și implicit e „medium";
         # îl spunem mereu explicit, ca o schimbare de implicit să nu ne schimbe costul.
-        "output_config": {"effort": efort},
+        "output_config": {"effort": _efort_impus.get() or efort},
         "messages": [{"role": "user", "content": continut}],
     }
     if system:
@@ -117,10 +179,13 @@ def text_din(mesaj: Any) -> str:
     )
 
 
-def _jurnalizeaza(mesaj: Any) -> None:
+def _jurnalizeaza(mesaj: Any, efort: str) -> None:
     u = getattr(mesaj, "usage", None)
     if u is None:
         return
+    contor = _consum.get()
+    if contor is not None:
+        contor.adauga(u, str(getattr(mesaj, "model", None) or model()), _efort_impus.get() or efort)
     logger.info(
         "claude %s: intrare=%s iesire=%s cache_citit=%s cache_scris=%s stop=%s",
         getattr(mesaj, "model", model()),
@@ -153,7 +218,7 @@ async def raspunde(
     async with client().beta.messages.stream(**params) as stream:
         mesaj = await stream.get_final_message()
 
-    _jurnalizeaza(mesaj)
+    _jurnalizeaza(mesaj, efort)
     if mesaj.stop_reason == "refusal":
         detalii = getattr(mesaj, "stop_details", None)
         raise RefuzModel(getattr(detalii, "category", None))
@@ -205,6 +270,7 @@ async def incalzeste_cache(
         )
         try:
             mesaj = await client().beta.messages.create(**params)
+            _jurnalizeaza(mesaj, efort)
             return Incalzire(getattr(mesaj, "usage", None), cu_fallback, "; ".join(erori))
         except BadRequestError as e:
             erori.append(f"{'cu' if cu_fallback else 'fără'} fallback: {e}")
@@ -216,8 +282,12 @@ async def incalzeste_cache(
     return Incalzire(eroare="; ".join(erori))
 
 
-def parse_json(text: str) -> Any:
-    """JSON-ul din răspuns, chiar dacă vine în bloc ```json, cu text în jur sau ciobit."""
+def parse_json(text: str, *, repara: bool = True) -> Any:
+    """JSON-ul din răspuns, chiar dacă vine în bloc ```json, cu text în jur sau ciobit.
+
+    `repara=False` refuză JSON-ul ciobit în loc să-l completeze — pentru apelanții
+    care preferă să sară un lot decât să primească o listă tăiată în tăcere.
+    """
     m = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
     candidat = m.group(1) if m else text
     try:
@@ -231,6 +301,9 @@ def parse_json(text: str) -> Any:
             return json.loads(bloc.group(1))
         except json.JSONDecodeError:
             pass
+
+    if not repara:
+        raise ValueError(f"Răspuns cu JSON invalid: {text[:200]}")
 
     from json_repair import repair_json
 

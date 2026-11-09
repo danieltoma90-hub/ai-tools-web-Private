@@ -73,7 +73,7 @@ async def test_elementul_bifat_ajunge_in_document(client):
               if a["cheie"] == "schimbul-de-fisiere-bancare-in-format-multicash")
     varianta = el["variante"][0]
 
-    with patch("routers.scop_core.upload_file", return_value="scop-core/u1/doc.docx"):
+    with patch("storage.upload_file", return_value="scop-core/u1/doc.docx"):
         r = await client.post("/api/scop-core/genereaza", json={
             "mod": "document",
             "config": {

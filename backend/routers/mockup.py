@@ -1,6 +1,4 @@
-import base64
 import logging
-import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -10,8 +8,8 @@ from pydantic import BaseModel
 import jobs
 from auth import verify_token  # noqa: F401
 from acces import cere_modul
-from pipelines.mockup_pipeline import estimate_mockup_job, run_mockup_pipeline
-from storage import download_upload, upload_file
+from pipelines.mockup_pipeline import run_mockup_pipeline, verifica_fisierul
+from storage import download_upload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -19,24 +17,46 @@ router = APIRouter()
 ALLOWED_EXTENSIONS = {".xlsx", ".docx"}
 
 
-class EstimateRequest(BaseModel):
+class GenerateRequest(BaseModel):
     storage_path: str
     filename: str
 
 
-class GenerateRequest(BaseModel):
-    estimate_id: str
+async def _run_job(job_id: str, input_path: Path, orig_filename: str) -> None:
+    async def lucrare() -> dict:
+        docx_path, html, ai_used, motiv_fara_ai = await run_mockup_pipeline(
+            input_path, on_step=lambda step: jobs.set_step(job_id, step),
+        )
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{Path(orig_filename).stem}_{timestamp}.docx"
+            storage_path, docx_b64 = jobs.livreaza(job_id, docx_path, tool="mockup", filename=filename)
+        finally:
+            docx_path.unlink(missing_ok=True)
+        return {
+            "filename": filename,
+            "docx_b64": docx_b64,
+            "html": html,
+            "ai_used": ai_used,
+            "motiv_fara_ai": motiv_fara_ai,
+            "storage_path": storage_path,
+        }
+
+    try:
+        await jobs.ruleaza(job_id, lucrare)
+    finally:
+        input_path.unlink(missing_ok=True)
 
 
-@router.post("/mockup/estimate")
-async def estimate_mockup(
-    req: EstimateRequest,
+@router.post("/mockup/generate")
+async def generate_mockup(
+    req: GenerateRequest,
+    background_tasks: BackgroundTasks,
     user=Depends(cere_modul("mockup")),
 ):
-    """Pas 1: fișierul e deja în Supabase Storage (upload direct din browser).
-
-    Îl descărcăm local, estimăm, și-l păstrăm ~10 min pentru generate.
-    """
+    """Fișierul e deja în Supabase Storage (urcat direct din browser): îl citim pe
+    loc, ca un ecran nerecunoscut să primească răspuns imediat, apoi pornim
+    generarea în fundal."""
     if Path(req.filename).suffix.lower() not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .xlsx sau .docx")
 
@@ -51,66 +71,14 @@ async def estimate_mockup(
         )
 
     try:
-        est = estimate_mockup_job(input_path)
+        verifica_fisierul(input_path)
     except Exception as e:
         input_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=f"Fișier invalid: {e}")
 
-    estimate_id = jobs.save_estimate(input_path, req.filename, est)
-    return {"estimate_id": estimate_id, **est}
-
-
-async def _run_job(job_id: str, input_path: Path, orig_filename: str) -> None:
-    def _on_step(step: str) -> None:
-        jobs.set_step(job_id, step)
-
-    docx_path: Path | None = None
-    try:
-        docx_path, html, ai_used, motiv_fara_ai = await run_mockup_pipeline(input_path, on_step=_on_step)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{Path(orig_filename).stem}_{timestamp}.docx"
-        job = jobs.get_job(job_id) or {}
-        storage_path = upload_file(
-            docx_path, tool="mockup", filename=filename,
-            user_email=job.get("user_email", "anonymous"),
-        )
-        with open(docx_path, "rb") as f:
-            docx_b64 = base64.b64encode(f.read()).decode()
-        jobs.finish(
-            job_id,
-            filename=filename,
-            docx_b64=docx_b64,
-            html=html,
-            ai_used=ai_used,
-            motiv_fara_ai=motiv_fara_ai,
-            storage_path=storage_path,
-        )
-    except Exception as e:
-        logger.error("mockup job %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
-        jobs.esueaza(job_id, e)
-    finally:
-        input_path.unlink(missing_ok=True)
-        if docx_path is not None:
-            docx_path.unlink(missing_ok=True)
-
-
-@router.post("/mockup/generate")
-async def generate_mockup(
-    req: GenerateRequest,
-    background_tasks: BackgroundTasks,
-    user=Depends(cere_modul("mockup")),
-):
-    """Pas 2: pornește generarea pe fișierul din estimare."""
-    est = jobs.pop_estimate(req.estimate_id)
-    if est is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Estimarea a expirat sau serverul a fost repornit — reîncarcă fișierul.",
-        )
-
     user_email = getattr(user, "email", None) or "anonymous"
     job_id = jobs.create_job(user_email, "mockup")
-    background_tasks.add_task(_run_job, job_id, Path(est["file_path"]), est["filename"])
+    background_tasks.add_task(_run_job, job_id, input_path, req.filename)
     return {"job_id": job_id}
 
 

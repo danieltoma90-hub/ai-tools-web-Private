@@ -6,15 +6,12 @@ fost scoasa: un singur motor, un singur drum.
 """
 from __future__ import annotations
 
-import json
 import logging
-import re
 
 import claude
 
 from .spec_parser import SpecificRequirement
 
-ROMANIAN_CHARS_PER_TOKEN = 2.2
 
 logger = logging.getLogger(__name__)
 
@@ -58,17 +55,6 @@ Folosește DOAR ID-uri din index.
 Răspunde DOAR cu JSON valid: {"dependente": {"<ID scenariu nou>": ["<ID>", ...], ...}}
 Scenariile fără dependențe reale se omit din răspuns."""
 
-
-def parse_json_block(text: str) -> dict:
-    match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
-    candidate = match.group(1) if match else text
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        m = re.search(r"\{[\s\S]*\}", candidate)
-        if m:
-            return json.loads(m.group(0))
-        raise
 
 
 # ── Provider ─────────────────────────────────────────────────────────────────
@@ -133,7 +119,7 @@ async def generate_specific_scenarios(
         # O eroare de API — cheie, credit, refuz — urca: altfel generarea s-ar
         # termina „cu succes", cu zero scenarii specifice si fara nicio explicatie.
         try:
-            items = parse_json_block(raw).get("scenarii", [])
+            items = claude.parse_json(raw, repara=False).get("scenarii", [])
         except (ValueError, AttributeError):
             logger.warning("scenarii: lotul %s/%s nu a intors JSON valid", bi, len(batches))
             items = []
@@ -194,7 +180,7 @@ async def generate_dependencies(
     # pasul asta pica — documentul iese fara ele, iar motivul ramane in jurnal.
     try:
         raw = await _call_claude(_DEPS_PROMPT, content, 16_000)
-        deps = parse_json_block(raw).get("dependente", {})
+        deps = claude.parse_json(raw, repara=False).get("dependente", {})
     except Exception as e:
         logger.warning("scenarii: dependentele nu au putut fi stabilite: %s", e)
         return {}

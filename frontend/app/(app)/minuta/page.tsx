@@ -1,17 +1,17 @@
 "use client";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import ToolCard from "@/components/ToolCard";
+import Etape from "@/components/Etape";
 import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import ResultPanel from "@/components/ResultPanel";
-import HistoryPanel from "@/components/HistoryPanel";
+import EroareGenerare from "@/components/EroareGenerare";
 import ContextStep from "@/components/ContextStep";
 import OptiuniMinutaPanel, { OPTIUNI_IMPLICITE, type OptiuniMinuta } from "@/components/OptiuniMinuta";
-import { uploadSourceFile, postMinuta, pollMinutaJob } from "@/lib/api";
-import { isColdStartError, pollJob } from "@/lib/poll";
+import { postMinuta, pollMinutaJob } from "@/lib/api";
+import { useAcces } from "@/lib/acces";
+import { useGenerare } from "@/lib/generare";
 import { ETAPE_MINUTA_AI } from "@/lib/progres";
-
-type State = "idle" | "processing" | "done" | "error";
 
 // Teams împarte o zi de ședințe în mai multe înregistrări; serverul le reunește în aceeași minută.
 const MAX_INREGISTRARI = 5;
@@ -30,34 +30,16 @@ export default function MinutaPage() {
   // cheia zonei de încărcare: se schimbă după fiecare fișier ales, ca zona să revină goală
   const [zonaKey, setZonaKey] = useState(0);
   const [notite, setNotite] = useState("");
-  const [state, setState] = useState<State>("idle");
-  const [error, setError] = useState("");
   const [contextPath, setContextPath] = useState("");
   const [contextLabel, setContextLabel] = useState("");
-  const [aiLabel, setAiLabel] = useState("Se inițializează...");
-  const [step, setStep] = useState<string | null>(null);
-  const [result, setResult] = useState<{
-    filename: string;
-    docxB64: string;
-    previewHtml: string;
-  } | null>(null);
-  const [historyKey, setHistoryKey] = useState(0);
   const [optiuni, setOptiuni] = useState<OptiuniMinuta>(OPTIUNI_IMPLICITE);
-  const cancelledRef = useRef(false);
-
-  /** Urcă transcriptul direct în storage, cu o reîncercare dacă serverul dormea. */
-  async function incarca(f: File): Promise<string> {
-    try {
-      const { storage_path } = await uploadSourceFile(f, "minuta");
-      return storage_path;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      if (!isColdStartError(msg)) throw err;
-      await new Promise((r) => setTimeout(r, 5000));
-      const { storage_path } = await uploadSourceFile(f, "minuta");
-      return storage_path;
-    }
-  }
+  // testul de cost al administratorului: același transcript, alt efort
+  const [efort, setEfort] = useState("");
+  const { acces } = useAcces();
+  const g = useGenerare<Awaited<ReturnType<typeof pollMinutaJob>>>({
+    modul: "Minută",
+    etichetaPas: aiStepLabel,
+  });
 
   function adaugaFisier(f: File) {
     setFiles((fs) => (fs.length >= MAX_INREGISTRARI ? fs : [...fs, f]));
@@ -68,78 +50,46 @@ export default function MinutaPage() {
     setFiles((fs) => fs.filter((_, i) => i !== index));
   }
 
-  async function handleGenerate() {
+  function genereaza() {
     if (!files.length || notite.length > MAX_NOTITE) return;
     const [file, ...alte] = files;
-    setState("processing");
-    setAiLabel(files.length > 1 ? `Încarc cele ${files.length} înregistrări...` : "Încarc transcriptul...");
-    setStep(null);
-    setError("");
-    cancelledRef.current = false;
-
-    try {
-      const storagePath = await incarca(file);
+    g.porneste(async ({ incarca, eticheta }) => {
+      eticheta(files.length > 1 ? `Încarc cele ${files.length} înregistrări...` : "Încarc transcriptul...");
+      const storagePath = await incarca(file, "minuta");
       const inregistrari: { storage_path: string; filename: string }[] = [];
       for (const f of alte) {
-        if (cancelledRef.current) return;
-        inregistrari.push({ storage_path: await incarca(f), filename: f.name });
+        inregistrari.push({ storage_path: await incarca(f, "minuta"), filename: f.name });
       }
-      if (cancelledRef.current) return;
-      setAiLabel("Pornesc analiza...");
+      eticheta("Pornesc analiza...");
       const { job_id } = await postMinuta(storagePath, file.name, contextPath || undefined, optiuni, {
         inregistrari,
         notite,
+        efort: acces?.admin ? efort : undefined,
       });
-
-      const job = await pollJob(() => pollMinutaJob(job_id), {
-        cancelled: () => cancelledRef.current,
-        onStep: (s) => {
-          setStep(s);
-          setAiLabel(aiStepLabel(s));
-        },
-      });
-      if (!job) return;
-
-      setResult({
-        filename: job.filename!,
-        docxB64: job.docx_b64!,
-        previewHtml: job.preview_html!,
-      });
-      setState("done");
-      setHistoryKey((k) => k + 1);
-    } catch (err: unknown) {
-      if (cancelledRef.current) return;
-      setError(err instanceof Error ? err.message : "Eroare necunoscută");
-      setState("error");
-    }
+      return job_id;
+    }, pollMinutaJob);
   }
 
   function reset() {
-    cancelledRef.current = true;
     setFiles([]);
     setNotite("");
-    setResult(null);
-    setState("idle");
-    setError("");
+    g.reset();
   }
 
-  /** Oprește doar urmărirea din pagină — jobul rulează mai departe pe server. */
-  function renuntaLaAsteptare() {
-    cancelledRef.current = true;
-    setState("idle");
-  }
+  const r = g.rezultat;
 
   return (
-    <div className="flex h-screen">
-      <div className="flex-1 p-6 overflow-auto">
+    <div className="p-6 max-w-5xl">
         <ToolCard
           icon="📝"
           title="Minută Întâlnire"
           description="Transcript Teams (.vtt sau .docx) → Format F.05, în română sau în engleză"
           tool="minuta"
+          recentKey={g.recentKey}
         />
+        <Etape faza={g.faza} intrare="Transcript și opțiuni" rezultat="Minuta" />
 
-        {state === "idle" && (
+        {g.faza === "idle" && (
           <div className="flex flex-col gap-4">
             <ContextStep
               value={contextPath}
@@ -222,8 +172,31 @@ export default function MinutaPage() {
 
             <OptiuniMinutaPanel value={optiuni} onChange={setOptiuni} titlu="Pasul 4 · Opțiuni minută" />
 
+            {acces?.admin && (
+              <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl p-4 flex flex-col gap-2">
+                <h3 className="text-sm font-bold text-[#18257f]">
+                  Test de cost <span className="font-normal text-slate-400">(doar administratori)</span>
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Efortul spune cât gândește modelul înainte să scrie și dă cea mai mare parte din cost.
+                  Generează aceeași ședință o dată pe <b>low</b> și o dată pe <b>medium</b>, apoi compară
+                  minutele și costul din Utilizatori → Consum Claude.
+                </p>
+                <select
+                  value={efort}
+                  onChange={(e) => setEfort(e.target.value)}
+                  className="w-fit border border-slate-300 rounded-lg px-3 py-1.5 text-xs bg-white"
+                >
+                  <option value="">Implicit (medium)</option>
+                  <option value="low">low — mai ieftin</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high — mai scump</option>
+                </select>
+              </div>
+            )}
+
             <button
-              onClick={handleGenerate}
+              onClick={genereaza}
               disabled={!files.length || notite.length > MAX_NOTITE}
               className="w-full text-white py-2.5 rounded-lg text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[#18257f] hover:bg-[#131e66]"
             >
@@ -232,31 +205,21 @@ export default function MinutaPage() {
           </div>
         )}
 
-        {state === "processing" && (
-          <ProcessingSpinner label={aiLabel} onCancel={renuntaLaAsteptare} etape={ETAPE_MINUTA_AI} step={step} />
+        {g.faza === "processing" && (
+          <ProcessingSpinner label={g.eticheta} onCancel={g.renunta} etape={ETAPE_MINUTA_AI} step={g.step} />
         )}
 
-        {state === "done" && result && (
+        {g.faza === "done" && r && (
           <ResultPanel
-            filename={result.filename}
-            docxB64={result.docxB64}
-            previewHtml={result.previewHtml}
+            filename={r.filename!}
+            docxB64={r.docx_b64!}
+            previewHtml={r.preview_html ?? ""}
             onReset={reset}
             resetLabel="+ Generează altă minută"
           />
         )}
 
-        {state === "error" && (
-          <div className="flex flex-col gap-3">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">{error}</div>
-            <button onClick={reset} className="text-sm text-[#18257f] underline">
-              Încearcă din nou
-            </button>
-          </div>
-        )}
-      </div>
-
-      <HistoryPanel tool="minuta" refreshKey={historyKey} />
+        {g.faza === "error" && <EroareGenerare eroare={g.eroare} onReset={reset} />}
     </div>
   );
 }

@@ -1,25 +1,14 @@
 "use client";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import ToolCard from "@/components/ToolCard";
+import Etape from "@/components/Etape";
 import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import ResultPanel from "@/components/ResultPanel";
-import HistoryPanel from "@/components/HistoryPanel";
-import {
-  uploadSourceFile,
-  postScenariiEstimate,
-  postScenariiGenerate,
-  getScenariiJob,
-  type EstimateResponse,
-  type ScenariiSummary,
-} from "@/lib/api";
-import { isColdStartError, pollJob } from "@/lib/poll";
+import EroareGenerare from "@/components/EroareGenerare";
+import { postScenariiGenerate, getScenariiJob, type ScenariiJob } from "@/lib/api";
+import { useGenerare } from "@/lib/generare";
 import { ETAPE_SCENARII } from "@/lib/progres";
-
-type State = "idle" | "uploading" | "estimating" | "ready" | "processing" | "done" | "error";
-
-// Limita bucket-ului Supabase (plan free)
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function stepLabel(step: string): string {
   if (step === "parsing") return "Analizez specificația și cerințele specifice...";
@@ -32,226 +21,90 @@ function stepLabel(step: string): string {
 
 export default function ScenariPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [state, setState] = useState<State>("idle");
-  const [error, setError] = useState("");
-  const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
-  const [progressLabel, setProgressLabel] = useState("Se inițializează...");
-  const [step, setStep] = useState<string | null>(null);
-  const [result, setResult] = useState<{
-    filename: string;
-    xlsxB64: string;
-    summary: ScenariiSummary | null;
-  } | null>(null);
-  const [historyKey, setHistoryKey] = useState(0);
-  const cancelledRef = useRef(false);
+  const g = useGenerare<ScenariiJob>({ modul: "Scenarii", etichetaPas: stepLabel });
 
-  async function handleEstimate() {
+  function genereaza() {
     if (!file) return;
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setError(
-        `Fișierul are ${(file.size / 1024 / 1024).toFixed(1)}MB — peste limita de 50MB a storage-ului. ` +
-          "Reduceți dimensiunea (de ex. eliminați imaginile din document) și reîncercați."
-      );
-      setState("error");
-      return;
-    }
-    setState("uploading");
-    setError("");
-    cancelledRef.current = false;
-    try {
-      let uploaded: { storage_path: string };
-      try {
-        uploaded = await uploadSourceFile(file, "scenarii");
-      } catch (initErr) {
-        // Render free tier adoarme — retry automat după 5s
-        const msg = initErr instanceof Error ? initErr.message : "";
-        if (isColdStartError(msg)) {
-          await new Promise((r) => setTimeout(r, 5000));
-          if (cancelledRef.current) return;
-          uploaded = await uploadSourceFile(file, "scenarii");
-        } else {
-          throw initErr;
-        }
-      }
-      if (cancelledRef.current) return;
-
-      setState("estimating");
-      const est = await postScenariiEstimate(uploaded.storage_path, file.name);
-      if (cancelledRef.current) return;
-      setEstimate(est);
-      setState("ready");
-    } catch (err: unknown) {
-      if (cancelledRef.current) return;
-      setError(err instanceof Error ? err.message : "Eroare necunoscută");
-      setState("error");
-    }
-  }
-
-  async function handleGenerate() {
-    if (!estimate) return;
-    setState("processing");
-    setStep(null);
-    setProgressLabel("Pornesc generarea...");
-    setError("");
-    cancelledRef.current = false;
-    try {
-      const { job_id } = await postScenariiGenerate(estimate.estimate_id);
-
-      const job = await pollJob(() => getScenariiJob(job_id), {
-        cancelled: () => cancelledRef.current,
-        onStep: (s) => {
-          setStep(s);
-          setProgressLabel(stepLabel(s));
-        },
-      });
-      if (!job) return;
-
-      setResult({
-        filename: job.filename!,
-        xlsxB64: job.xlsx_b64!,
-        summary: job.summary ?? null,
-      });
-      setState("done");
-      setHistoryKey((k) => k + 1);
-    } catch (err: unknown) {
-      if (cancelledRef.current) return;
-      setError(err instanceof Error ? err.message : "Eroare necunoscută");
-      setState("error");
-    }
+    g.porneste(async ({ incarca, eticheta }) => {
+      eticheta("Se încarcă specificația... (fișierele mari pot dura ~1 minut)");
+      const storagePath = await incarca(file, "scenarii");
+      eticheta("Citesc specificația...");
+      return (await postScenariiGenerate(storagePath, file.name)).job_id;
+    }, getScenariiJob);
   }
 
   function reset() {
-    cancelledRef.current = true;
     setFile(null);
-    setEstimate(null);
-    setResult(null);
-    setState("idle");
-    setError("");
+    g.reset();
   }
 
-  /** Oprește doar urmărirea din pagină — jobul rulează mai departe pe server. */
-  function renuntaLaAsteptare() {
-    cancelledRef.current = true;
-    setState(estimate ? "ready" : "idle");
-  }
+  const r = g.rezultat;
 
   return (
-    <div className="flex h-screen">
-      <div className="flex-1 p-6 overflow-auto">
-        <ToolCard
-          icon="🧪"
-          title="Scenarii Testare"
-          description="Specificație (.docx) → Excel: catalog standard + cerințe specifice client"
-          tool="scenarii"
-        />
+    <div className="p-6 max-w-5xl">
+      <ToolCard
+        icon="🧪"
+        title="Scenarii Testare"
+        description="Specificație (.docx) → Excel: catalog standard + cerințe specifice client"
+        tool="scenarii"
+        recentKey={g.recentKey}
+      />
+      <Etape faza={g.faza} intrare="Specificația" rezultat="Scenariile" />
 
-        {state === "idle" && (
-          <div className="flex flex-col gap-4">
-            <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-              Fișierul generat pornește de la catalogul standard (170 scenarii CORE validate),
-              adaugă scenarii pentru „Cerințele specifice identificate în urma Analizei” (marcate galben)
-              și listează la final ce s-a exclus față de formatul standard.
-            </p>
-            <UploadZone accept=".docx" label=".docx" onFile={setFile} />
-            <button
-              onClick={handleEstimate}
-              disabled={!file}
-              className="w-full bg-[#18257f] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-[#131e66] disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Continuă → Estimare
-            </button>
-          </div>
-        )}
+      {g.faza === "idle" && (
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            Fișierul generat pornește de la catalogul standard (170 scenarii CORE validate),
+            adaugă scenarii pentru „Cerințele specifice identificate în urma Analizei” (marcate galben)
+            și listează la final ce s-a exclus față de formatul standard.
+          </p>
+          <UploadZone accept=".docx" label=".docx" onFile={setFile} />
+          <button
+            onClick={genereaza}
+            disabled={!file}
+            className="w-full bg-[#18257f] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-[#131e66] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ✨ Generează scenariile
+          </button>
+        </div>
+      )}
 
-        {state === "uploading" && (
-          <ProcessingSpinner label="Se încarcă fișierul... (fișierele mari pot dura ~1 minut)" />
-        )}
+      {g.faza === "processing" && (
+        <ProcessingSpinner label={g.eticheta} onCancel={g.renunta} etape={ETAPE_SCENARII} step={g.step} />
+      )}
 
-        {state === "estimating" && <ProcessingSpinner label="Analizez specificația..." />}
-
-        {state === "ready" && estimate && (
-          <div className="bg-white border border-[#e2e5f0] rounded-xl p-5 flex flex-col gap-4">
-            <div>
-              <h3 className="text-sm font-bold text-[#18257f] mb-1">Specificație analizată</h3>
-              <p className="text-xs text-slate-500">
-                {estimate.requirements ?? 0} cerințe specifice găsite în{" "}
-                {estimate.modules ?? 1} module · catalogul standard se filtrează după capitolele
-                specificației
-              </p>
-            </div>
-            <button
-              onClick={handleGenerate}
-              className="border border-[#18257f] bg-[#18257f] text-white rounded-lg p-3 text-left hover:bg-[#131e66] transition-colors"
-            >
-              <span className="block text-sm font-bold">✨ Generează scenariile</span>
-              <span className="block text-xs mt-1 text-[#d5d8f5]">
-                ~{estimate.est_minutes} min · Claude
-              </span>
-            </button>
-            <button onClick={reset} className="text-xs text-slate-400 hover:underline w-fit">
-              Anulează
-            </button>
-          </div>
-        )}
-
-        {state === "processing" && (
-          <ProcessingSpinner
-            label={progressLabel}
-            onCancel={renuntaLaAsteptare}
-            etape={ETAPE_SCENARII}
-            step={step}
-          />
-        )}
-
-        {state === "done" && result && (
-          <div className="flex flex-col gap-4">
-            {result.summary && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
-                  <p className="text-xl font-bold text-[#18257f]">{result.summary.core_count}</p>
-                  <p className="text-[11px] text-slate-500">scenarii standard incluse</p>
-                </div>
-                <div className="bg-[#fff9c4] border border-amber-200 rounded-lg p-3 text-center">
-                  <p className="text-xl font-bold text-amber-700">{result.summary.specific_count}</p>
-                  <p className="text-[11px] text-amber-700">
-                    specifice client (din {result.summary.requirements} cerințe)
-                  </p>
-                </div>
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
-                  <p className="text-xl font-bold text-red-600">{result.summary.excluded_count}</p>
-                  <p className="text-[11px] text-red-600">excluse vs standard</p>
-                </div>
+      {g.faza === "done" && r && (
+        <div className="flex flex-col gap-4">
+          {r.summary && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-white border border-[#e2e5f0] rounded-lg p-3 text-center">
+                <p className="text-xl font-bold text-[#18257f]">{r.summary.core_count}</p>
+                <p className="text-[11px] text-slate-500">scenarii standard incluse</p>
               </div>
-            )}
-            <ResultPanel
-              filename={result.filename}
-              docxB64={result.xlsxB64}
-              previewHtml=""
-              onReset={reset}
-              downloadLabel="↓ Descarcă .xlsx"
-              resetLabel="+ Generează alte scenarii"
-            />
-          </div>
-        )}
-
-        {state === "error" && (
-          <div className="flex flex-col gap-3">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
-              {error}
-              {error.includes("expirat") && (
-                <p className="mt-2 text-xs">
-                  Serverul a fost repornit între timp — reîncarcă fișierul și reia.
+              <div className="bg-[#fff9c4] border border-amber-200 rounded-lg p-3 text-center">
+                <p className="text-xl font-bold text-amber-700">{r.summary.specific_count}</p>
+                <p className="text-[11px] text-amber-700">
+                  specifice client (din {r.summary.requirements} cerințe găsite)
                 </p>
-              )}
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                <p className="text-xl font-bold text-red-600">{r.summary.excluded_count}</p>
+                <p className="text-[11px] text-red-600">excluse vs standard</p>
+              </div>
             </div>
-            <button onClick={reset} className="text-sm text-[#18257f] underline">
-              Încearcă din nou
-            </button>
-          </div>
-        )}
-      </div>
+          )}
+          <ResultPanel
+            filename={r.filename!}
+            docxB64={r.xlsx_b64!}
+            previewHtml=""
+            onReset={reset}
+            downloadLabel="↓ Descarcă .xlsx"
+            resetLabel="+ Generează alte scenarii"
+          />
+        </div>
+      )}
 
-      <HistoryPanel tool="scenarii" refreshKey={historyKey} />
+      {g.faza === "error" && <EroareGenerare eroare={g.eroare} onReset={reset} />}
     </div>
   );
 }

@@ -1,24 +1,14 @@
 "use client";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import ToolCard from "@/components/ToolCard";
+import Etape from "@/components/Etape";
 import UploadZone from "@/components/UploadZone";
 import ProcessingSpinner from "@/components/ProcessingSpinner";
 import ResultPanel from "@/components/ResultPanel";
-import HistoryPanel from "@/components/HistoryPanel";
-import {
-  uploadSourceFile,
-  postMockupEstimate,
-  postMockupGenerate,
-  getMockupJob,
-  type EstimateResponse,
-} from "@/lib/api";
-import { isColdStartError, pollJob } from "@/lib/poll";
+import EroareGenerare from "@/components/EroareGenerare";
+import { postMockupGenerate, getMockupJob, type MockupJob } from "@/lib/api";
+import { useGenerare } from "@/lib/generare";
 import { ETAPE_MOCKUP } from "@/lib/progres";
-
-type State = "idle" | "uploading" | "estimating" | "ready" | "processing" | "done" | "error";
-
-// Limita bucket-ului Supabase (plan free)
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function stepLabel(step: string): string {
   if (step === "parsing") return "Analizez fișierul...";
@@ -29,215 +19,81 @@ function stepLabel(step: string): string {
 
 export default function MockupPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [state, setState] = useState<State>("idle");
-  const [error, setError] = useState("");
-  const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
-  const [progressLabel, setProgressLabel] = useState("Se inițializează...");
-  const [step, setStep] = useState<string | null>(null);
-  const [result, setResult] = useState<{
-    filename: string;
-    docxB64: string;
-    html: string;
-    aiUsed: boolean;
-    motivFaraAi: string;
-  } | null>(null);
-  const [historyKey, setHistoryKey] = useState(0);
-  const cancelledRef = useRef(false);
+  const g = useGenerare<MockupJob>({ modul: "Mockup", etichetaPas: stepLabel });
 
-  async function handleEstimate() {
+  function genereaza() {
     if (!file) return;
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setError(
-        `Fișierul are ${(file.size / 1024 / 1024).toFixed(1)}MB — peste limita de 50MB a storage-ului. ` +
-          "Reduceți dimensiunea (de ex. eliminați imaginile din document) și reîncercați."
-      );
-      setState("error");
-      return;
-    }
-    setState("uploading");
-    setError("");
-    cancelledRef.current = false;
-    try {
-      let uploaded: { storage_path: string };
-      try {
-        uploaded = await uploadSourceFile(file, "mockup");
-      } catch (initErr) {
-        // Render free tier adoarme — retry automat după 5s (sign-ul trece prin proxy)
-        const msg = initErr instanceof Error ? initErr.message : "";
-        if (isColdStartError(msg)) {
-          await new Promise((r) => setTimeout(r, 5000));
-          if (cancelledRef.current) return;
-          uploaded = await uploadSourceFile(file, "mockup");
-        } else {
-          throw initErr;
-        }
-      }
-      if (cancelledRef.current) return;
-
-      setState("estimating");
-      const est = await postMockupEstimate(uploaded.storage_path, file.name);
-      if (cancelledRef.current) return;
-      setEstimate(est);
-      setState("ready");
-    } catch (err: unknown) {
-      if (cancelledRef.current) return;
-      setError(err instanceof Error ? err.message : "Eroare necunoscută");
-      setState("error");
-    }
-  }
-
-  async function handleGenerate() {
-    if (!estimate) return;
-    setState("processing");
-    setStep(null);
-    setProgressLabel("Pornesc generarea...");
-    setError("");
-    cancelledRef.current = false;
-    try {
-      const { job_id } = await postMockupGenerate(estimate.estimate_id);
-
-      const job = await pollJob(() => getMockupJob(job_id), {
-        cancelled: () => cancelledRef.current,
-        onStep: (s) => {
-          setStep(s);
-          setProgressLabel(stepLabel(s));
-        },
-      });
-      if (!job) return;
-
-      setResult({
-        filename: job.filename!,
-        docxB64: job.docx_b64!,
-        html: job.html ?? "",
-        aiUsed: job.ai_used ?? false,
-        motivFaraAi: job.motiv_fara_ai ?? "",
-      });
-      setState("done");
-      setHistoryKey((k) => k + 1);
-    } catch (err: unknown) {
-      if (cancelledRef.current) return;
-      setError(err instanceof Error ? err.message : "Eroare necunoscută");
-      setState("error");
-    }
+    g.porneste(async ({ incarca, eticheta }) => {
+      eticheta("Se încarcă fișierul... (fișierele mari pot dura ~1 minut)");
+      const storagePath = await incarca(file, "mockup");
+      eticheta("Citesc ecranul...");
+      return (await postMockupGenerate(storagePath, file.name)).job_id;
+    }, getMockupJob);
   }
 
   function reset() {
-    cancelledRef.current = true;
     setFile(null);
-    setEstimate(null);
-    setResult(null);
-    setState("idle");
-    setError("");
+    g.reset();
   }
 
-  /** Oprește doar urmărirea din pagină — jobul rulează mai departe pe server. */
-  function renuntaLaAsteptare() {
-    cancelledRef.current = true;
-    setState(estimate ? "ready" : "idle");
-  }
+  const r = g.rezultat;
 
   return (
-    <div className="flex h-screen">
-      <div className="flex-1 p-6 overflow-auto">
-        <ToolCard
-          icon="🎨"
-          title="Mockup Ecran"
-          description="Fișier Excel (.xlsx) sau Word (.docx) → HTML mockup"
-          tool="mockup"
-        />
+    <div className="p-6 max-w-5xl">
+      <ToolCard
+        icon="🎨"
+        title="Mockup Ecran"
+        description="Fișier Excel (.xlsx) sau Word (.docx) → documentația ecranului, în Word și HTML"
+        tool="mockup"
+        recentKey={g.recentKey}
+      />
+      <Etape faza={g.faza} intrare="Fișierul ecranului" rezultat="Documentația" />
 
-        {state === "idle" && (
-          <div className="flex flex-col gap-4">
-            <UploadZone accept=".xlsx,.docx" label=".xlsx sau .docx" onFile={setFile} />
-            <button
-              onClick={handleEstimate}
-              disabled={!file}
-              className="w-full bg-[#18257f] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-[#131e66] disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Continuă → Estimare
-            </button>
-          </div>
-        )}
+      {g.faza === "idle" && (
+        <div className="flex flex-col gap-4">
+          <UploadZone accept=".xlsx,.docx" label=".xlsx sau .docx" onFile={setFile} />
+          <p className="text-xs text-slate-500">
+            Structura ecranului se citește din fișier, iar Claude scrie prezentarea generală și
+            completează descrierile câmpurilor. Durează în jur de un minut.
+          </p>
+          <button
+            onClick={genereaza}
+            disabled={!file}
+            className="w-full bg-[#18257f] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-[#131e66] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ✨ Generează documentația
+          </button>
+        </div>
+      )}
 
-        {state === "uploading" && (
-          <ProcessingSpinner label="Se încarcă fișierul... (fișierele mari pot dura ~1 minut)" />
-        )}
+      {g.faza === "processing" && (
+        <ProcessingSpinner label={g.eticheta} onCancel={g.renunta} etape={ETAPE_MOCKUP} step={g.step} />
+      )}
 
-        {state === "estimating" && <ProcessingSpinner label="Analizez fișierul..." />}
-
-        {state === "ready" && estimate && (
-          <div className="bg-white border border-[#e2e5f0] rounded-xl p-5 flex flex-col gap-4">
-            <div>
-              <h3 className="text-sm font-bold text-[#18257f] mb-1">Ecran recunoscut</h3>
-              <p className="text-xs text-slate-500">
-                Structura ecranului a fost citită. Claude scrie prezentarea generală și
-                completează descrierile câmpurilor.
-              </p>
-            </div>
-            <button
-              onClick={handleGenerate}
-              className="border border-[#18257f] bg-[#18257f] text-white rounded-lg p-3 text-left hover:bg-[#131e66] transition-colors"
-            >
-              <span className="block text-sm font-bold">✨ Generează documentația</span>
-              <span className="block text-xs mt-1 text-[#d5d8f5]">~{estimate.est_minutes} min · Claude</span>
-            </button>
-            <button onClick={reset} className="text-xs text-slate-400 hover:underline w-fit">
-              Anulează
-            </button>
-          </div>
-        )}
-
-        {state === "processing" && (
-          <ProcessingSpinner
-            label={progressLabel}
-            onCancel={renuntaLaAsteptare}
-            etape={ETAPE_MOCKUP}
-            step={step}
-          />
-        )}
-
-        {state === "done" && result && (
-          <div className="flex flex-col gap-4">
-            {!result.aiUsed && (
-              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Documentația a fost generată fără AI — descrierile provin direct
-                din fișierul sursă.
-                {result.motivFaraAi && (
-                  <>
-                    {" "}
-                    <strong>Motiv:</strong> {result.motivFaraAi}
-                  </>
-                )}
-              </p>
-            )}
-            <ResultPanel
-              filename={result.filename}
-              docxB64={result.docxB64}
-              previewHtml={result.html}
-              onReset={reset}
-              resetLabel="+ Generează alt mockup"
-            />
-          </div>
-        )}
-
-        {state === "error" && (
-          <div className="flex flex-col gap-3">
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
-              {error}
-              {error.includes("expirat") && (
-                <p className="mt-2 text-xs">
-                  Serverul a fost repornit între timp — reîncarcă fișierul și reia.
-                </p>
+      {g.faza === "done" && r && (
+        <div className="flex flex-col gap-4">
+          {!r.ai_used && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Documentația a fost generată fără AI — descrierile provin direct din fișierul sursă.
+              {r.motiv_fara_ai && (
+                <>
+                  {" "}
+                  <strong>Motiv:</strong> {r.motiv_fara_ai}
+                </>
               )}
-            </div>
-            <button onClick={reset} className="text-sm text-[#18257f] underline">
-              Încearcă din nou
-            </button>
-          </div>
-        )}
-      </div>
+            </p>
+          )}
+          <ResultPanel
+            filename={r.filename!}
+            docxB64={r.docx_b64!}
+            previewHtml={r.html ?? ""}
+            onReset={reset}
+            resetLabel="+ Generează alt mockup"
+          />
+        </div>
+      )}
 
-      <HistoryPanel tool="mockup" refreshKey={historyKey} />
+      {g.faza === "error" && <EroareGenerare eroare={g.eroare} onReset={reset} />}
     </div>
   );
 }

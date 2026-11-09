@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .spec_extract import MAX_SPEC_CHARS, _parse_json, extract_docx_text
+from .spec_extract import MAX_SPEC_CHARS, extract_docx_text
 
 
 MAX_MODULE = 12
@@ -121,7 +121,7 @@ async def construieste_module_din_spec(spec_path: Path, api_key: str) -> list[di
         efort="medium",
     )
 
-    brute = _parse_json(raspuns.text).get("module", [])
+    brute = claude.parse_json(raspuns.text).get("module", [])
     module = []
     for b in brute[:MAX_MODULE]:
         if not isinstance(b, dict):

@@ -1,6 +1,8 @@
 import os
 import re
 import tempfile
+import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -49,6 +51,7 @@ def upload_file(local_path: Path, tool: str, filename: str, user_email: str = "a
     storage_path = f"{tool}/{safe_owner}/{safe_name}"
     with open(local_path, "rb") as f:
         sb.storage.from_(BUCKET).upload(storage_path, f, {"upsert": "true"})
+    invalideaza_listarea()
     return storage_path
 
 
@@ -76,7 +79,34 @@ def download_document(storage_path: str) -> Path:
     return Path(tmp_name)
 
 
+# Pagina Acasă se reîmprospătează la 30 de secunde pe fiecare tab deschis, iar o
+# listare completă înseamnă câte un apel Supabase pe fiecare folder de utilizator.
+# Documentele se schimbă doar prin upload_file și delete_file, care golesc cache-ul,
+# deci o listare păstrată scurt timp nu ascunde nimic din ce s-a generat aici.
+LISTARE_TTL_S = 60
+_listari: dict[str, tuple[float, list[dict]]] = {}
+_listari_lock = threading.Lock()
+
+
+def invalideaza_listarea() -> None:
+    with _listari_lock:
+        _listari.clear()
+
+
 def list_files(tool: str | None = None) -> list[dict]:
+    """Listarea din `_listeaza`, păstrată `LISTARE_TTL_S` secunde. Întoarce copii:
+    apelanții pot adăuga câmpuri fără să schimbe ce văd ceilalți."""
+    cheie = tool or "*"
+    with _listari_lock:
+        intrare = _listari.get(cheie)
+    if intrare is None or time.monotonic() - intrare[0] > LISTARE_TTL_S:
+        intrare = (time.monotonic(), _listeaza(tool))
+        with _listari_lock:
+            _listari[cheie] = intrare
+    return [dict(f) for f in intrare[1]]
+
+
+def _listeaza(tool: str | None = None) -> list[dict]:
     """Listează fișierele din bucket, opțional filtrate pe tool.
 
     Structura bucket: {tool}/{user_email}/{filename}
@@ -188,6 +218,7 @@ def delete_file(storage_path: str) -> None:
     """Șterge un fișier din Supabase Storage."""
     sb = get_supabase()
     sb.storage.from_(BUCKET).remove([storage_path])
+    invalideaza_listarea()
 
 
 # Bucket separat pentru rezultate calculate o data si refolosite mereu. Nu sta

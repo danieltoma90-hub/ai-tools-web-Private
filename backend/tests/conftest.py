@@ -52,6 +52,27 @@ def jurnal_in_memorie(monkeypatch):
     return intrari
 
 
+@pytest.fixture(autouse=True)
+def consum_in_memorie(monkeypatch):
+    """Consumul pe generare se scrie în Supabase; în teste rămâne în memorie.
+    Testele îl citesc prin `consum.sumar()` sau `consum._intrari`."""
+    import consum
+
+    monkeypatch.setattr(consum, "_intrari", [])
+    monkeypatch.setattr(consum, "_salveaza", lambda intrari: None)
+    return consum
+
+
+@pytest.fixture(autouse=True)
+def _listare_proaspata():
+    """Cache-ul listării de documente nu trece dintr-un test în altul."""
+    import storage
+
+    storage.invalideaza_listarea()
+    yield
+    storage.invalideaza_listarea()
+
+
 @pytest.fixture
 async def client():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:

@@ -87,4 +87,4 @@ async def test_ruta_trimite_jobului_autorul(client, tmp_path):
     finally:
         app.dependency_overrides.clear()
     assert raspuns.status_code == 200
-    assert rulat.call_args[0][7] == "Daniel Toma"
+    assert rulat.call_args[0][6] == "Daniel Toma"

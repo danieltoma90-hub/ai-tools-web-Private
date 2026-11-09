@@ -1,3 +1,4 @@
+import claude
 # -*- coding: utf-8 -*-
 """Teste pentru pipeline-ul scenarii (catalog standard + cerinte specifice)."""
 from pathlib import Path
@@ -11,7 +12,7 @@ from skills.scenarii.spec_parser import parse_client_spec
 from pipelines.scenarii_pipeline import (
     _apply_exclusions,
     _load_catalog,
-    estimate_scenarii_job,
+    verifica_specificatia,
     run_scenarii_pipeline,
 )
 
@@ -77,11 +78,8 @@ def test_exclusions_remove_missing_chapters(tmp_path):
             assert not (set(s.get("deps", [])) & excluded_ids)
 
 
-def test_estimate_are_o_singura_varianta(tmp_path):
-    est = estimate_scenarii_job(_make_spec(tmp_path))
-    assert est["requirements"] == 2
-    assert est["est_minutes"] >= 1
-    assert "est_minutes_free" not in est
+def test_verificarea_numara_cerintele(tmp_path):
+    assert verifica_specificatia(_make_spec(tmp_path)) == 2
 
 
 @pytest.mark.asyncio
@@ -140,6 +138,6 @@ def test_ai_gen_batching():
 
 
 def test_parse_json_block_variants():
-    assert ai_gen.parse_json_block('{"a": 1}') == {"a": 1}
-    assert ai_gen.parse_json_block('```json\n{"a": 1}\n```') == {"a": 1}
-    assert ai_gen.parse_json_block('text inainte {"a": 1} dupa') == {"a": 1}
+    assert claude.parse_json('{"a": 1}') == {"a": 1}
+    assert claude.parse_json('```json\n{"a": 1}\n```') == {"a": 1}
+    assert claude.parse_json('text inainte {"a": 1} dupa') == {"a": 1}

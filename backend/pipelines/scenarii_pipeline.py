@@ -15,7 +15,6 @@ Fluxul:
 from __future__ import annotations
 
 import json
-import math
 import os
 import re
 import tempfile
@@ -74,22 +73,10 @@ def _apply_exclusions(catalog: dict, titles: set[str]) -> list[tuple[str, dict]]
     return excluded
 
 
-def estimate_scenarii_job(docx_path: Path) -> dict:
-    """Pre-check: cerinte specifice gasite, apeluri si durata estimata."""
-    spec = parse_client_spec(docx_path)
-    total_chars = sum(len(r.text) + len(r.title) for r in spec.requirements)
-
-    claude_batches = max(1, len(ai_gen.batch_requirements(spec.requirements, ai_gen.CLAUDE_BATCH_CHARS))) if spec.requirements else 0
-
-    est_tokens = round(total_chars / ai_gen.ROMANIAN_CHARS_PER_TOKEN) + (claude_batches + 1) * 3_000
-    return {
-        "requirements": len(spec.requirements),
-        "est_tokens": est_tokens,
-        "calls": claude_batches + 1,
-        "modules": len({r.module_h2 for r in spec.requirements}) or 1,
-        "est_minutes": max(1, math.ceil((claude_batches + 1) * 25 / 60)),
-        "fits_budget": True,
-    }
+def verifica_specificatia(docx_path: Path) -> int:
+    """Citește specificația înainte de a porni generarea, ca un fișier invalid să
+    primească răspuns pe loc. Întoarce numărul de cerințe specifice găsite."""
+    return len(parse_client_spec(docx_path).requirements)
 
 
 def _next_cs_id(items: list[dict], prefix: str) -> str:

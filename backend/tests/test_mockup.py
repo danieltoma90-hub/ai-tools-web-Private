@@ -20,19 +20,19 @@ def _sample_tempfile() -> Path:
     return p
 
 
-async def test_estimate_without_auth_returns_401(client):
+async def test_generate_without_auth_returns_401(client):
     response = await client.post(
-        "/api/mockup/estimate",
+        "/api/mockup/generate",
         json={"storage_path": "mockup/x.docx", "filename": "t.xlsx"},
     )
     assert response.status_code == 401
 
 
-async def test_estimate_wrong_format_returns_422(client):
+async def test_generate_wrong_format_returns_422(client):
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
         response = await client.post(
-            "/api/mockup/estimate",
+            "/api/mockup/generate",
             json={"storage_path": "mockup/x.pdf", "filename": "t.pdf"},
             headers={"Authorization": "Bearer fake"},
         )
@@ -41,12 +41,12 @@ async def test_estimate_wrong_format_returns_422(client):
     assert response.status_code == 422
 
 
-async def test_estimate_missing_upload_returns_422(client):
+async def test_generate_missing_upload_returns_422(client):
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
         with patch("routers.mockup.download_upload", side_effect=Exception("object not found")):
             response = await client.post(
-                "/api/mockup/estimate",
+                "/api/mockup/generate",
                 json={"storage_path": "mockup/lipsa.docx", "filename": "spec.docx"},
                 headers={"Authorization": "Bearer fake"},
             )
@@ -56,43 +56,43 @@ async def test_estimate_missing_upload_returns_422(client):
     assert "nu a fost găsit" in response.json()["detail"]
 
 
-async def test_generate_with_expired_estimate_returns_404(client):
+async def test_ecranul_nerecunoscut_raspunde_pe_loc(client, tmp_path):
+    """Fără pasul de estimare, verificarea fișierului se face tot înainte de job:
+    un document fără structura de ecran primește 422 imediat, nu după un minut."""
+    from docx import Document
+
+    gol = tmp_path / "gol.docx"
+    Document().save(gol)
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
-        response = await client.post(
-            "/api/mockup/generate",
-            json={"estimate_id": "inexistent"},
-            headers={"Authorization": "Bearer fake"},
-        )
+        with patch("routers.mockup.download_upload", return_value=gol):
+            response = await client.post(
+                "/api/mockup/generate",
+                json={"storage_path": "mockup/gol.docx", "filename": "gol.docx"},
+                headers={"Authorization": "Bearer fake"},
+            )
     finally:
         app.dependency_overrides.clear()
-    assert response.status_code == 404
+    assert response.status_code == 422
+    assert "Fișier invalid" in response.json()["detail"]
+    assert not gol.exists()  # fișierul temporar nu rămâne pe server
 
 
-async def test_estimate_then_generate_then_job_done(client):
+async def test_generate_then_job_done(client):
     import pytest
     if not SAMPLE.exists():
         pytest.skip("fișierul exemplu lipsește local")
 
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
-        with patch("routers.mockup.download_upload", return_value=_sample_tempfile()):
-            est_res = await client.post(
-                "/api/mockup/estimate",
-                json={"storage_path": "mockup/x.docx", "filename": SAMPLE.name},
-                headers={"Authorization": "Bearer fake"},
-            )
-        assert est_res.status_code == 200
-        est = est_res.json()
-        assert est["est_tokens"] > 0
-
         # AI-ul pică: documentul iese oricum, iar jobul spune de ce
-        with patch("routers.mockup.upload_file", return_value="mockup/x.docx"), \
+        with patch("routers.mockup.download_upload", return_value=_sample_tempfile()), \
+             patch("storage.upload_file", return_value="mockup/x.docx"), \
              patch("pipelines.mockup_pipeline.ai_enricher.enrich",
                    new=AsyncMock(side_effect=RuntimeError("ANTHROPIC_API_KEY lipsă pe server"))):
             gen_res = await client.post(
                 "/api/mockup/generate",
-                json={"estimate_id": est["estimate_id"]},
+                json={"storage_path": "mockup/x.docx", "filename": SAMPLE.name},
                 headers={"Authorization": "Bearer fake"},
             )
         assert gen_res.status_code == 200
@@ -108,6 +108,7 @@ async def test_estimate_then_generate_then_job_done(client):
         assert "ANTHROPIC_API_KEY" in job["motiv_fara_ai"]
         assert job["filename"].endswith(".docx")
         assert job["docx_b64"]
+        assert job["storage_path"] == "mockup/x.docx"
         assert "<html" in job["html"].lower()
     finally:
         app.dependency_overrides.clear()

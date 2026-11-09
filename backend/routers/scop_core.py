@@ -43,7 +43,6 @@ conversia tolerantă a elementelor brute din browser (`_elemente_din_dicturi`)
 """
 from __future__ import annotations
 
-import base64
 import logging
 import os
 import traceback
@@ -66,7 +65,7 @@ from pipelines.scop_core_pipeline import (
     run_scope_document_pipeline,
     valideaza_docx,
 )
-from storage import download_upload, upload_file
+from storage import download_upload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -128,22 +127,27 @@ class GenerateRequest(BaseModel):
     continut: dict | None = None
 
 
-async def _run_propune(job_id: str, supliment_path: Path) -> None:
-    jobs.set_step(job_id, "citire")
-    try:
-        elemente = await propune_job(supliment_path)
-        jobs.finish(job_id, propunere_id=str(uuid.uuid4()), elemente=elemente)
-    except DocumentInvalid as e:
+def _mesaj_propunere(e: Exception) -> str | None:
+    """Ce vede utilizatorul când segmentarea eșuează."""
+    if isinstance(e, DocumentInvalid):
         # Fișierul are extensia .docx, dar nu e un document Word valid (ex. un
         # .xlsx redenumit) — vina e a fișierului. Mesajul e mereu curat, fără căi
         # de fișier de pe server, deci sigur de arătat direct.
-        jobs.esueaza(job_id, e)
-    except ValueError as e:
+        return None
+    if isinstance(e, ValueError):
         # Răspuns de model ilizibil sau tăiat — mesajul spune deja ce e de făcut.
-        jobs.esueaza(job_id, e, f"Nu s-a putut extrage conținutul din documentul suplimentar: {e}")
-    except Exception as e:
-        logger.error("scop-core propune %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
-        jobs.esueaza(job_id, e)
+        return f"Nu s-a putut extrage conținutul din documentul suplimentar: {e}"
+    return None
+
+
+async def _run_propune(job_id: str, supliment_path: Path) -> None:
+    jobs.set_step(job_id, "citire")
+
+    async def lucrare() -> dict:
+        return {"propunere_id": str(uuid.uuid4()), "elemente": await propune_job(supliment_path)}
+
+    try:
+        await jobs.ruleaza(job_id, lucrare, mesaj=_mesaj_propunere)
     finally:
         supliment_path.unlink(missing_ok=True)
 
@@ -254,62 +258,43 @@ async def _run_job(
     delimitari: list[dict],
     curata_antet_subsol: bool,
 ) -> None:
-    def _on_step(step: str) -> None:
-        jobs.set_step(job_id, step)
-
-    capitol_path: Path | None = None
-    gazda_out_path: Path | None = None
-    try:
+    async def lucrare() -> dict:
         capitol_path, gazda_out_path, sumar = await run_scop_core_pipeline(
             gazda_path, client, elemente, insereaza_in_gazda,
-            delimitari=delimitari, curata_antet_subsol=curata_antet_subsol, on_step=_on_step,
+            delimitari=delimitari, curata_antet_subsol=curata_antet_subsol,
+            on_step=lambda step: jobs.set_step(job_id, step),
         )
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        stem = Path(gazda_filename).stem
-        job = jobs.get_job(job_id) or {}
-        user_email = job.get("user_email", "anonymous")
-
-        capitol_filename = f"Capitol_CORE_{stem}_{timestamp}.docx"
-        capitol_storage_path = upload_file(
-            capitol_path, tool="scop-core", filename=capitol_filename, user_email=user_email,
-        )
-        with open(capitol_path, "rb") as f:
-            capitol_b64 = base64.b64encode(f.read()).decode()
-
-        gazda_filename_out: str | None = None
-        gazda_b64: str | None = None
-        gazda_storage_path: str | None = None
-        cuprins_avertisment: str | None = None
-        if gazda_out_path is not None:
-            gazda_filename_out = f"Gazda_cu_CORE_{stem}_{timestamp}.docx"
-            gazda_storage_path = upload_file(
-                gazda_out_path, tool="scop-core", filename=gazda_filename_out, user_email=user_email,
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            stem = Path(gazda_filename).stem
+            capitol_filename = f"Capitol_CORE_{stem}_{timestamp}.docx"
+            capitol_storage_path, capitol_b64 = jobs.livreaza(
+                job_id, capitol_path, tool="scop-core", filename=capitol_filename,
             )
-            with open(gazda_out_path, "rb") as f:
-                gazda_b64 = base64.b64encode(f.read()).decode()
-            cuprins_avertisment = MESAJ_CUPRINS_INVECHIT
+            gazda = {"gazda_filename": None, "gazda_b64": None, "gazda_storage_path": None,
+                     "cuprins_avertisment": None}
+            if gazda_out_path is not None:
+                gazda["gazda_filename"] = f"Gazda_cu_CORE_{stem}_{timestamp}.docx"
+                gazda["gazda_storage_path"], gazda["gazda_b64"] = jobs.livreaza(
+                    job_id, gazda_out_path, tool="scop-core", filename=gazda["gazda_filename"],
+                )
+                gazda["cuprins_avertisment"] = MESAJ_CUPRINS_INVECHIT
+        finally:
+            capitol_path.unlink(missing_ok=True)
+            if gazda_out_path is not None:
+                gazda_out_path.unlink(missing_ok=True)
+        return {
+            "filename": capitol_filename,
+            "docx_b64": capitol_b64,
+            "storage_path": capitol_storage_path,
+            "summary": sumar,
+            **gazda,
+        }
 
-        jobs.finish(
-            job_id,
-            filename=capitol_filename,
-            docx_b64=capitol_b64,
-            storage_path=capitol_storage_path,
-            gazda_filename=gazda_filename_out,
-            gazda_b64=gazda_b64,
-            gazda_storage_path=gazda_storage_path,
-            summary=sumar,
-            cuprins_avertisment=cuprins_avertisment,
-        )
-    except Exception as e:
-        logger.error("scop-core job %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
-        jobs.esueaza(job_id, e)
+    try:
+        await jobs.ruleaza(job_id, lucrare)
     finally:
         gazda_path.unlink(missing_ok=True)
-        if capitol_path is not None:
-            capitol_path.unlink(missing_ok=True)
-        if gazda_out_path is not None:
-            gazda_out_path.unlink(missing_ok=True)
 
 
 async def _genereaza_document(req: GenerateRequest, user) -> dict:
@@ -380,20 +365,18 @@ async def _genereaza_document(req: GenerateRequest, user) -> dict:
         filename = f"Scop_CORE_{stem or 'Document'}_{timestamp}.docx"
 
         user_email = getattr(user, "email", None) or "anonymous"
+        job_id = jobs.create_job(user_email, "scop-core")
         try:
-            storage_path = upload_file(
-                document_path, tool="scop-core", filename=filename, user_email=user_email,
+            storage_path, docx_b64 = jobs.livreaza(
+                job_id, document_path, tool="scop-core", filename=filename,
             )
         except Exception as e:
             logger.error("scop-core /genereaza (document) upload FAILED: %s", e)
+            jobs.fail(job_id, "Documentul a fost generat, dar încărcarea în storage a eșuat.")
             raise HTTPException(
                 status_code=500,
                 detail="Documentul a fost generat, dar încărcarea în storage a eșuat.",
             )
-        with open(document_path, "rb") as f:
-            docx_b64 = base64.b64encode(f.read()).decode()
-
-        job_id = jobs.create_job(user_email, "scop-core")
         jobs.finish(
             job_id,
             filename=filename,

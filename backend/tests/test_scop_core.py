@@ -305,7 +305,7 @@ async def test_genereaza_cu_elemente_goale_functioneaza_fara_propune(client):
 
     with patch("routers.scop_core.download_upload", return_value=gazda), \
          patch("routers.scop_core.run_scop_core_pipeline", side_effect=fals_pipeline), \
-         patch("routers.scop_core.upload_file", return_value="scop-core/u1/capitol.docx"):
+         patch("storage.upload_file", return_value="scop-core/u1/capitol.docx"):
         gen_res = await client.post(
             "/api/scop-core/genereaza",
             json={"gazda_storage_path": "scop-core/g.docx", "gazda_filename": "gazda.docx",
@@ -347,7 +347,7 @@ async def test_genereaza_forwardeaza_delimitari_si_curata_antet_subsol_catre_pip
     delimitari = [{"element": "Migrarea istoricului", "precizare": "Nu face obiectul acestui scop."}]
     with patch("routers.scop_core.download_upload", return_value=gazda), \
          patch("routers.scop_core.run_scop_core_pipeline", side_effect=fals_pipeline), \
-         patch("routers.scop_core.upload_file", return_value="scop-core/u1/capitol.docx"):
+         patch("storage.upload_file", return_value="scop-core/u1/capitol.docx"):
         gen_res = await client.post(
             "/api/scop-core/genereaza",
             json={"gazda_storage_path": "scop-core/g.docx", "gazda_filename": "gazda.docx",
@@ -383,7 +383,7 @@ async def test_genereaza_fara_delimitari_si_curata_antet_subsol_foloseste_implic
 
     with patch("routers.scop_core.download_upload", return_value=gazda), \
          patch("routers.scop_core.run_scop_core_pipeline", side_effect=fals_pipeline), \
-         patch("routers.scop_core.upload_file", return_value="scop-core/u1/capitol.docx"):
+         patch("storage.upload_file", return_value="scop-core/u1/capitol.docx"):
         gen_res = await client.post(
             "/api/scop-core/genereaza",
             json={"gazda_storage_path": "scop-core/g.docx", "gazda_filename": "gazda.docx",
@@ -418,7 +418,7 @@ async def test_genereaza_cu_insereaza_true_produce_doua_artefacte(client):
 
     with patch("routers.scop_core.download_upload", return_value=gazda), \
          patch("routers.scop_core.run_scop_core_pipeline", side_effect=fals_pipeline), \
-         patch("routers.scop_core.upload_file", side_effect=fals_upload):
+         patch("storage.upload_file", side_effect=fals_upload):
         gen_res = await client.post(
             "/api/scop-core/genereaza",
             json={"gazda_storage_path": "scop-core/g.docx", "gazda_filename": "gazda.docx",
@@ -458,7 +458,7 @@ async def test_genereaza_esec_la_inserare_nu_are_avertisment_cuprins(client):
 
     with patch("routers.scop_core.download_upload", return_value=gazda), \
          patch("routers.scop_core.run_scop_core_pipeline", side_effect=fals_pipeline), \
-         patch("routers.scop_core.upload_file", return_value="scop-core/u1/capitol.docx"):
+         patch("storage.upload_file", return_value="scop-core/u1/capitol.docx"):
         gen_res = await client.post(
             "/api/scop-core/genereaza",
             json={"gazda_storage_path": "scop-core/g.docx", "gazda_filename": "gazda.docx",
@@ -507,7 +507,7 @@ async def test_gazda_reala_ramane_neschimbata_dupa_fluxul_prin_router(client):
     hash_inainte = _hash(GAZDA_FIXTURE)
 
     with patch("routers.scop_core.download_upload", side_effect=lambda sp: _copie_gazda_reala()), \
-         patch("routers.scop_core.upload_file", return_value="scop-core/u1/x.docx"):
+         patch("storage.upload_file", return_value="scop-core/u1/x.docx"):
         gen_res = await client.post(
             "/api/scop-core/genereaza",
             json={"gazda_storage_path": "scop-core/g.docx", "gazda_filename": "gazda.docx",
@@ -540,7 +540,7 @@ async def test_genereaza_mod_capitol_explicit_functioneaza_ca_implicitul(client)
 
     with patch("routers.scop_core.download_upload", return_value=gazda), \
          patch("routers.scop_core.run_scop_core_pipeline", side_effect=fals_pipeline), \
-         patch("routers.scop_core.upload_file", return_value="scop-core/u1/capitol.docx"):
+         patch("storage.upload_file", return_value="scop-core/u1/capitol.docx"):
         gen_res = await client.post(
             "/api/scop-core/genereaza",
             json={"mod": "capitol", "gazda_storage_path": "scop-core/g.docx",
@@ -624,7 +624,7 @@ async def test_genereaza_document_fara_gazda_produce_documentul(client):
         return documentul, _sumar_document_fals()
 
     with patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline), \
-         patch("routers.scop_core.upload_file", return_value="scop-core/u1/doc.docx") as fals_upload:
+         patch("storage.upload_file", return_value="scop-core/u1/doc.docx") as fals_upload:
         gen_res = await client.post(
             "/api/scop-core/genereaza",
             json={"mod": "document", "config": CONFIG_MINIM_DOC,
@@ -660,7 +660,7 @@ async def test_genereaza_document_fara_config_sau_continut_functioneaza(client):
         return documentul, _sumar_document_fals()
 
     with patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline), \
-         patch("routers.scop_core.upload_file", return_value="scop-core/u1/doc.docx"):
+         patch("storage.upload_file", return_value="scop-core/u1/doc.docx"):
         gen_res = await client.post(
             "/api/scop-core/genereaza", json={"mod": "document"}, headers=AUTH,
         )
@@ -677,7 +677,7 @@ async def test_genereaza_document_cu_gazda_produce_documentul(client):
 
     with patch("routers.scop_core.download_upload", return_value=gazda), \
          patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline), \
-         patch("routers.scop_core.upload_file", return_value="scop-core/u1/doc.docx"):
+         patch("storage.upload_file", return_value="scop-core/u1/doc.docx"):
         gen_res = await client.post(
             "/api/scop-core/genereaza",
             json={"mod": "document", "gazda_storage_path": "scop-core/g.docx",
@@ -793,7 +793,7 @@ async def test_genereaza_document_upload_esuat_da_500(client):
         return documentul, _sumar_document_fals()
 
     with patch("routers.scop_core.run_scope_document_pipeline", side_effect=fals_pipeline), \
-         patch("routers.scop_core.upload_file", side_effect=Exception("storage indisponibil")):
+         patch("storage.upload_file", side_effect=Exception("storage indisponibil")):
         response = await client.post(
             "/api/scop-core/genereaza",
             json={"mod": "document", "config": CONFIG_MINIM_DOC, "continut": {}},
@@ -831,7 +831,7 @@ async def test_genereaza_document_gazda_reala_ramane_neschimbata(client):
     hash_inainte = _hash(GAZDA_FIXTURE)
 
     with patch("routers.scop_core.download_upload", side_effect=lambda sp: _copie_gazda_reala()), \
-         patch("routers.scop_core.upload_file", return_value="scop-core/u1/doc.docx"):
+         patch("storage.upload_file", return_value="scop-core/u1/doc.docx"):
         gen_res = await client.post(
             "/api/scop-core/genereaza",
             json={"mod": "document", "gazda_storage_path": "scop-core/g.docx",

@@ -1,8 +1,6 @@
-import base64
 import logging
 import os
 import tempfile
-import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -12,7 +10,7 @@ import jobs
 from auth import verify_token  # noqa: F401
 from acces import cere_modul
 from pipelines.training_pipeline import estimate_training_job, run_training_pipeline
-from storage import download_upload, upload_file
+from storage import download_upload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,48 +49,35 @@ async def _run_job(
     spec_path: Path | None,
     api_key: str,
 ) -> None:
-    def _on_step(step: str) -> None:
-        jobs.set_step(job_id, step)
-
-    docx_path = xlsx_path = None
-    try:
+    async def lucrare() -> dict:
         docx_path, xlsx_path, sumar = await run_training_pipeline(
-            tip=tip, zile=zile, client=client,
-            spec_path=spec_path, api_key=api_key, on_step=_on_step,
+            tip=tip, zile=zile, client=client, spec_path=spec_path, api_key=api_key,
+            on_step=lambda step: jobs.set_step(job_id, step),
         )
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        eticheta = "CORE" if tip == "core" else "Productie"
-        baza = f"Training_{eticheta}_{zile}zile_{timestamp}"
-        job = jobs.get_job(job_id) or {}
-        user_email = job.get("user_email", "anonymous")
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            eticheta = "CORE" if tip == "core" else "Productie"
+            baza = f"Training_{eticheta}_{zile}zile_{timestamp}"
+            storage_docx, docx_b64 = jobs.livreaza(job_id, docx_path, tool="training",
+                                                   filename=f"{baza}.docx")
+            _, xlsx_b64 = jobs.livreaza(job_id, xlsx_path, tool="training", filename=f"{baza}.xlsx")
+        finally:
+            docx_path.unlink(missing_ok=True)
+            xlsx_path.unlink(missing_ok=True)
+        return {
+            "filename": f"{baza}.docx",
+            "docx_b64": docx_b64,
+            "xlsx_filename": f"{baza}.xlsx",
+            "xlsx_b64": xlsx_b64,
+            "summary": sumar,
+            "storage_path": storage_docx,
+        }
 
-        docx_name = f"{baza}.docx"
-        xlsx_name = f"{baza}.xlsx"
-        storage_docx = upload_file(docx_path, tool="training", filename=docx_name,
-                                   user_email=user_email)
-        upload_file(xlsx_path, tool="training", filename=xlsx_name, user_email=user_email)
-
-        with open(docx_path, "rb") as f:
-            docx_b64 = base64.b64encode(f.read()).decode()
-        with open(xlsx_path, "rb") as f:
-            xlsx_b64 = base64.b64encode(f.read()).decode()
-
-        jobs.finish(
-            job_id,
-            filename=docx_name,
-            docx_b64=docx_b64,
-            xlsx_filename=xlsx_name,
-            xlsx_b64=xlsx_b64,
-            summary=sumar,
-            storage_path=storage_docx,
-        )
-    except Exception as e:
-        logger.error("training job %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
-        jobs.esueaza(job_id, e)
+    try:
+        await jobs.ruleaza(job_id, lucrare)
     finally:
-        for p in (spec_path, docx_path, xlsx_path):
-            if p is not None:
-                Path(p).unlink(missing_ok=True)
+        if spec_path is not None:
+            spec_path.unlink(missing_ok=True)
 
 
 @router.post("/training/generate")

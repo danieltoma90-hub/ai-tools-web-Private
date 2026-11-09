@@ -33,3 +33,32 @@ def test_list_files_returns_sorted_list(mock_supabase):
 
     assert len(result) == 2
     assert result[0]["name"] == "Minuta_B.docx"
+
+
+def test_listarea_se_refoloseste_si_se_goleste_la_upload(mock_supabase, tmp_path):
+    """Pagina Acasă cere listarea la 30 de secunde; Supabase e întrebat o singură dată
+    până la următorul document încărcat."""
+    import storage
+
+    lista = mock_supabase.storage.from_.return_value.list
+    list_files(tool="minuta")
+    apeluri = lista.call_count
+    list_files(tool="minuta")
+    assert lista.call_count == apeluri  # din cache
+
+    docx = tmp_path / "a.docx"
+    docx.write_bytes(b"PK")
+    upload_file(docx, tool="minuta", filename="a.docx", user_email="u@x.ro")
+    list_files(tool="minuta")
+    assert lista.call_count > apeluri  # documentul nou se vede imediat
+
+
+def test_listarea_intoarce_copii(mock_supabase):
+    mock_supabase.storage.from_.return_value.list.return_value = [
+        {"name": "A.docx", "created_at": "2026-06-25T10:00:00", "metadata": {"size": 8000}},
+    ]
+    prima = list_files(tool="minuta")
+    assert prima
+    for f in prima:
+        f["download_url"] = "modificat"
+    assert all("download_url" not in f for f in list_files(tool="minuta"))

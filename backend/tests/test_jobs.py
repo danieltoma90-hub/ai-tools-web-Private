@@ -1,5 +1,4 @@
 import time
-from pathlib import Path
 
 import jobs
 
@@ -62,25 +61,3 @@ def test_curatenia_nu_atinge_job_urile_vii():
     nou = jobs.create_job("x@y.z")  # create_job declanseaza curatenia
     assert jobs.get_job(vechi) is None
     assert jobs.get_job(nou) is not None
-
-
-def test_estimate_save_and_pop(tmp_path):
-    f = tmp_path / "spec.docx"
-    f.write_bytes(b"PK")
-    eid = jobs.save_estimate(f, "spec.docx", {"est_tokens": 123, "fits_budget": True})
-    est = jobs.pop_estimate(eid)
-    assert est["filename"] == "spec.docx"
-    assert est["est_tokens"] == 123
-    assert est["file_path"] == str(f)
-    # pop e destructiv
-    assert jobs.pop_estimate(eid) is None
-
-
-def test_estimate_expires_and_deletes_file(tmp_path, monkeypatch):
-    f = tmp_path / "spec.docx"
-    f.write_bytes(b"PK")
-    eid = jobs.save_estimate(f, "spec.docx", {})
-    # fortam expirarea
-    jobs._estimates[eid]["created"] = time.monotonic() - jobs.ESTIMATE_TTL_S - 1
-    assert jobs.pop_estimate(eid) is None
-    assert not f.exists()

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from docx import Document as WordDocument
 
-from pipelines.mockup_pipeline import run_mockup_pipeline, estimate_mockup_job
+from pipelines.mockup_pipeline import run_mockup_pipeline, verifica_fisierul
 import claude
 from skills.mockup import ai_enricher
 from skills.mockup.parser import ScreenSpec, Section, FilterField
@@ -80,11 +80,8 @@ async def test_pipeline_with_ai_failure_falls_back_deterministic():
 
 
 @pytest.mark.skipif(not SAMPLE.exists(), reason="fișierul exemplu lipsește local")
-def test_estimate_mockup_job_fara_buget_gratuit():
-    est = estimate_mockup_job(SAMPLE)
-    assert est["est_tokens"] > 0
-    assert est["est_minutes"] == 1
-    assert est["fits_budget"] is True  # nu mai există cotă zilnică gratuită
+def test_ecranul_exemplu_trece_verificarea():
+    verifica_fisierul(SAMPLE)  # nu ridică
 
 
 @pytest.mark.skipif(not SAMPLE.exists(), reason="fișierul exemplu lipsește local")

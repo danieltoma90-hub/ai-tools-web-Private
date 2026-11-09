@@ -73,7 +73,7 @@ async def test_ruta_transmite_optiunile_jobului(client, tmp_path):
     finally:
         app.dependency_overrides.clear()
     assert ok.status_code == 200
-    assert rulat.call_args[0][6] == {"marcaje": True, "limba": "en", "structura": "fitgap", "detaliu": "complet"}
+    assert rulat.call_args[0][5] == {"marcaje": True, "limba": "en", "structura": "fitgap", "detaliu": "complet"}
     assert gresit.status_code == 422
 
 

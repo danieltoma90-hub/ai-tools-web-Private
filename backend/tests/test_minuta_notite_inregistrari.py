@@ -145,7 +145,7 @@ async def test_ruta_transmite_notitele_si_inregistrarile_jobului(client, tmp_pat
     kwargs = rulat.call_args.kwargs
     assert kwargs["notite"] == "Pervin Hanım – directoare"
     assert kwargs["alte_inregistrari"] == [(b, "Ziua 3 (1)")]
-    assert rulat.call_args[0][3] == "Ziua 3"  # numele minutei vine din prima înregistrare
+    assert rulat.call_args[0][2] == "Ziua 3"  # numele minutei vine din prima înregistrare
 
 
 @pytest.mark.asyncio

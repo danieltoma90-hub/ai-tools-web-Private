@@ -1,7 +1,5 @@
-import base64
 import logging
 import os
-import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -11,33 +9,56 @@ from pydantic import BaseModel
 import jobs
 from auth import verify_token  # noqa: F401
 from acces import cere_modul
-from pipelines.scenarii_pipeline import estimate_scenarii_job, run_scenarii_pipeline
-from storage import download_upload, upload_file
+from pipelines.scenarii_pipeline import run_scenarii_pipeline, verifica_specificatia
+from storage import download_upload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-class EstimateRequest(BaseModel):
+class GenerateRequest(BaseModel):
     storage_path: str
     filename: str
 
 
-class GenerateRequest(BaseModel):
-    estimate_id: str
+async def _run_job(job_id: str, input_path: Path, orig_filename: str) -> None:
+    async def lucrare() -> dict:
+        xlsx_path, summary = await run_scenarii_pipeline(
+            input_path, on_step=lambda step: jobs.set_step(job_id, step),
+        )
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"Scenarii_{Path(orig_filename).stem}_{timestamp}.xlsx"
+            storage_path, xlsx_b64 = jobs.livreaza(job_id, xlsx_path, tool="scenarii", filename=filename)
+        finally:
+            xlsx_path.unlink(missing_ok=True)
+        return {
+            "filename": filename,
+            "xlsx_b64": xlsx_b64,
+            "summary": summary,
+            "storage_path": storage_path,
+        }
+
+    try:
+        await jobs.ruleaza(job_id, lucrare)
+    finally:
+        input_path.unlink(missing_ok=True)
 
 
-@router.post("/scenarii/estimate")
-async def estimate_scenarii(
-    req: EstimateRequest,
+@router.post("/scenarii/generate")
+async def generate_scenarii(
+    req: GenerateRequest,
+    background_tasks: BackgroundTasks,
     user=Depends(cere_modul("scenarii")),
 ):
-    """Pas 1: fișierul e deja în Supabase Storage (upload direct din browser).
-
-    Îl descărcăm local, estimăm, și-l păstrăm ~10 min pentru generate.
-    """
+    """Specificația e deja în Supabase Storage (urcată direct din browser): o citim
+    pe loc, ca un fișier invalid să primească răspuns imediat, apoi pornim
+    generarea în fundal."""
     if Path(req.filename).suffix.lower() != ".docx":
         raise HTTPException(status_code=422, detail="Fișierul trebuie să fie .docx")
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY lipsă pe server")
 
     try:
         input_path = download_upload(req.storage_path)
@@ -50,69 +71,14 @@ async def estimate_scenarii(
         )
 
     try:
-        est = estimate_scenarii_job(input_path)
+        verifica_specificatia(input_path)
     except Exception as e:
         input_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=f"Fișier .docx invalid: {e}")
 
-    estimate_id = jobs.save_estimate(input_path, req.filename, est)
-    return {"estimate_id": estimate_id, **est}
-
-
-async def _run_job(job_id: str, input_path: Path, orig_filename: str) -> None:
-    def _on_step(step: str) -> None:
-        jobs.set_step(job_id, step)
-
-    xlsx_path: Path | None = None
-    try:
-        xlsx_path, summary = await run_scenarii_pipeline(input_path, on_step=_on_step)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"Scenarii_{Path(orig_filename).stem}_{timestamp}.xlsx"
-        job = jobs.get_job(job_id) or {}
-        storage_path = upload_file(
-            xlsx_path, tool="scenarii", filename=filename,
-            user_email=job.get("user_email", "anonymous"),
-        )
-        with open(xlsx_path, "rb") as f:
-            xlsx_b64 = base64.b64encode(f.read()).decode()
-        jobs.finish(
-            job_id,
-            filename=filename,
-            xlsx_b64=xlsx_b64,
-            summary=summary,
-            storage_path=storage_path,
-        )
-    except Exception as e:
-        logger.error("scenarii job %s FAILED: %s\n%s", job_id, e, traceback.format_exc())
-        jobs.esueaza(job_id, e)
-    finally:
-        input_path.unlink(missing_ok=True)
-        if xlsx_path is not None:
-            xlsx_path.unlink(missing_ok=True)
-
-
-@router.post("/scenarii/generate")
-async def generate_scenarii(
-    req: GenerateRequest,
-    background_tasks: BackgroundTasks,
-    user=Depends(cere_modul("scenarii")),
-):
-    """Pas 2: pornește generarea pe fișierul din estimare."""
-
-    est = jobs.pop_estimate(req.estimate_id)
-    if est is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Estimarea a expirat sau serverul a fost repornit — reîncarcă fișierul.",
-        )
-
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        Path(est["file_path"]).unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY lipsă pe server")
-
     user_email = getattr(user, "email", None) or "anonymous"
     job_id = jobs.create_job(user_email, "scenarii")
-    background_tasks.add_task(_run_job, job_id, Path(est["file_path"]), est["filename"])
+    background_tasks.add_task(_run_job, job_id, input_path, req.filename)
     return {"job_id": job_id}
 
 

@@ -27,19 +27,19 @@ def _spec_tempfile() -> str:
     return name
 
 
-async def test_estimate_without_auth_returns_401(client):
+async def test_generate_without_auth_returns_401(client):
     response = await client.post(
-        "/api/scenarii/estimate",
+        "/api/scenarii/generate",
         json={"storage_path": "scenarii/x.docx", "filename": "spec.docx"},
     )
     assert response.status_code == 401
 
 
-async def test_estimate_wrong_format_returns_422(client):
+async def test_generate_wrong_format_returns_422(client):
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
         response = await client.post(
-            "/api/scenarii/estimate",
+            "/api/scenarii/generate",
             json={"storage_path": "scenarii/x.pdf", "filename": "spec.pdf"},
             headers={"Authorization": "Bearer fake"},
         )
@@ -48,12 +48,13 @@ async def test_estimate_wrong_format_returns_422(client):
     assert response.status_code == 422
 
 
-async def test_estimate_missing_upload_returns_422(client):
+async def test_generate_missing_upload_returns_422(client, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
         with patch("routers.scenarii.download_upload", side_effect=Exception("object not found")):
             response = await client.post(
-                "/api/scenarii/estimate",
+                "/api/scenarii/generate",
                 json={"storage_path": "scenarii/lipsa.docx", "filename": "spec.docx"},
                 headers={"Authorization": "Bearer fake"},
             )
@@ -63,7 +64,7 @@ async def test_estimate_missing_upload_returns_422(client):
     assert "nu a fost găsit" in response.json()["detail"]
 
 
-async def test_estimate_then_generate_then_job_done(client, monkeypatch, tmp_path):
+async def test_generate_then_job_done(client, monkeypatch, tmp_path):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
 
     out_xlsx = tmp_path / "out.xlsx"
@@ -75,22 +76,12 @@ async def test_estimate_then_generate_then_job_done(client, monkeypatch, tmp_pat
 
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
-        with patch("routers.scenarii.download_upload", return_value=_P(_spec_tempfile())):
-            est_res = await client.post(
-                "/api/scenarii/estimate",
-                json={"storage_path": "scenarii/x.docx", "filename": "spec.docx"},
-                headers={"Authorization": "Bearer fake"},
-            )
-        assert est_res.status_code == 200
-        est = est_res.json()
-        assert "estimate_id" in est
-        assert "est_minutes_free" not in est  # varianta gratuită a fost scoasă
-
-        with patch("routers.scenarii.run_scenarii_pipeline", side_effect=fake_pipeline), \
-             patch("routers.scenarii.upload_file", return_value="scenarii/x.xlsx"):
+        with patch("routers.scenarii.download_upload", return_value=_P(_spec_tempfile())), \
+             patch("routers.scenarii.run_scenarii_pipeline", side_effect=fake_pipeline), \
+             patch("storage.upload_file", return_value="scenarii/x.xlsx"):
             gen_res = await client.post(
                 "/api/scenarii/generate",
-                json={"estimate_id": est["estimate_id"]},
+                json={"storage_path": "scenarii/x.docx", "filename": "spec.docx"},
                 headers={"Authorization": "Bearer fake"},
             )
         assert gen_res.status_code == 200
@@ -105,38 +96,19 @@ async def test_estimate_then_generate_then_job_done(client, monkeypatch, tmp_pat
         assert job["status"] == "done"
         assert job["filename"].endswith(".xlsx")
         assert job["summary"]["specific_count"] == 2
+        assert job["summary"]["requirements"] == 2  # cerințele găsite apar în rezultat
         assert job["xlsx_b64"]
     finally:
         app.dependency_overrides.clear()
-
-
-async def test_generate_with_expired_estimate_returns_404(client):
-    app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
-    try:
-        response = await client.post(
-            "/api/scenarii/generate",
-            json={"estimate_id": "inexistent"},
-            headers={"Authorization": "Bearer fake"},
-        )
-    finally:
-        app.dependency_overrides.clear()
-    assert response.status_code == 404
 
 
 async def test_generate_missing_api_key_returns_500(client, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     app.dependency_overrides[verify_token] = lambda: {"id": "u1"}
     try:
-        with patch("routers.scenarii.download_upload", return_value=_P(_spec_tempfile())):
-            est_res = await client.post(
-                "/api/scenarii/estimate",
-                json={"storage_path": "scenarii/x.docx", "filename": "spec.docx"},
-                headers={"Authorization": "Bearer fake"},
-            )
-        est = est_res.json()
         response = await client.post(
             "/api/scenarii/generate",
-            json={"estimate_id": est["estimate_id"]},
+            json={"storage_path": "scenarii/x.docx", "filename": "spec.docx"},
             headers={"Authorization": "Bearer fake"},
         )
     finally:

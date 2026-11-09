@@ -46,12 +46,6 @@ async function apiFetch(url: string, init?: RequestInit) {
   return res.json();
 }
 
-async function postFile(path: string, file: File) {
-  const form = new FormData();
-  form.append("file", file);
-  return apiFetch(`${PROXY}/${path}`, { method: "POST", body: form });
-}
-
 /** Opțiunile minutei: marcajele pentru revizie, limba și — doar cu Claude — structura și detaliul. */
 export type OptiuniMinutaApi = {
   marcaje: boolean;
@@ -73,6 +67,8 @@ function appendOptiuni(form: FormData, o?: OptiuniMinutaApi) {
 export type SurseMinuta = {
   inregistrari?: { storage_path: string; filename: string }[];
   notite?: string;
+  /** Doar pentru administratori: efortul modelului, pentru comparația de cost și calitate. */
+  efort?: string;
 };
 
 export async function postMinuta(
@@ -89,6 +85,7 @@ export async function postMinuta(
   appendOptiuni(form, optiuni);
   if (surse?.inregistrari?.length) form.append("inregistrari", JSON.stringify(surse.inregistrari));
   if (surse?.notite?.trim()) form.append("notite", surse.notite.trim());
+  if (surse?.efort) form.append("efort", surse.efort);
   return apiFetch(`${PROXY}/minuta`, { method: "POST", body: form }) as Promise<{
     job_id: string;
   }>;
@@ -167,16 +164,6 @@ export async function pollMinutaJob(jobId: string): Promise<{
   }>;
 }
 
-export type EstimateResponse = {
-  estimate_id: string;
-  est_tokens: number;
-  est_minutes: number;
-  requirements?: number;
-  fits_budget?: boolean;
-  calls?: number;
-  modules?: number;
-};
-
 export type ScenariiSummary = {
   core_count: number;
   specific_count: number;
@@ -207,14 +194,6 @@ export type MockupJob = {
   error?: string;
 };
 
-function postGenerate(path: string, estimateId: string) {
-  return apiFetch(`${PROXY}/${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ estimate_id: estimateId }),
-  });
-}
-
 export async function uploadSourceFile(
   file: File,
   tool: "scenarii" | "mockup" | "training" | "minuta" | "scop-core"
@@ -238,38 +217,31 @@ export async function uploadSourceFile(
   return { storage_path: sign.storage_path };
 }
 
-function postEstimate(path: string, storagePath: string, filename: string) {
+/** Pornește generarea pe un fișier deja urcat în storage. */
+function postGenerare(path: string, storagePath: string, filename: string) {
   return apiFetch(`${PROXY}/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ storage_path: storagePath, filename }),
-  });
+  }) as Promise<{ job_id: string }>;
 }
 
-export async function postScenariiEstimate(
+export async function postScenariiGenerate(
   storagePath: string,
   filename: string
-): Promise<EstimateResponse> {
-  return postEstimate("scenarii/estimate", storagePath, filename) as Promise<EstimateResponse>;
-}
-
-export async function postScenariiGenerate(estimateId: string): Promise<{ job_id: string }> {
-  return postGenerate("scenarii/generate", estimateId) as Promise<{ job_id: string }>;
+): Promise<{ job_id: string }> {
+  return postGenerare("scenarii/generate", storagePath, filename);
 }
 
 export async function getScenariiJob(jobId: string): Promise<ScenariiJob> {
   return apiFetch(`${PROXY}/scenarii/job/${jobId}`) as Promise<ScenariiJob>;
 }
 
-export async function postMockupEstimate(
+export async function postMockupGenerate(
   storagePath: string,
   filename: string
-): Promise<EstimateResponse> {
-  return postEstimate("mockup/estimate", storagePath, filename) as Promise<EstimateResponse>;
-}
-
-export async function postMockupGenerate(estimateId: string): Promise<{ job_id: string }> {
-  return postGenerate("mockup/generate", estimateId) as Promise<{ job_id: string }>;
+): Promise<{ job_id: string }> {
+  return postGenerare("mockup/generate", storagePath, filename);
 }
 
 export async function getMockupJob(jobId: string): Promise<MockupJob> {
@@ -868,6 +840,41 @@ export type IntrareJurnal = {
 
 export async function getJurnalErori(): Promise<{ intrari: IntrareJurnal[] }> {
   return apiFetch(`${PROXY}/acces/jurnal`) as Promise<{ intrari: IntrareJurnal[] }>;
+}
+
+export type ConsumRand = {
+  generari: number;
+  cost_usd: number;
+  cost_mediu_usd: number;
+  intrare: number;
+  iesire: number;
+  cache_citit: number;
+};
+
+export type GenerareConsum = {
+  cand: string;
+  modul: string;
+  email: string;
+  efort: string;
+  apeluri: number;
+  intrare: number;
+  iesire: number;
+  cache_citit: number;
+  cache_scris: number;
+  cost_usd: number;
+  reusit: boolean;
+};
+
+export type SumarConsum = {
+  zile: number;
+  total: Omit<ConsumRand, "cost_mediu_usd">;
+  pe_modul: (ConsumRand & { modul: string })[];
+  pe_utilizator: (ConsumRand & { email: string })[];
+  recente: GenerareConsum[];
+};
+
+export async function getConsum(zile = 30): Promise<SumarConsum> {
+  return apiFetch(`${PROXY}/acces/consum?zile=${zile}`) as Promise<SumarConsum>;
 }
 
 export async function seteazaGrupImplicit(grup: string): Promise<ConfigAcces> {

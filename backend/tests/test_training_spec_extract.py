@@ -3,7 +3,10 @@
 import pytest
 
 from skills.training.catalog import get_catalog
-from skills.training.spec_extract import _parse_json, potriveste_modul
+import claude
+from skills.training.spec_extract import potriveste_modul
+
+_parse_json = claude.parse_json
 
 CORE = [m["nume"] for m in get_catalog("core")]
 

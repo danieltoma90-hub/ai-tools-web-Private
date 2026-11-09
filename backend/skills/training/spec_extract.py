@@ -8,7 +8,6 @@ atasam modulului potrivit, marcate distinct fata de continutul standard.
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -56,36 +55,6 @@ Reguli:
 - Maximum 25 de particularități, cele cu impact real în operarea zilnică.
 - Dacă specificația nu conține nimic specific, returnează listă goală."""
 
-
-def _parse_json(text: str) -> dict:
-    """JSON-ul din răspuns, chiar dacă vine cu explicații în jur sau ciobit.
-
-    Un răspuns tăiat la mijloc n-are voie să arunce toată extragerea: ultimul
-    pas repară JSON-ul malformat, ca în pipeline-ul de minută.
-    """
-    m = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
-    candidate = m.group(1) if m else text
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        pass
-
-    bloc = re.search(r"\{[\s\S]*\}", candidate)
-    if bloc:
-        try:
-            return json.loads(bloc.group(0))
-        except json.JSONDecodeError:
-            pass
-
-    try:
-        from json_repair import repair_json
-    except ImportError:
-        raise ValueError(f"Răspuns care nu conține JSON: {text[:200]}")
-
-    reparat = repair_json(bloc.group(0) if bloc else candidate)
-    if reparat and reparat.strip() not in ("", "null", "{}"):
-        return json.loads(reparat)
-    raise ValueError(f"Răspuns care nu conține JSON: {text[:200]}")
 
 
 _DIACRITICE = str.maketrans("ăâîșşțţ", "aaisstt")
@@ -162,7 +131,7 @@ async def extrage_particularitati(
         max_tokens=32000,
         efort="medium",
     )
-    data = _parse_json(raspuns.text)
+    data = claude.parse_json(raspuns.text)
     items = data.get("particularitati", [])
 
     out = []

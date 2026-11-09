@@ -1,19 +1,23 @@
-"""Job store + estimate store in-memory, partajate de tool-urile care genereaza
-documente in fundal.
+"""Job store in-memory, partajat de tool-urile care genereaza documente in fundal.
 
-Se golesc la fiecare restart/redeploy Render (acceptat — frontend-ul trateaza
-job/estimate expirat cu mesaj "reincarca fisierul").
+Se goleste la fiecare restart/redeploy Render (acceptat — frontend-ul trateaza
+jobul expirat cu mesaj "reincarca fisierul").
+
+Toate generarile trec prin `ruleaza`: el termina jobul cu rezultatul sau cu
+eroarea pe inteles, noteaza esecul in jurnal si consumul Claude in `consum`.
 """
+import base64
+import logging
 import time
+import traceback
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
+
+logger = logging.getLogger(__name__)
 
 _jobs: dict[str, dict[str, Any]] = {}
 _job_meta: dict[str, dict[str, Any]] = {}
-_estimates: dict[str, dict[str, Any]] = {}
-
-ESTIMATE_TTL_S = 600  # fisierul temporar traieste 10 minute
 
 # Un job terminat tine documentul in base64 in memorie. Frontend-ul il ia la
 # prima interogare de dupa finalizare, deci dupa o jumatate de ora nu mai are
@@ -37,7 +41,7 @@ def _cleanup_jobs() -> None:
 
 
 def create_job(user_email: str, modul: str = "") -> str:
-    """`modul` nu ajunge în răspunsul către pagină — e pentru jurnalul de erori."""
+    """`modul` nu ajunge în răspunsul către pagină — e pentru jurnalul de erori și consum."""
     _cleanup_jobs()
     job_id = str(uuid.uuid4())
     _jobs[job_id] = {"status": "processing", "user_email": user_email}
@@ -60,6 +64,14 @@ def fail(job_id: str, error: str) -> None:
     _marcheaza_terminat(job_id)
 
 
+def _email(job_id: str) -> str:
+    return (_jobs.get(job_id) or {}).get("user_email", "") or "anonymous"
+
+
+def _modul(job_id: str) -> str:
+    return str((_job_meta.get(job_id) or {}).get("modul") or "")
+
+
 def esueaza(job_id: str, exc: Exception, mesaj: str | None = None) -> None:
     """Marchează jobul eșuat cu un mesaj pe înțeles și îl notează în jurnalul
     administratorului. Toate generările eșuate trec pe aici.
@@ -70,11 +82,50 @@ def esueaza(job_id: str, exc: Exception, mesaj: str | None = None) -> None:
     from ai_errors import mesaj_pentru_utilizator
     import jurnal
 
-    email = (_jobs.get(job_id) or {}).get("user_email", "")
-    modul = str((_job_meta.get(job_id) or {}).get("modul") or "")
+    email = _email(job_id)
     text = mesaj or mesaj_pentru_utilizator(exc)
     fail(job_id, text)
-    jurnal.inregistreaza(modul, email, text, f"{type(exc).__name__}: {exc}")
+    jurnal.inregistreaza(_modul(job_id), email, text, f"{type(exc).__name__}: {exc}")
+
+
+async def ruleaza(
+    job_id: str,
+    lucrare: Callable[[], Awaitable[dict[str, Any]]],
+    *,
+    mesaj: Callable[[Exception], str | None] | None = None,
+    efort: str | None = None,
+) -> None:
+    """Rulează o generare în fundal, de la cap la coadă.
+
+    `lucrare` întoarce câmpurile jobului terminat. O excepție marchează jobul
+    eșuat, cu mesajul din `mesaj(exc)` sau cu traducerea automată. Consumul
+    Claude se notează în ambele cazuri. `efort` impune efortul tuturor apelurilor
+    (testul administratorului); fără el, fiecare modul își folosește efortul lui.
+    """
+    import claude
+    import consum
+
+    # luate de la început: jobul terminat nu mai păstrează emailul
+    modul, email = _modul(job_id), _email(job_id)
+    reusit = False
+    with claude.numara(efort) as c:
+        try:
+            finish(job_id, **await lucrare())
+            reusit = True
+        except Exception as e:
+            logger.error("job %s (%s) FAILED: %s\n%s", job_id, modul, e, traceback.format_exc())
+            esueaza(job_id, e, mesaj(e) if mesaj else None)
+        finally:
+            consum.inregistreaza(modul, email, c, reusit)
+
+
+def livreaza(job_id: str, cale: Path, *, tool: str, filename: str) -> tuple[str, str]:
+    """Salvează documentul generat în Repository și îl întoarce pentru pagină,
+    ca (cale în storage, conținut base64)."""
+    from storage import upload_file
+
+    storage_path = upload_file(cale, tool=tool, filename=filename, user_email=_email(job_id))
+    return storage_path, base64.b64encode(cale.read_bytes()).decode()
 
 
 def _marcheaza_terminat(job_id: str) -> None:
@@ -85,29 +136,3 @@ def _marcheaza_terminat(job_id: str) -> None:
 def get_job(job_id: str) -> dict[str, Any] | None:
     _cleanup_jobs()
     return _jobs.get(job_id)
-
-
-def save_estimate(file_path: Path, filename: str, data: dict[str, Any]) -> str:
-    _cleanup_expired()
-    estimate_id = str(uuid.uuid4())
-    _estimates[estimate_id] = {
-        "file_path": str(file_path),
-        "filename": filename,
-        "created": time.monotonic(),
-        **data,
-    }
-    return estimate_id
-
-
-def pop_estimate(estimate_id: str) -> dict[str, Any] | None:
-    _cleanup_expired()
-    return _estimates.pop(estimate_id, None)
-
-
-def _cleanup_expired() -> None:
-    now = time.monotonic()
-    for eid in list(_estimates):
-        entry = _estimates[eid]
-        if now - entry["created"] > ESTIMATE_TTL_S:
-            Path(entry["file_path"]).unlink(missing_ok=True)
-            _estimates.pop(eid, None)

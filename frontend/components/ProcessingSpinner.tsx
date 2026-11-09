@@ -48,6 +48,13 @@ export default function ProcessingSpinner({
     evenimenteleZilei().then(setIstorie).catch(() => {});
   }, []);
 
+  // Notificările se cer doar la cerere, nu din prima: un dialog nepoftit de
+  // permisiuni e mai deranjant decât un tab de verificat.
+  // Componenta apare doar după un click, deci nu se randează pe server: `window` există.
+  const [notificari, setNotificari] = useState<NotificationPermission | "indisponibil">(() =>
+    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "indisponibil"
+  );
+
   const procent = etape
     ? Math.round(calculeazaProgres(etape, step, secundeInEtapa) * 100)
     : null;
@@ -116,6 +123,15 @@ export default function ProcessingSpinner({
             {eveniment.text}
           </p>
         </div>
+      )}
+
+      {onCancel && notificari === "default" && (
+        <button
+          onClick={() => Notification.requestPermission().then(setNotificari).catch(() => {})}
+          className="text-xs text-[#18257f] hover:underline"
+        >
+          🔔 Anunță-mă când e gata, dacă schimb tabul
+        </button>
       )}
 
       {onCancel && (

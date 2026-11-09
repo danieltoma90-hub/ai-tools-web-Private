@@ -6,10 +6,6 @@ deterministe (apelantul decide fallback-ul si spune motivul).
 import claude
 from .parser import ScreenSpec
 
-OUT_TOKENS = 3000
-CALL_OVERHEAD_TOKENS = 900
-CHARS_PER_TOKEN = 2.2  # romana: ~2,2 caractere pe token
-
 _SYSTEM = """Ești analist de business senior pentru Charisma ERP. Primești structura unui ecran \
 (filtre, butoane, coloane, observații) și descrierile existente ale câmpurilor.
 1. Scrie secțiunea "Prezentare generală": scopul ecranului (2-3 fraze), fluxul de utilizare \
@@ -50,13 +46,6 @@ def _spec_digest(spec: ScreenSpec, descriptions: dict) -> str:
         lines.append(f"DESCRIERE EXISTENTĂ: {descriptions['descriere_generala']}")
     return "\n".join(lines)
 
-
-def estimate_enrich_tokens(spec: ScreenSpec, descriptions: dict) -> int:
-    return (
-        round(len(_spec_digest(spec, descriptions)) / CHARS_PER_TOKEN)
-        + CALL_OVERHEAD_TOKENS
-        + OUT_TOKENS
-    )
 
 
 async def enrich(spec: ScreenSpec, descriptions: dict) -> dict:

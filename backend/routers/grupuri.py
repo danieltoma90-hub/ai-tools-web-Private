@@ -189,6 +189,14 @@ def jurnalul_erorilor(limita: int = 100, user=Depends(acces.cere_admin)):
     return {"intrari": jurnal.citeste(max(1, min(limita, jurnal.MAX_INTRARI)))}
 
 
+@router.get("/acces/consum")
+def consumul_claude(zile: int = 30, user=Depends(acces.cere_admin)):
+    """Consumul Claude pe ultimele `zile`: total, pe modul, pe coleg și ultimele generări."""
+    import consum
+
+    return consum.sumar(max(1, min(zile, 365)))
+
+
 @router.put("/acces/grup-implicit")
 def seteaza_implicit(body: ImplicitIn, user=Depends(acces.cere_admin)):
     """Grupul în care intră utilizatorii fără grup ales (de exemplu, cei invitați de acum încolo)."""

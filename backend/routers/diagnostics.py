@@ -135,5 +135,10 @@ async def _check_anthropic() -> dict:
 
 @router.get("/diagnostics/providers")
 async def check_providers(user=Depends(verify_token)):
-    """Starea reală a cheii Claude, pe drumul generărilor reale."""
-    return {"providers": [await _check_anthropic()]}
+    """Starea reală a cheii Claude, pe drumul generărilor reale. Costă câțiva cenți,
+    care apar în consumul administratorului ca modulul „diagnostic"."""
+    import consum
+    from acces import email_din
+
+    with consum.masoara("diagnostic", email_din(user)):
+        return {"providers": [await _check_anthropic()]}
