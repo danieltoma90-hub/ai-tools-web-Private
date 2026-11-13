@@ -429,6 +429,10 @@ def _client_din_dict(brut: object) -> scope.Client:
     if nume:
         kwargs["nume"] = nume
     kwargs["nume_complet"] = _str_sau_gol(brut.get("nume_complet"))
+    # Propoziția de deschidere a capitolului 1. Lipsă, `scope` o ia din prima frază a
+    # `domeniu`-ului, deci ecranul care nu are câmpul pentru ea produce oricum un capitol 1
+    # corect — câmpul e aici ca să nu se piardă tăcut dacă ajunge să fie trimis.
+    kwargs["prezentare"] = _str_sau_gol(brut.get("prezentare"))
     kwargs["domeniu"] = _str_sau_gol(brut.get("domeniu"))
     kwargs["entitati"] = _lista_stringuri(brut.get("entitati"))
     kwargs["situatie_actuala"] = _situatie_actuala_din_lista(brut.get("situatie_actuala"))

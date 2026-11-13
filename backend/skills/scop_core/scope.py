@@ -11,6 +11,7 @@ Regulă: denumirile de module și tranzacții se iau din manualele CORE
 from __future__ import annotations
 
 import pathlib
+import re
 from dataclasses import dataclass, field
 
 from . import stil
@@ -54,6 +55,9 @@ class Cerinta:
 class Client:
     nume: str = PLACEHOLDER
     nume_complet: str = ""
+    # Propoziția cu care se deschide capitolul 1: cine e beneficiarul, pe scurt. Lipsă, se ia
+    # prima frază din `domeniu` — profilul complet al activității rămâne în capitolul de context.
+    prezentare: str = ""
     domeniu: str = ""
     entitati: list[str] = field(default_factory=list)
     # „societati" cand entitatile sunt persoane juridice distincte, „locatii" cand sunt puncte de
@@ -74,6 +78,7 @@ class Client:
         return cls(
             nume=c.get("nume") or PLACEHOLDER,
             nume_complet=c.get("nume_complet", ""),
+            prezentare=c.get("prezentare", ""),
             domeniu=c.get("domeniu", ""),
             entitati=list(c.get("entitati", [])),
             observatii=c.get("observatii", ""),
@@ -113,22 +118,68 @@ class ScopCorelat:
 
 # --------------------------------------------------------------------------- capitole
 
-def _cap1_scop(doc, client: Client, corelat: ScopCorelat, nr: int) -> None:
+# Ce aduce implementarea, în absența unui text scris pe client. Rămâne la nivelul la care e
+# adevărat pentru orice implementare CORE — ce se schimbă în felul de a lucra —, fără să repete
+# lista din capitolul de beneficii: acolo se enumeră funcțional, aici se spune pe scurt de ce
+# contează. Un client cu miză proprie își pune propriul text prin `VALOARE`.
+VALOARE_IMPLICITA = (
+    "Activitatea se mută pe un singur sistem, în care documentul primar se operează o dată și "
+    "produce automat efectul în stoc, în evidența partenerilor și în contabilitate. Dispar "
+    "reintroducerea manuală între evidențe paralele și diferențele care rezultă din ea, iar "
+    "fiecare cifră poate fi urmărită până la documentul care a generat-o. Pe această bază, "
+    "situația creanțelor, a stocurilor și a rezultatului se citește pe date curente, nu "
+    "reconstituită la sfârșit de lună."
+)
+
+
+def _fraza(text: str) -> str:
+    """Închide fraza cu punct, dacă nu se termină deja cu unul — denumirile de societăți se
+    termină în abreviere („S.R.L."), iar un punct în plus se vede."""
+    return text if text.rstrip().endswith((".", "!", "?")) else text + "."
+
+
+def _prima_fraza(text: str) -> str:
+    """Prima frază dintr-un text de mai multe paragrafe. Profilul complet al activității stă în
+    capitolul de context; aici e nevoie doar de propoziția care spune cine e beneficiarul.
+
+    Tăierea cere literă mare după punct, altfel „X S.R.L. produce ambalaje." s-ar opri la
+    abrevierea din denumirea societății — exact cuvântul de care nu se poate lipsi propoziția."""
+    bucata = (text or "").strip().split("\n")[0].strip()
+    if not bucata:
+        return ""
+    return re.split(r"(?<=[.!?])\s+(?=[A-ZĂÂÎȘȚ])", bucata, maxsplit=1)[0].strip()
+
+
+def _cap1_scop(doc, client: Client, corelat: ScopCorelat, nr: int,
+               valoare: str | list[str] | None = None) -> None:
+    """Capitolul 1: cui ne adresăm, ce rol are documentul, ce aduce implementarea.
+
+    Nu mai anunță structura pe capitole. O listă de capitole repetă cuprinsul și, cum capitolele
+    se pot stinge din configurare, ajungea să trimită la capitole care nu există în document."""
     stil.heading(doc, f"{nr}. Scopul documentului", 1)
+
+    prezentare = client.prezentare or _prima_fraza(client.domeniu)
+    stil.para(doc, prezentare or f"{client.nume_complet or client.nume} — {PLACEHOLDER}.")
+
+    # „la FERMADOR S.R.L." se termină deja cu punct: adăugat încă unul, iese „S.R.L..".
+    rol = _fraza(f"Rolul documentului. Prezentul document descrie soluția pe care TotalSoft o "
+                 f"propune pentru acoperirea ariilor integrate Charisma ERP CORE la {client.nume}")
     stil.para(doc,
-        f"Prezentul document descrie soluția pe care TotalSoft o propune pentru acoperirea ariilor "
-        f"integrate Charisma ERP CORE la {client.nume}. El delimitează scopul funcțional ofertat, "
-        f"ce anume se configurează, se dezvoltă și se pune în funcțiune, și constituie baza tehnică "
-        f"a ofertei comerciale.")
+        f"{rol} El delimitează "
+        f"scopul funcțional ofertat — ce anume se configurează, se dezvoltă și se pune în "
+        f"funcțiune, și ce rămâne în afara ariei —, constituie baza tehnică a ofertei comerciale "
+        f"și rămâne referința față de care se validează implementarea.")
+
     if corelat.exista:
         stil.para(doc,
             f"Relația cu {corelat.denumire}. {corelat.arie_acoperita or PLACEHOLDER} face obiectul "
             f"documentului {corelat.titlu or PLACEHOLDER}. Cele două documente sunt complementare și "
             f"nu se suprapun; capitolul de delimitare detaliază explicit granița dintre ele.")
-    stil.para(doc,
-        "Structura documentului, pe scurt. Capitolele următoare descriu contextul, abordarea și "
-        "soluția pe module, apoi analiza de acoperire a cerințelor, delimitările, premisele și "
-        "punctele care necesită confirmare înainte de validarea scopului.")
+
+    bucati = [valoare] if isinstance(valoare, str) else list(valoare or []) or [VALOARE_IMPLICITA]
+    stil.para(doc, f"Ce aduce implementarea. {bucati[0]}")
+    for extra in bucati[1:]:
+        stil.para(doc, extra)
 
 
 def scoate_randuri_de_flux(doc, coduri: list[str] | None) -> None:
@@ -565,7 +616,9 @@ def _cap_premise(doc, nr: int, extra: dict[str, list[str]] | None = None) -> Non
     stil.heading(doc, f"{nr}.2. Date și pregătire operațională", 2)
     stil.bullets(doc, [
         "Nomenclatoarele de articole și de parteneri, cu proprietățile și clasificările aferente.",
-        "Modelele de contare agreate cu departamentul de contabilitate, pe fiecare tranzacție.",
+        # Modelele de contare nu se pomenesc în scop: vin deja configurate, iar ce se ofertează
+        # este generarea notelor contabile. Premisa de aici le cerea beneficiarului „agreate cu
+        # departamentul de contabilitate", adică exact ce nu facem obiect de ofertă.
         "Soldurile, balanța de inițializare, stocurile și registrul de mijloace fixe la data punerii "
         "în funcțiune.",
     ] + list(extra.get("date", [])))
@@ -644,6 +697,7 @@ def genereaza(cfg: dict, cale_iesire, client: Client | None = None,
               delimitare_intro: str | None = None,
               premise_extra: dict[str, list[str]] | None = None,
               lant_valoric: dict | None = None,
+              valoare: str | list[str] | None = None,
               scoate_buline: list[str] | None = None,
               scoate_fluxuri: list[str] | None = None,
               reformulari: list[tuple[str, str]] | None = None):
@@ -689,7 +743,7 @@ def genereaza(cfg: dict, cale_iesire, client: Client | None = None,
     ], latimi=[4.5, 12.0])
 
     nr = 1
-    _cap1_scop(doc, client, corelat, nr); nr += 1
+    _cap1_scop(doc, client, corelat, nr, valoare); nr += 1
     if cap.get("context", True):
         _cap_context(doc, client, nr); nr += 1
     # Abordarea si metodologia descriu munca noastra, nu solutia oferita, deci nu intra

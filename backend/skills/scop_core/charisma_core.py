@@ -68,7 +68,7 @@ SECTIUNI: list[Sectiune] = [
             "Cursurile valutare — preluate automat de pe site-ul BNR sau introduse manual, cu blocarea documentelor în valută pentru care nu există curs definit.",
             "Centrele de cost pentru alocarea veniturilor și a cheltuielilor.",
             "Clasificările (ierarhiile) de articole și de parteneri, folosite în operare și în raportare.",
-            "Configurările strict contabile — sisteme contabile, perioade, cote de TVA și modele de contare — sunt detaliate la modulul Contabilitate.",
+            "Configurările strict contabile — sisteme contabile, perioade și cote de TVA — sunt detaliate la modulul Contabilitate.",
         ],
         fluxuri=[
             Flux("CF1", "Definire societate și structură organizatorică",
@@ -207,7 +207,7 @@ SECTIUNI: list[Sectiune] = [
         ],
         detaliere=[
             "Management în paralel al mai multor locații sau societăți, părți ale unui holding, chiar independente.",
-            "Grad înalt de configurabilitate: planuri de conturi pe fiecare sistem contabil, centre de cost, modele de contare pe fiecare tranzacție operațională, clasificări de conturi, cote de TVA.",
+            "Grad înalt de configurabilitate: planuri de conturi pe fiecare sistem contabil, centre de cost, clasificări de conturi, cote de TVA.",
             "Definirea exercițiilor financiare și a perioadelor contabile, cu închiderea perioadelor la nivel de perioadă și sistem contabil.",
             "Funcționare multi-valută, cu tratamentul specific fiecărui cont (monetar / nemonetar).",
             "Contarea automată a documentelor operaționale, disponibilă instantaneu în rapoartele contabile și în rulajele conturilor; note contabile manuale pentru situații speciale.",
@@ -226,9 +226,9 @@ SECTIUNI: list[Sectiune] = [
                  "contabile manuale) — prin Stare perioade contabile, cu marcarea Perioadei raportate."),
             Flux("C3", "Generare note contabile din documente operaționale",
                  "Contarea automată a documentelor primare — Factură de achiziție, Factură de "
-                 "vânzare, Notă de intrare-recepție, Bon de consum — pe baza modelelor de "
-                 "contare configurate la inițializare, prin Generare note contabile din "
-                 "documente primare. Înregistrările devin imediat vizibile în rulajele conturilor."),
+                 "vânzare, Notă de intrare-recepție, Bon de consum — prin Generare note "
+                 "contabile din documente primare, cu efectul contabil predefinit. "
+                 "Înregistrările devin imediat vizibile în rulajele conturilor."),
             Flux("C4", "Operații periodice: închidere conturi de venit și cheltuială / închidere TVA / reevaluare disponibilități și creanțe în valută / producție în curs",
                  "Rularea, din Operațiuni periodice, a închiderilor de fine de lună — închiderea "
                  "conturilor de cheltuieli, închiderea conturilor de venituri, închiderea conturilor "
@@ -669,7 +669,7 @@ SECTIUNI: list[Sectiune] = [
                  "Alocarea procentual-valorică a documentelor operaționale pe centre de analiză "
                  "— la nivelul fiecărui detaliu de document sau identic pe toate detaliile — "
                  "prin opțiunea Alocă disponibilă direct pe document, completată de alocarea "
-                 "automată pe centrul de cost asociat contului contabil din modelul de contare."),
+                 "automată pe centrul de cost asociat contului contabil."),
             Flux("AM3", "Rapoarte pe dimensiuni de analiză",
                  "Filtrarea și detalierea Balanței contabile și a Fișei de cont pe centrele de "
                  "cost incluse în sistemul de analiză, pentru urmărirea veniturilor și a "
